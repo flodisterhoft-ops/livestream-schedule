@@ -1,0 +1,6 @@
+# Flask and extensions
+Flask>=2.3.0
+Flask-SQLAlchemy>=3.0.0
+
+# HTTP requests (for Telegram API)
+requests>=2.28.0

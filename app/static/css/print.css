@@ -1,0 +1,100 @@
+/* Print Styles */
+@media print {
+    body {
+        background: white !important;
+        color: black !important;
+        font-size: 12pt;
+    }
+
+    .container {
+        max-width: 100%;
+        padding: 0;
+    }
+
+    /* Hide non-essential elements */
+    header,
+    .admin-panel,
+    .filter-container,
+    .month-nav,
+    .tool-bar,
+    .action-group,
+    .modal,
+    .identity-overlay,
+    #flashMsg,
+    .user-btn,
+    .tool-btn,
+    form {
+        display: none !important;
+    }
+
+    /* Make cards print-friendly */
+    .card {
+        background: white !important;
+        border: 1px solid #ccc !important;
+        box-shadow: none !important;
+        page-break-inside: avoid;
+        margin-bottom: 10px;
+        padding: 10px;
+    }
+
+    .card.past {
+        opacity: 1 !important;
+        filter: none !important;
+    }
+
+    .date-col {
+        background: #f0f0f0 !important;
+        border-radius: 4px;
+    }
+
+    .day-num {
+        color: black !important;
+    }
+
+    .day-month {
+        color: #333 !important;
+    }
+
+    .event-title {
+        color: black !important;
+        font-size: 14pt;
+    }
+
+    .role-row {
+        border-bottom: 1px solid #ddd !important;
+        padding: 8px 0;
+    }
+
+    .person-name {
+        color: black !important;
+    }
+
+    .role-icon {
+        color: #666 !important;
+    }
+
+    /* Print header */
+    .timeline::before {
+        content: "Livestream Schedule";
+        display: block;
+        font-size: 24pt;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 20px;
+        border-bottom: 2px solid black;
+        padding-bottom: 10px;
+    }
+
+    /* Status indicators for print */
+    .row-swap-needed {
+        animation: none !important;
+        border: 2px solid #ef4444 !important;
+        background: #fff0f0 !important;
+    }
+
+    .row-swap-needed::after {
+        content: " [NEEDS COVERAGE]";
+        color: red;
+        font-weight: bold;
+    }
+}

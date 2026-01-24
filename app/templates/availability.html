@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Availability - Livestream Schedule{% endblock %}
+
+{% block content %}
+<div class="container">
+    <header>
+        <h1 class="app-title"><a href="/">Livestream Schedule</a></h1>
+        <div class="tool-bar">
+            <a href="/" class="tool-btn" title="Back to Schedule"><i class="fas fa-arrow-left"></i></a>
+        </div>
+    </header>
+
+    <h2 style="margin-bottom: 20px;">📅 Manage Availability</h2>
+
+    <!-- Add New Unavailability -->
+    <div class="admin-panel" style="margin-bottom: 20px;">
+        <h4><i class="fas fa-plus"></i> Add Unavailable Period</h4>
+        <form action="/availability/add" method="POST">
+            {% if is_manager %}
+            <select name="person" class="modern-select" style="margin-bottom: 10px;">
+                {% for name in all_names %}
+                {% if name != 'TBD' and name != 'Select Helper' %}
+                <option value="{{ name }}" {% if name==current_user %}selected{% endif %}>{{ name }}</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+            {% else %}
+            <input type="hidden" name="person" value="{{ current_user }}">
+            {% endif %}
+
+            <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: end;">
+                <div style="flex: 1;">
+                    <label style="font-size: 0.8rem; color: var(--muted);">Date</label>
+                    <input type="date" name="start_date" id="startDateInput" required onchange="syncEndDate()">
+                </div>
+                <div style="flex: 1;" id="endDateContainer">
+                    <label style="font-size: 0.8rem; color: var(--muted);">To (optional for single day)</label>
+                    <input type="date" name="end_date" id="endDateInput">
+                </div>
+            </div>
+            <script>
+                function syncEndDate() {
+                    const start = document.getElementById('startDateInput');
+                    const end = document.getElementById('endDateInput');
+                    if (!end.value) end.value = start.value;
+                }
+            </script>
+
+            <input type="text" name="reason" placeholder="Reason (optional)" style="margin-bottom: 10px;">
+
+            <select name="pattern" class="modern-select" style="margin-bottom: 10px;">
+                <option value="">One-time (specific dates)</option>
+                <option value="1st_sunday">Every 1st Sunday</option>
+                <option value="2nd_sunday">Every 2nd Sunday</option>
+                <option value="3rd_sunday">Every 3rd Sunday</option>
+                <option value="4th_sunday">Every 4th Sunday</option>
+                <option value="every_friday">Every Friday</option>
+            </select>
+
+            <button class="modal-btn save-btn">Add Unavailability</button>
+        </form>
+    </div>
+
+    <!-- Current Unavailabilities -->
+    <div class="card" style="padding: 16px;">
+        <div class="info-col" style="width: 100%;">
+            <h3 style="margin: 0 0 15px 0;">Current Unavailabilities</h3>
+
+            {% if availabilities %}
+            {% for avail in availabilities %}
+            <div class="role-row" style="padding: 12px 0;">
+                <div style="flex-grow: 1;">
+                    <div style="font-weight: 600; color: white;">{{ avail.person }}</div>
+                    <div style="font-size: 0.85rem; color: var(--muted);">
+                        {{ avail.start_date.strftime('%b %d, %Y') }} - {{ avail.end_date.strftime('%b %d, %Y') }}
+                        {% if avail.recurring %}
+                        <span style="color: var(--accent);">({{ avail.pattern | replace('_', ' ') | title }})</span>
+                        {% endif %}
+                    </div>
+                    {% if avail.reason %}
+                    <div style="font-size: 0.8rem; color: var(--muted); font-style: italic;">{{ avail.reason }}</div>
+                    {% endif %}
+                </div>
+                <form action="/availability/delete/{{ avail.id }}" method="POST" style="margin: 0;">
+                    <button class="action-btn btn-decline" title="Delete"><i class="fas fa-trash"></i></button>
+                </form>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p style="color: var(--muted); text-align: center;">No unavailabilities set</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Calendar Download -->
+    <div style="margin-top: 20px; text-align: center;">
+        <h4 style="color: var(--muted); margin-bottom: 10px;">📆 Add to Your Calendar</h4>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <a href="/calendar/{{ current_user }}.ics" class="month-pill"
+                style="text-decoration: none; background: var(--accent); color: #0f172a;">
+                <i class="fas fa-download"></i> My Schedule
+            </a>
+            <a href="/calendar.ics" class="month-pill" style="text-decoration: none;">
+                <i class="fas fa-download"></i> Full Calendar
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

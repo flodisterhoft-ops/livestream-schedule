@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+
+{% block title %}Statistics - Livestream Schedule{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .stats-grid {
+        display: grid;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card {
+        background: var(--card-bg);
+        border-radius: 16px;
+        padding: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .stat-card h3 {
+        margin: 0 0 15px 0;
+        font-size: 1rem;
+        color: var(--accent);
+    }
+
+    .chart-container {
+        position: relative;
+        height: 250px;
+    }
+
+    .big-number {
+        font-size: 3rem;
+        font-weight: 800;
+        background: var(--gradient-1);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
+    }
+
+    .big-label {
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <header>
+        <h1 class="app-title"><a href="/">Livestream Schedule</a></h1>
+        <div class="tool-bar">
+            <a href="/" class="tool-btn" title="Back to Schedule"><i class="fas fa-arrow-left"></i></a>
+        </div>
+    </header>
+
+    <h2 style="margin-bottom: 20px;">📊 Team Statistics</h2>
+
+    <!-- Filters -->
+    <div class="stat-card" style="margin-bottom: 20px;">
+        <div style="display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
+            <label style="color:var(--muted);">Person:</label>
+            <select id="userFilter" class="modern-select" style="width:auto; min-width:130px;" onchange="filterStats()">
+                <option value="all">Everyone</option>
+                {% for name in all_names %}
+                {% if name != 'TBD' and name != 'Select Helper' %}
+                <option value="{{ name }}" {% if name==selected_user %}selected{% endif %}>{{ name }}</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+            <label style="color:var(--muted);">Month:</label>
+            <select id="monthFilter" class="modern-select" style="width:auto; min-width:150px;"
+                onchange="filterStats()">
+                <option value="all" {% if selected_month=='all' %}selected{% endif %}>All Months</option>
+                {% for month in available_months %}
+                <option value="{{ month }}" {% if month==selected_month %}selected{% endif %}>{{ month }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="stat-card">
+            <div class="big-number">{{ total_events }}</div>
+            <div class="big-label">Total Events</div>
+        </div>
+        <div class="stat-card">
+            <div class="big-number">{{ total_assignments }}</div>
+            <div class="big-label">Assignments</div>
+        </div>
+        <div class="stat-card">
+            <div class="big-number">{{ team_size }}</div>
+            <div class="big-label">Team Members</div>
+        </div>
+    </div>
+
+    <!-- Personal Role Distribution (if user selected) -->
+    {% if selected_user and selected_user != 'all' %}
+    <div class="stat-card" style="margin-top:20px;">
+        <h3><i class="fas fa-user"></i> {{ selected_user }}'s Role Distribution</h3>
+        <p style="color:var(--muted); font-size:0.9rem; margin-bottom:15px;">
+            See which roles you've been assigned most. Try to diversify! 🎯
+        </p>
+        <div class="chart-container">
+            <canvas id="personalRoleChart"></canvas>
+        </div>
+        <div style="margin-top:15px; padding:15px; background:rgba(56, 189, 248, 0.1); border-radius:12px;">
+            <strong>Most scheduled role:</strong>
+            <span style="color:var(--accent);">{{ personal_top_role or 'N/A' }}</span>
+            ({{ personal_top_count or 0 }} times)
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Charts -->
+    <div class="stats-grid" style="margin-top:20px;">
+        <!-- Assignments by Person -->
+        <div class="stat-card">
+            <h3><i class="fas fa-users"></i> Assignments by Person</h3>
+            <div class="chart-container">
+                <canvas id="personChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Role Distribution -->
+        <div class="stat-card">
+            <h3><i class="fas fa-tasks"></i> Role Distribution</h3>
+            <div class="chart-container">
+                <canvas id="roleChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Monthly Trend -->
+        <div class="stat-card">
+            <h3><i class="fas fa-chart-line"></i> Monthly Activity</h3>
+            <div class="chart-container">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="stat-card">
+        <h3><i class="fas fa-trophy"></i> All-Time Leaderboard</h3>
+        {% for item in leaderboard %}
+        <div class="lb-row">
+            <div class="lb-name">
+                {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{
+                loop.index }}.{% endif %}
+                {{ item.name }}
+            </div>
+            <div class="lb-val-group">
+                <span><i class="fas fa-church"></i> {{ item.sunday }}</span>
+                <span><i class="fas fa-book"></i> {{ item.friday }}</span>
+                <div class="lb-total">{{ item.total }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    // Filter function - redirect to same page with query params
+    function filterStats() {
+        const user = document.getElementById('userFilter').value;
+        const month = document.getElementById('monthFilter').value;
+        let url = '/stats?user=' + encodeURIComponent(user);
+        if (month !== 'all') {
+            url += '&month=' + encodeURIComponent(month);
+        }
+        window.location.href = url;
+    }
+
+    // Chart.js default styling
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.borderColor = 'rgba(255,255,255,0.1)';
+
+    // Person Chart (Bar)
+    new Chart(document.getElementById('personChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ person_labels | tojson }},
+        datasets: [{
+            label: 'Assignments',
+            data: {{ person_data | tojson }},
+        backgroundColor: 'rgba(56, 189, 248, 0.7)',
+        borderColor: '#38bdf8',
+        borderWidth: 1,
+        borderRadius: 4
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+            x: { grid: { display: false } }
+        }
+    }
+    });
+
+    // Role Chart (Doughnut)
+    new Chart(document.getElementById('roleChart'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ role_labels | tojson }},
+        datasets: [{
+            data: {{ role_data | tojson }},
+        backgroundColor: [
+            '#38bdf8',
+            '#a855f7',
+            '#10b981',
+            '#facc15',
+            '#fb923c',
+            '#ec4899',
+            '#6366f1'
+        ],
+        borderWidth: 0
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'right' }
+        }
+    }
+    });
+
+    // Trend Chart (Line)
+    new Chart(document.getElementById('trendChart'), {
+        type: 'line',
+        data: {
+            labels: {{ month_labels | tojson }},
+        datasets: [{
+            label: 'Events',
+            data: {{ month_data | tojson }},
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+        fill: true,
+        tension: 0.4
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+            x: { grid: { display: false } }
+        }
+    }
+    });
+
+    {% if selected_user and selected_user != 'all' %}
+    // Personal Role Chart (Pie)
+    new Chart(document.getElementById('personalRoleChart'), {
+        type: 'pie',
+        data: {
+            labels: {{ personal_role_labels | tojson }},
+        datasets: [{
+            data: {{ personal_role_data | tojson }},
+        backgroundColor: [
+            '#38bdf8',
+            '#a855f7',
+            '#10b981',
+            '#facc15',
+            '#fb923c',
+            '#ec4899',
+            '#6366f1'
+        ],
+        borderWidth: 0
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'right' }
+        }
+    }
+    });
+    {% endif %}
+</script>
+{% endblock %}

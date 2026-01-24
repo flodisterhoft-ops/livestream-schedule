@@ -1,0 +1,243 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+{% if not current_user %}
+<div class="identity-overlay">
+    <div style="display:flex; align-items:center; justify-content:center; gap:15px; margin-bottom:30px;">
+        <h2 class="identity-title">Who are you?</h2>
+        <button onclick="toggleDarkMode()" class="tool-btn identity-toggle" title="Toggle Light/Dark Mode">
+            <i class="fas fa-moon"></i>
+        </button>
+    </div>
+    <a href="/set_identity/Florian" class="id-card id-admin">Florian <span
+            style="font-size:0.8rem; opacity:0.7; font-weight:400;">(Admin)</span></a>
+    {% for name in all_names %}
+    {% if name != 'Florian' and name != 'TBD' %}
+    <a href="/set_identity/{{ name }}" class="id-card">{{ name }}</a>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="container" id="mainContainer">
+    <header>
+        <div class="app-title"><a href="/">Livestream Schedule</a></div>
+        <div class="tool-bar">
+            <div class="tool-btn" onclick="toggleDarkMode()" title="Toggle Light/Dark Mode"><i class="fas fa-moon"></i>
+            </div>
+            <a href="/stats" class="tool-btn" title="Team Stats"><i class="fas fa-trophy"></i></a>
+            <div class="tool-btn" onclick="toggleToolsMenu()" title="Settings"><i class="fas fa-cog"></i></div>
+            {% if current_user == 'Florian' %}
+            <a href="/toggle_manager" class="tool-btn"
+                title="{% if is_manager %}Exit{% else %}Enable{% endif %} Manager Mode"
+                style="{% if is_manager %}color:#10b981;{% endif %}">
+                <i class="fas fa-user-shield"></i>
+            </a>
+            {% endif %}
+            {% if current_user %}
+            <a href="/logout" class="tool-btn" title="Logout"><i class="fas fa-sign-out-alt"></i></a>
+            {% endif %}
+        </div>
+    </header>
+
+    <!-- Settings Menu (accessible to all users) -->
+    <div id="toolsMenu" class="admin-panel" style="display:none; margin-bottom:15px;">
+        <h4><i class="fas fa-cog"></i> Settings</h4>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <a href="/availability" class="month-pill" style="text-decoration:none;"><i
+                    class="fas fa-calendar-times"></i> My Availability</a>
+            <a href="/calendar/{{ current_user or 'Full' }}.ics" class="month-pill" style="text-decoration:none;"><i
+                    class="fas fa-calendar-plus"></i> Add to Calendar</a>
+            <button id="installPWA" class="month-pill"><i class="fas fa-mobile-alt"></i> Install App</button>
+            {% if current_user and current_user != 'Florian' %}
+            <form action="/request_access" method="POST" style="margin:0;">
+                <button class="month-pill" style="background:rgba(56, 189, 248, 0.2); color:#38bdf8;"><i
+                        class="fas fa-key"></i> Request Manager Access</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if is_manager %}
+    <div class="admin-panel">
+        <h4><i class="fas fa-tools"></i> Manager</h4>
+        <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <form action="/generate_specific" method="POST" style="flex-grow:1; display:flex; gap:5px;">
+                <input type="month" name="gen_month" id="adminMonthInput" value="2026-02" style="margin:0;">
+                <button class="modal-btn save-btn" style="width:auto; margin:0; padding:0 15px;"><i
+                        class="fas fa-bolt"></i></button>
+            </form>
+        </div>
+        <div style="display:flex; gap:10px; overflow-x:auto; flex-wrap:wrap;">
+            <button onclick="openAddModal()" class="month-pill" style="background:#334155; color:white;"><i
+                    class="fas fa-plus"></i> Add</button>
+            <form action="/bulk_confirm" method="POST" style="margin:0;">
+                <input type="hidden" name="gen_month" id="bulkConfirmMonth">
+                <button class="month-pill"
+                    style="background:rgba(16, 185, 129, 0.2); color:#10b981; border-color:rgba(16, 185, 129, 0.3);">
+                    <i class="fas fa-check-double"></i> Confirm All
+                </button>
+            </form>
+            <button class="month-pill"
+                style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border-color:rgba(239, 68, 68, 0.3);"
+                onclick="wipeSelectedMonth()"><i class="fas fa-trash"></i> Wipe</button>
+            <form action="/test_telegram" method="POST" style="margin:0;">
+                <button class="month-pill"
+                    style="background:rgba(56, 189, 248, 0.2); color:#38bdf8; border-color:rgba(56, 189, 248, 0.3);">
+                    <i class="fab fa-telegram"></i> Test
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="filter-container">
+        <select class="modern-select" id="focusFilter" onchange="applyFocus()">
+            <option value="all">👁️ Show Everyone</option>
+            {% for name in all_names %}{% if name != 'TBD' %}<option value="{{ name }}">{{ name }}</option>{% endif %}{%
+            endfor %}
+        </select>
+
+        <div class="month-nav" id="monthNav"></div>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    {% set msg_text = messages[0] | replace("CONFETTI", "") | trim %}
+    {% if msg_text %}
+    <div id="flashMsg"
+        style="background: rgba(0,0,0,0.65); color:white; padding:30px; border-radius:16px; margin-bottom:15px; text-align:center; font-weight:800; font-size:1.5rem; backdrop-filter:blur(4px); border:1px solid rgba(255,255,255,0.1); position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:9999; min-width:300px;">
+        {{ msg_text }}
+    </div>
+    {% endif %}
+    {% if "CONFETTI" in messages[0] %}
+    <script>confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });</script>{% endif %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="timeline">
+        {% if not schedule %}
+        <div
+            style="text-align:center; margin-top: 40px; padding: 30px; border-radius:15px; background:rgba(255,255,255,0.03);">
+            <i class="fas fa-calendar-times fa-3x" style="color:var(--muted); margin-bottom:15px; opacity:0.3;"></i>
+            <p style="color:var(--muted);">No events found.</p>
+        </div>
+        {% endif %}
+
+        {% for item in schedule %}
+        <div class="card {% if item.is_past %}past{% endif %}"
+            data-people="{{ item.assignments | map(attribute='person') | join(',') }}"
+            data-month="{{ item.month_year }}">
+            <div class="date-col">
+                <span class="day-num">{{ item.day_num }}</span>
+                <span class="day-month">{{ item.month }}</span>
+            </div>
+            <div class="info-col">
+                <div class="card-header">
+                    <div class="event-title">{{ item.title }}
+                        <span class="mgr-only">
+                            <i class="fas fa-pen"
+                                style="font-size:0.7rem; color:var(--muted); cursor:pointer; margin-left:5px;"
+                                onclick="openTitleModal('{{ item.full_date }}', '{{ item.title }}')"></i>
+                        </span>
+                    </div>
+                    <div class="mgr-only">
+                        <a href="/delete/{{ item.full_date }}" style="color:#ef4444; opacity:0.6;"
+                            onclick="return confirm('Delete?')"><i class="fas fa-times"></i></a>
+                    </div>
+                </div>
+
+                <div class="assignments-grid">
+                    {% for assign in item.assignments %}
+                    {{ render_row_fn(assign, item.full_date, current_user, is_manager, roster_data) | safe }}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="modal" id="lbModal">
+    <div class="modal-content">
+        <h3 style="color:var(--accent);">Team Stats</h3>
+        <select id="lbPeriodSelect" onchange="updateLbView()" style="margin-bottom:15px; background:#334155;">
+            {% for m in month_list %}
+            <option value="{{ m }}">{{ m }}</option>
+            {% endfor %}
+        </select>
+        <div id="lb-list"></div>
+        <button class="modal-btn" style="background:transparent; color:var(--muted);"
+            onclick="closeModal('lbModal')">Close</button>
+    </div>
+</div>
+
+<div class="modal" id="userMenuModal">
+    <div class="modal-content">
+        <h3><i class="fas fa-user-circle"></i> {{ current_user }}</h3>
+        {% if current_user == 'Florian' %}
+        <a href="/toggle_manager" class="modal-btn save-btn"
+            style="text-decoration:none; display:block; margin-bottom:10px;">
+            {% if is_manager %}Disable Manager Mode{% else %}Enable Manager Mode{% endif %}
+        </a>
+        {% else %}
+        <form action="/request_access" method="POST" onsubmit="closeModal('userMenuModal')">
+            <button class="modal-btn"
+                style="border:1px solid rgba(255,255,255,0.2); background:transparent; color:white; margin-bottom:10px;">Request
+                Manager Access</button>
+        </form>
+        {% endif %}
+        <a href="/switch_user" class="modal-btn"
+            style="background:rgba(239, 68, 68, 0.2); color:#ef4444; text-decoration:none; display:flex; justify-content:center; align-items:center; text-align:center;">Logout</a>
+        <button class="modal-btn" style="background:transparent; color:var(--muted); margin-top:10px;"
+            onclick="closeModal('userMenuModal')">Close</button>
+    </div>
+</div>
+
+<div class="modal" id="addModal">
+    <div class="modal-content">
+        <h3>Add Event</h3>
+        <form action="/add_event" method="POST" onsubmit="saveScrollPosition()">
+            <input type="date" name="event_date" required>
+            <select name="event_type" id="eventTypeSelect" onchange="syncAddOptions()">
+                <option value="Sunday">Sunday Service</option>
+                <option value="Friday">Friday Bible Study</option>
+                <option value="Custom">Custom</option>
+            </select>
+            <input type="text" name="custom_title" placeholder="Title (optional)">
+            <div id="customRoleBox" class="hidden" style="text-align:left; margin-top:10px;">
+                <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; justify-content:center;">
+                    <label><input type="checkbox" name="role_pc" value="1" checked> PC</label>
+                    <label><input type="checkbox" name="role_cam1" value="1" checked> Cam 1</label>
+                    <label><input type="checkbox" name="role_cam2" value="1" checked> Cam 2</label>
+                </div>
+            </div>
+            <button type="submit" class="modal-btn save-btn">Create</button>
+        </form>
+        <button class="modal-btn" style="background:transparent; color:var(--muted);"
+            onclick="closeModal('addModal')">Cancel</button>
+    </div>
+</div>
+
+<div class="modal" id="titleModal">
+    <div class="modal-content">
+        <h3>Edit Event Title</h3>
+        <form action="/update_title" method="POST">
+            <input type="hidden" name="date" id="titleDateInput">
+            <input type="text" name="title" id="titleTextInput" required style="margin-bottom:15px;">
+            <button type="submit" class="modal-btn save-btn">Save</button>
+        </form>
+        <button class="modal-btn" style="background:transparent; color:var(--muted);"
+            onclick="closeModal('titleModal')">Cancel</button>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    const STATS_DATA = {{ stats | tojson }};
+</script>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login{% endblock %}
+
+{% block content %}
+<div class="container">
+    <header>
+        <h1 class="app-title"><a href="/">Livestream Schedule</a></h1>
+    </header>
+
+    <div class="admin-panel" style="max-width: 400px; margin: 50px auto; text-align: center;">
+        <h2 style="margin-bottom: 20px;">🔐 Admin Login</h2>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="flash-message flash-{{ category }}"
+            style="margin-bottom: 15px; padding: 10px; border-radius: 8px; background: rgba(239, 68, 68, 0.2); color: #ef4444;">
+            {{ message }}
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form action="/set_identity/{{ name }}" method="POST">
+            <div style="margin-bottom: 20px;">
+                <input type="password" name="password" placeholder="Enter password" class="modern-select"
+                    style="width: 100%; padding: 12px; font-size: 1rem;" autofocus required>
+            </div>
+            <button type="submit"
+                style="width: 100%; padding: 14px; background: var(--gradient-1); border: none; border-radius: 12px; color: white; font-weight: 600; font-size: 1rem; cursor: pointer;">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </button>
+        </form>
+
+        <a href="/" style="display: block; margin-top: 15px; color: var(--muted);">
+            <i class="fas fa-arrow-left"></i> Back to identity selection
+        </a>
+    </div>
+</div>
+{% endblock %}
