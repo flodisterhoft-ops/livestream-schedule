@@ -1,7 +1,7 @@
 <div class="role-row {% if assign.status == 'swap_needed' %}row-swap-needed{% endif %}"
     id="row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" data-name="{{ assign.person }}">
 
-    <div style="flex-grow:1; display:flex; flex-direction:column;">
+    <div class="role-content">
         <div class="role-left">
             {% set r = assign.role %}
             <span class="role-icon">
@@ -21,7 +21,7 @@
                 <select name="new_person" onchange="this.form.requestSubmit()" class="modern-select"
                     style="padding:0; margin:0; width:100%; background:transparent; border:none; font-weight:500; color:{% if assign.person == 'Select Helper' %}var(--open-text){% else %}#e2e8f0{% endif %};">
                     {% if assign.person == 'Select Helper' %}
-                    <option value="Select Helper" disabled selected>Helper (Unassigned)</option>
+                    <option value="Select Helper" disabled selected>Unassigned</option>
                     {% endif %}
                     {% for name in all_names %}
                     <option value="{{ name }}" {% if name==assign.person %}selected{% endif %}>{{ name }}</option>
@@ -30,13 +30,12 @@
             </form>
             {% else %}
             {% if assign.person == 'Select Helper' %}
-            <span style="color:var(--open-text); font-style:italic;">Volunteer Needed</span>
+            <span class="person-name unassigned">Needed</span>
             {% else %}
             {% if assign.swapped_with %}
             <span class="person-name">
-                <s style="opacity:.7;">{{ assign.swapped_with }}</s>
-                <span style="color:var(--muted); font-size:0.78rem; margin-left:6px; font-weight:600;">(⇄ {{
-                    assign.person }})</span>
+                <s style="opacity:.6;">{{ assign.swapped_with }}</s>
+                <span class="swap-indicator">(⇄ {{ assign.person }})</span>
             </span>
             {% else %}
             <span class="person-name">{{ assign.person }}</span>
@@ -45,88 +44,80 @@
             {% endif %}
 
             {% if assign.cover %}
-            <span style="color:var(--highlight); font-size:0.75rem; margin-left:5px; font-weight:bold;">(🔄 {{
-                assign.cover }})</span>
+            <span class="cover-indicator">(🔄 {{ assign.cover }})</span>
             {% endif %}
         </div>
 
-        {# Swap-needed UI for OTHER users #}
-        {% if assign.status == 'swap_needed' and current_user and current_user != assign.person %}
-        <div class="swap-ui" style="margin-left:26px; margin-top:6px;">
-            {% if swap_options %}
-            <form hx-post="/action"
+        <div class="action-group">
+            {% if assign.person == 'Select Helper' %}
+            {% if not is_manager %}
+            <button class="action-btn btn-help" hx-post="/action"
+                hx-vals='{"type":"volunteer","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
                 hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
-                hx-swap="outerHTML" style="display:flex; gap:6px; align-items:center;">
-                <input type="hidden" name="type" value="swap_shift">
-                <input type="hidden" name="date" value="{{ full_date }}">
-                <input type="hidden" name="idx" value="{{ assign.idx }}">
+                hx-swap="outerHTML" title="I can help">
+                <i class="fas fa-hand-paper"></i>
+            </button>
+            {% endif %}
 
-                <select name="swap_offer_date" class="modern-select"
-                    style="padding:4px; font-size:0.8rem; width:auto; background:rgba(0,0,0,0.3);">
-                    {% for s in swap_options %}
-                    <option value="{{ s.date }}">Swap with my {{ s.readable_date }} {{ s.event_name }}</option>
-                    {% endfor %}
-                </select>
-                <button class="action-btn btn-take" style="font-size:0.7rem; padding:0 10px;">Swap</button>
-            </form>
+            {% elif assign.status == 'confirmed' %}
+            {% if is_manager or assign.person == current_user %}
+            <button class="action-btn btn-undo" hx-post="/action"
+                hx-vals='{"type":"undo","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
+                hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
+                hx-swap="outerHTML" title="Undo"><i class="fas fa-undo"></i></button>
             {% else %}
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <span style="color:var(--muted); font-size:0.8rem;">Pick up {{ assign.person }}'s shift</span>
-                <button class="action-btn btn-take" hx-post="/action"
-                    hx-vals='{"type":"pickup","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
-                    hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
-                    hx-swap="outerHTML" style="font-size:0.7rem; padding:0 10px;">Pick up</button>
-            </div>
+            <div class="status-badge st-ok"><i class="fas fa-check"></i></div>
+            {% endif %}
+
+            {% elif assign.status == 'swap_needed' %}
+            {% if assign.person == current_user %}
+            <button class="action-btn btn-confirm" hx-post="/action"
+                hx-vals='{"type":"undo","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
+                hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
+                hx-swap="outerHTML" title="Undo"><i class="fas fa-undo"></i></button>
+            {% else %}
+            <div class="status-badge st-swap" title="Needs coverage"><i class="fas fa-exclamation"></i></div>
+            {% endif %}
+
+            {% else %}
+            {% if is_manager or assign.person == current_user %}
+            <button class="action-btn btn-confirm" hx-post="/action"
+                hx-vals='{"type":"confirm","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
+                hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
+                hx-swap="outerHTML"><i class="fas fa-check"></i></button>
+            <button class="action-btn btn-decline" hx-post="/action"
+                hx-vals='{"type":"decline","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
+                hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
+                hx-swap="outerHTML" title="I can't make it"><i class="fas fa-times"></i></button>
+            {% else %}
+            <span class="status-pending">Pending</span>
+            {% endif %}
             {% endif %}
         </div>
-        {% endif %}
     </div>
 
-    <div class="action-group">
-        {% if assign.person == 'Select Helper' %}
-        {% if not is_manager %}
-        <button class="action-btn btn-help" hx-post="/action"
-            hx-vals='{"type":"volunteer","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
-            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" hx-swap="outerHTML"
-            title="I can help">
-            <i class="fas fa-hand-paper"></i>
-        </button>
-        {% endif %}
-
-        {% elif assign.status == 'confirmed' %}
-        {% if is_manager or assign.person == current_user %}
-        <button class="action-btn btn-undo" hx-post="/action"
-            hx-vals='{"type":"undo","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
-            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" hx-swap="outerHTML"
-            title="Undo"><i class="fas fa-undo"></i></button>
+    {# Swap-needed UI for OTHER users #}
+    {% if assign.status == 'swap_needed' and current_user and current_user != assign.person %}
+    <div class="swap-ui">
+        {% if swap_options %}
+        <form hx-post="/action" hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
+            hx-swap="outerHTML" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <input type="hidden" name="type" value="swap_shift">
+            <input type="hidden" name="date" value="{{ full_date }}">
+            <input type="hidden" name="idx" value="{{ assign.idx }}">
+            <select name="swap_offer_date" class="modern-select swap-select">
+                {% for s in swap_options %}
+                <option value="{{ s.date }}">Swap: {{ s.readable_date }}</option>
+                {% endfor %}
+            </select>
+            <button class="action-btn btn-take">Swap</button>
+        </form>
         {% else %}
-        <div class="status-badge st-ok"><i class="fas fa-check"></i></div>
-        {% endif %}
-
-        {% elif assign.status == 'swap_needed' %}
-        {% if assign.person == current_user %}
-        <button class="action-btn btn-confirm" hx-post="/action"
-            hx-vals='{"type":"undo","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
-            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" hx-swap="outerHTML"
-            title="Undo Can't Make It"><i class="fas fa-undo"></i></button>
-        {% else %}
-        <div class="status-badge st-swap" title="Needs coverage"><i class="fas fa-exclamation"></i></div>
-        {% endif %}
-
-        {% else %}
-        {% if is_manager or assign.person == current_user %}
-        <button class="action-btn btn-confirm" hx-post="/action"
-            hx-vals='{"type":"confirm","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
-            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" hx-swap="outerHTML"><i
-                class="fas fa-check"></i></button>
-
-        <button class="action-btn btn-decline" hx-post="/action"
-            hx-vals='{"type":"decline","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
-            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" hx-swap="outerHTML"
-            title="I can't make it"><i class="fas fa-times"></i></button>
-        {% else %}
-        <span style="font-size:0.7rem; color:var(--muted); opacity:0.5;">Pending</span>
-        {% endif %}
+        <button class="action-btn btn-take" hx-post="/action"
+            hx-vals='{"type":"pickup","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
+            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
+            hx-swap="outerHTML">Pick up</button>
         {% endif %}
     </div>
+    {% endif %}
 </div>

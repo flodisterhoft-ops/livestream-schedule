@@ -1028,128 +1028,170 @@ body.light-mode .modern-select:focus {
     border-color: var(--accent);
 }
 
-/* Assignments Grid Layout (Compact & Polished) */
+/* Assignments Layout - Ultra Compact List */
 .assignments-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    /* Minimal gap */
+    margin-top: 4px;
 }
 
 .assignments-grid .role-row {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    text-align: center;
-    padding: 10px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    min-height: 80px;
+    padding: 3px 8px;
+    /* Tighter padding */
+    background: transparent;
+    border-radius: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     transition: all 0.2s ease;
 }
 
-.assignments-grid .role-row:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.1);
+.assignments-grid .role-row:last-child {
+    border-bottom: none;
 }
 
-/* Hide the flex wrapper inside role-row for grid layout */
-.assignments-grid .role-row>div:first-child {
-    width: 100%;
+.assignments-grid .role-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+/* Content wrapper - Clean horizontal flexbox */
+.assignments-grid .role-content {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
+    width: 100%;
 }
 
 .assignments-grid .role-left {
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
-    margin-bottom: 6px;
-    width: 100%;
+    gap: 12px;
+    flex-grow: 1;
+    min-width: 0;
 }
 
+/* Icon - Fixed width for consistent text alignment */
 .assignments-grid .role-icon {
-    font-size: 0.9rem;
-    width: 26px;
-    height: 26px;
-    background: rgba(56, 189, 248, 0.15);
-    border-radius: 50%;
+    font-size: 0.85rem;
+    width: 24px;
+    height: 24px;
+    background: rgba(56, 189, 248, 0.1);
+    border-radius: 5px;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: #38bdf8;
     flex-shrink: 0;
-    color: var(--accent);
 }
 
-.assignments-grid .person-name,
-.assignments-grid .modern-select {
-    font-size: 0.82rem;
-    font-weight: 600;
+/* Name text */
+.assignments-grid .person-name {
+    font-size: 0.9rem;
+    font-weight: 500;
     color: #e2e8f0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 80px;
+    line-height: normal;
+    margin: 0;
+    padding: 0;
 }
 
+.assignments-grid .person-name.unassigned {
+    color: var(--open-text);
+    font-style: italic;
+    opacity: 0.8;
+}
+
+/* Action buttons - ensure they stick to the right */
 .assignments-grid .action-group {
     display: flex;
-    justify-content: center;
     align-items: center;
-    width: 100%;
-    margin-top: auto;
     gap: 6px;
-    padding-top: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .assignments-grid .action-btn {
-    width: 28px;
-    height: 28px;
-    font-size: 0.7rem;
+    width: 22px;
+    /* Smaller buttons */
+    height: 22px;
+    font-size: 0.65rem;
     padding: 0;
-    border-radius: 6px;
-    flex-grow: 0;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .assignments-grid .status-badge {
-    width: 28px;
-    height: 28px;
-    font-size: 0.7rem;
+    width: 22px;
+    height: 22px;
+    font-size: 0.65rem;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-/* Swap UI compact */
+/* Swap UI - Fix placement */
 .assignments-grid .swap-ui {
-    font-size: 0.65rem;
-    margin: 4px 0 0 0 !important;
-    width: 100%;
-    text-align: center;
+    margin-top: 2px;
+    padding-top: 2px;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
 }
 
-.assignments-grid .swap-ui select {
-    width: 100%;
-    max-width: 90px;
+.assignments-grid .swap-ui .action-btn {
+    width: auto;
+    padding: 0 8px;
+    height: 20px;
+    /* Slightly smaller height */
     font-size: 0.65rem;
-    padding: 2px 4px;
+    white-space: nowrap;
 }
 
-/* Light Mode Identity Styling */
+/* Identity Header - Clean Flexbox Alignment */
+.identity-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
 .identity-title {
     color: white;
+    font-size: 1.5rem;
+    font-weight: 600;
     margin: 0;
-}
-
-body.light-mode .identity-title {
-    color: #1e293b;
+    padding: 0;
+    line-height: 1;
 }
 
 .identity-toggle {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: rgba(255, 255, 255, 0.1);
     color: white;
+    border-radius: 8px;
+    padding: 0;
+    margin: 0;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+/* Light Mode - Identity */
+body.light-mode .identity-title {
+    color: #1e293b;
 }
 
 body.light-mode .identity-toggle {
@@ -1159,20 +1201,46 @@ body.light-mode .identity-toggle {
 }
 
 /* Light Mode - Assignments Grid */
+/* Light Mode - Assignments Grid */
 body.light-mode .assignments-grid .role-row {
-    background: rgba(0, 0, 0, 0.03);
+    background: transparent;
     border-color: rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: none;
 }
 
 body.light-mode .assignments-grid .role-row:hover {
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(0, 0, 0, 0.03);
 }
 
 body.light-mode .assignments-grid .role-icon {
-    background: rgba(56, 189, 248, 0.12);
+    background: rgba(56, 189, 248, 0.15);
+    color: #0284c7;
+    border: none;
 }
 
 body.light-mode .assignments-grid .person-name,
-body.light-mode .assignments-grid .modern-select {
+body.light-mode .assignments-grid .inline-select {
+    color: #334155;
+}
+
+body.light-mode .assignments-grid .person-name.unassigned {
+    color: #64748b;
+}
+
+body.light-mode .assignments-grid .swap-ui {
+    border-top-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-mode .assignments-grid .person-name,
+body.light-mode .assignments-grid .inline-select {
     color: #1e293b;
+}
+
+body.light-mode .assignments-grid .swap-info {
+    border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .assignments-grid .swap-ui {
+    border-top-color: rgba(0, 0, 0, 0.08);
 }
