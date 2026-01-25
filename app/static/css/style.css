@@ -1028,87 +1028,113 @@ body.light-mode .modern-select:focus {
     border-color: var(--accent);
 }
 
-/* Assignments Grid Layout (Compact) */
-/* Assignments Grid Layout (Compact) */
+/* Assignments Grid Layout (Compact & Polished) */
 .assignments-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    margin-top: 8px;
+    gap: 8px;
+    margin-top: 10px;
 }
 
 .assignments-grid .role-row {
+    display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
-    padding: 6px 8px;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    height: 100%;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+    padding: 10px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    min-height: 80px;
+    transition: all 0.2s ease;
+}
+
+.assignments-grid .role-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Hide the flex wrapper inside role-row for grid layout */
+.assignments-grid .role-row>div:first-child {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .assignments-grid .role-left {
+    display: flex;
     flex-direction: row;
     align-items: center;
-    margin-bottom: 4px;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 6px;
     width: 100%;
 }
 
 .assignments-grid .role-icon {
-    font-size: 1rem;
-    margin-right: 8px;
-    margin-bottom: 0;
-    width: 28px;
-    height: 28px;
-    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.9rem;
+    width: 26px;
+    height: 26px;
+    background: rgba(56, 189, 248, 0.15);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    color: var(--accent);
 }
 
-.assignments-grid .person-name {
-    font-size: 0.85rem;
-    text-align: left;
-    width: auto;
-    margin: 0;
+.assignments-grid .person-name,
+.assignments-grid .modern-select {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #e2e8f0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-weight: 500;
+    max-width: 80px;
 }
 
 .assignments-grid .action-group {
-    justify-content: flex-start;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     width: 100%;
     margin-top: auto;
-    gap: 4px;
+    gap: 6px;
+    padding-top: 6px;
 }
 
 .assignments-grid .action-btn {
-    flex-grow: 1;
-    height: 24px;
-    font-size: 0.75rem;
+    width: 28px;
+    height: 28px;
+    font-size: 0.7rem;
     padding: 0;
-    border-radius: 4px;
+    border-radius: 6px;
+    flex-grow: 0;
 }
 
-/* Hide swap status in compact mode unless essential, or style compactly */
-.assignments-grid .swap-ui {
+.assignments-grid .status-badge {
+    width: 28px;
+    height: 28px;
     font-size: 0.7rem;
-    margin-left: 0 !important;
-    margin-top: 4px;
+}
+
+/* Swap UI compact */
+.assignments-grid .swap-ui {
+    font-size: 0.65rem;
+    margin: 4px 0 0 0 !important;
     width: 100%;
     text-align: center;
 }
 
 .assignments-grid .swap-ui select {
     width: 100%;
-    max-width: 100px;
-    font-size: 0.7rem;
-    padding: 2px;
+    max-width: 90px;
+    font-size: 0.65rem;
+    padding: 2px 4px;
 }
 
 /* Light Mode Identity Styling */
@@ -1130,4 +1156,23 @@ body.light-mode .identity-toggle {
     background: rgba(0, 0, 0, 0.05);
     color: #334155;
     border: 1px solid #cbd5e1;
+}
+
+/* Light Mode - Assignments Grid */
+body.light-mode .assignments-grid .role-row {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .assignments-grid .role-row:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+body.light-mode .assignments-grid .role-icon {
+    background: rgba(56, 189, 248, 0.12);
+}
+
+body.light-mode .assignments-grid .person-name,
+body.light-mode .assignments-grid .modern-select {
+    color: #1e293b;
 }
