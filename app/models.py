@@ -76,3 +76,14 @@ class Availability(db.Model):
             "pattern": self.pattern
         }
 
+
+class PickupToken(db.Model):
+    """Stores unique tokens for Telegram shift pickup links."""
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(36), unique=True, nullable=False)  # UUID
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.id'), nullable=False)
+    person = db.Column(db.String(50), nullable=False)  # Who this token is for
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    used = db.Column(db.Boolean, default=False)  # Mark as used after pickup
+    
+    assignment = db.relationship('Assignment', backref='pickup_tokens')

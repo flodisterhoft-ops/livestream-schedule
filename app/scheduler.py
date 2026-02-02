@@ -9,11 +9,15 @@ from .models import Event, Assignment
 from .extensions import db
 
 SUNDAY_CAP_PER_MONTH = 2
-FRIDAY_LEADER_CAP_PER_MONTH = 1
+FRIDAY_LEADER_CAP_PER_MONTH = 2  # Increased to 2 for everyone
 
-PREFERRED_3_TOTAL = ["Florian", "Marvin", "Stefan"]
-MONTH_TOTAL_CAP_DEFAULT = 2
-MONTH_TOTAL_CAP_PREFERRED = 3
+# Florian-specific caps
+FLORIAN_SUNDAY_CAP = 1  # Florian: max 1 Sunday/month
+FLORIAN_FRIDAY_CAP = 2  # Florian: max 2 Friday/month
+
+PREFERRED_3_TOTAL = ["Florian", "Marvin", "Stefan"]  # Keep for backward compat
+MONTH_TOTAL_CAP_DEFAULT = 3  # Everyone gets 3 assignments/month
+MONTH_TOTAL_CAP_PREFERRED = 3  # Same as default now
 
 SUNDAY_MIN_GAP_DAYS = 8
 
@@ -89,7 +93,8 @@ def _too_close_to_last_sunday(person: str, date_obj: datetime.date, local_month_
 def generate_month(year, month):
     check_and_init()
     
-    stats, last_worked = get_history_stats()
+    stats_nested, last_worked = get_history_stats()
+    stats = stats_nested["All Time"]  # Extract the flat stats dictionary we need
     last_pc_idx = get_next_pc()
     current_pc_idx = last_pc_idx + 1
 
@@ -117,11 +122,15 @@ def generate_month(year, month):
         return over * 60000 
 
     def _month_sunday_cap_penalty(person: str) -> int:
-        over = max(0, local_month_stats[person]["sun"] - (SUNDAY_CAP_PER_MONTH - 1))
+        # Florian: max 1 Sunday/month, others: max 2 Sunday/month
+        cap = FLORIAN_SUNDAY_CAP if person == "Florian" else SUNDAY_CAP_PER_MONTH
+        over = max(0, local_month_stats[person]["sun"] - (cap - 1))
         return over * 80000
 
     def _month_friday_cap_penalty(person: str) -> int:
-        over = max(0, local_month_stats[person]["fri_leader"] - (FRIDAY_LEADER_CAP_PER_MONTH - 1))
+        # Florian: max 2 Friday/month, others: max 2 Friday/month
+        cap = FLORIAN_FRIDAY_CAP if person == "Florian" else FRIDAY_LEADER_CAP_PER_MONTH
+        over = max(0, local_month_stats[person]["fri_leader"] - (cap - 1))
         return over * 50000
 
     def get_score(person, role_type, date_obj, day_type):

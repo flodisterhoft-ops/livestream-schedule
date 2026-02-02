@@ -30,7 +30,7 @@
             </form>
             {% else %}
             {% if assign.person == 'Select Helper' %}
-            <span class="person-name unassigned">Needed</span>
+            <span class="person-name unassigned">Volunteer Needed</span>
             {% else %}
             {% if assign.swapped_with %}
             <span class="person-name">
@@ -99,9 +99,16 @@
     {# Swap-needed UI for OTHER users #}
     {% if assign.status == 'swap_needed' and current_user and current_user != assign.person %}
     <div class="swap-ui">
+        <!-- Always show "Pick Up" option -->
+        <button class="action-btn btn-take" hx-post="/action"
+            hx-vals='{"type":"pickup","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
+            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" hx-swap="outerHTML"
+            title="Take this shift">Pick Up</button>
+
+        <!-- Show "Swap" option only if user has shifts -->
         {% if swap_options %}
         <form hx-post="/action" hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
-            hx-swap="outerHTML" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            hx-swap="outerHTML" style="display:inline-flex; gap:6px; align-items:center;">
             <input type="hidden" name="type" value="swap_shift">
             <input type="hidden" name="date" value="{{ full_date }}">
             <input type="hidden" name="idx" value="{{ assign.idx }}">
@@ -110,13 +117,8 @@
                 <option value="{{ s.date }}">Swap: {{ s.readable_date }}</option>
                 {% endfor %}
             </select>
-            <button class="action-btn btn-take">Swap</button>
+            <button class="action-btn btn-swap" title="Swap shifts">Swap</button>
         </form>
-        {% else %}
-        <button class="action-btn btn-take" hx-post="/action"
-            hx-vals='{"type":"pickup","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
-            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
-            hx-swap="outerHTML">Pick up</button>
         {% endif %}
     </div>
     {% endif %}

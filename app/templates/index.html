@@ -72,16 +72,16 @@
         <div style="display:flex; gap:10px; overflow-x:auto; flex-wrap:wrap;">
             <button onclick="openAddModal()" class="month-pill" style="background:#334155; color:white;"><i
                     class="fas fa-plus"></i> Add</button>
-            <form action="/bulk_confirm" method="POST" style="margin:0;">
-                <input type="hidden" name="gen_month" id="bulkConfirmMonth">
-                <button class="month-pill"
-                    style="background:rgba(16, 185, 129, 0.2); color:#10b981; border-color:rgba(16, 185, 129, 0.3);">
-                    <i class="fas fa-check-double"></i> Confirm All
-                </button>
-            </form>
             <button class="month-pill"
                 style="background:rgba(239, 68, 68, 0.2); color:#ef4444; border-color:rgba(239, 68, 68, 0.3);"
                 onclick="wipeSelectedMonth()"><i class="fas fa-trash"></i> Wipe</button>
+            <form action="/generate_year_2026" method="POST" style="margin:0;"
+                onsubmit="return confirm('Generate schedule for all remaining months of 2026 (March-December)?')">
+                <button class="month-pill"
+                    style="background:rgba(16, 185, 129, 0.2); color:#10b981; border-color:rgba(16, 185, 129, 0.3);">
+                    <i class="fas fa-calendar-plus"></i> Generate 2026
+                </button>
+            </form>
             <form action="/test_telegram" method="POST" style="margin:0;">
                 <button class="month-pill"
                     style="background:rgba(56, 189, 248, 0.2); color:#38bdf8; border-color:rgba(56, 189, 248, 0.3);">
@@ -128,24 +128,53 @@
         {% for item in schedule %}
         <div class="card {% if item.is_past %}past{% endif %}"
             data-people="{{ item.assignments | map(attribute='person') | join(',') }}"
-            data-month="{{ item.month_year }}">
+            data-month="{{ item.month_year_abbr }}">
+            {% if is_manager %}
+            <div class="date-col mgr-btn"
+                style="cursor:pointer; width:auto; height:auto; display:flex; flex-direction:column; padding:10px 8px;"
+                onclick="openDateModal('{{ item.full_date }}', '{{ item.raw_date }}')" title="Click to change date">
+                <span class="day-num">{{ item.day_num }}</span>
+                <span class="day-month">{{ item.month }}</span>
+            </div>
+            {% else %}
             <div class="date-col">
                 <span class="day-num">{{ item.day_num }}</span>
                 <span class="day-month">{{ item.month }}</span>
             </div>
+            {% endif %}
             <div class="info-col">
                 <div class="card-header">
-                    <div class="event-title">{{ item.title }}
-                        <span class="mgr-only">
-                            <i class="fas fa-pen"
-                                style="font-size:0.7rem; color:var(--muted); cursor:pointer; margin-left:5px;"
-                                onclick="openTitleModal('{{ item.full_date }}', '{{ item.title }}')"></i>
+                    <div class="event-title">
+                        <span {% if is_manager %} class="mgr-clickable"
+                            onclick="openTitleModal('{{ item.full_date }}', '{{ item.custom_title | escape }}', '{{ item.day_type }}')"
+                            title="Click to edit title"
+                            style="cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.3); padding-bottom:2px;"
+                            {% endif %}>
+                            {{ item.title }}
                         </span>
+                        {% if is_manager %}
+                        <span class="mgr-only">
+                            <i class="fas fa-pen mgr-btn edit"
+                                onclick="openTitleModal('{{ item.full_date }}', '{{ item.custom_title | escape }}', '{{ item.day_type }}')"></i>
+                        </span>
+                        {% endif %}
                     </div>
-                    <div class="mgr-only">
-                        <a href="/delete/{{ item.full_date }}" style="color:#ef4444; opacity:0.6;"
-                            onclick="return confirm('Delete?')"><i class="fas fa-times"></i></a>
+                    {% if is_manager %}
+                    <div class="mgr-actions" style="display:flex; gap:10px; align-items:center;">
+                        {% if not item.is_past %}
+                        <form action="/notify_event" method="POST" style="margin:0;">
+                            <input type="hidden" name="event_date" value="{{ item.full_date }}">
+                            <button type="submit" class="mgr-btn telegram" title="Send Telegram Reminder">
+                                <i class="fab fa-telegram"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                        <a href="/delete/{{ item.full_date }}" class="mgr-btn delete"
+                            onclick="return confirm('Delete this event?')" title="Delete Event">
+                            <i class="fas fa-times"></i>
+                        </a>
                     </div>
+                    {% endif %}
                 </div>
 
                 <div class="assignments-grid">
@@ -202,7 +231,7 @@
             <input type="date" name="event_date" required>
             <select name="event_type" id="eventTypeSelect" onchange="syncAddOptions()">
                 <option value="Sunday">Sunday Service</option>
-                <option value="Friday">Friday Bible Study</option>
+                <option value="Friday">Bible Study</option>
                 <option value="Custom">Custom</option>
             </select>
             <input type="text" name="custom_title" placeholder="Title (optional)">
@@ -222,14 +251,42 @@
 
 <div class="modal" id="titleModal">
     <div class="modal-content">
-        <h3>Edit Event Title</h3>
+        <h3>Edit Event</h3>
         <form action="/update_title" method="POST">
             <input type="hidden" name="date" id="titleDateInput">
-            <input type="text" name="title" id="titleTextInput" required style="margin-bottom:15px;">
+
+            <label style="display:block; margin-bottom:5px; color:var(--muted); font-size:0.9rem;">Event Type</label>
+            <select name="event_type" id="titleTypeSelect" style="margin-bottom:15px;" onchange="syncTitleOptions()">
+                <option value="Sunday">Sunday Service</option>
+                <option value="Friday">Bible Study</option>
+                <option value="Custom">Custom</option>
+            </select>
+
+            <div id="customTitleBox" class="hidden">
+                <label style="display:block; margin-bottom:5px; color:var(--muted); font-size:0.9rem;">Custom
+                    Title</label>
+                <input type="text" name="title" id="titleTextInput" placeholder="E.g. Special Worship"
+                    style="margin-bottom:15px;">
+            </div>
+
             <button type="submit" class="modal-btn save-btn">Save</button>
         </form>
         <button class="modal-btn" style="background:transparent; color:var(--muted);"
             onclick="closeModal('titleModal')">Cancel</button>
+    </div>
+</div>
+
+<div class="modal" id="dateModal">
+    <div class="modal-content">
+        <h3>Change Event Date</h3>
+        <form action="/update_date" method="POST">
+            <input type="hidden" name="old_date" id="dateModalOldDate">
+            <label style="display:block; margin-bottom:5px; color:var(--muted); font-size:0.9rem;">New Date</label>
+            <input type="date" name="new_date" id="dateModalNewDate" required style="margin-bottom:15px;">
+            <button type="submit" class="modal-btn save-btn">Change Date</button>
+        </form>
+        <button class="modal-btn" style="background:transparent; color:var(--muted);"
+            onclick="closeModal('dateModal')">Cancel</button>
     </div>
 </div>
 

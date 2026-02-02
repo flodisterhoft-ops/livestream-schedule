@@ -98,10 +98,27 @@ function wipeSelectedMonth() {
 function saveScrollPosition() { sessionStorage.setItem('scrollPos', window.scrollY); }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function openTitleModal(dateStr, currentTitle) {
+function openTitleModal(dateStr, currentTitle, eventType) {
     document.getElementById('titleDateInput').value = dateStr;
     document.getElementById('titleTextInput').value = currentTitle;
+    if (eventType) {
+        document.getElementById('titleTypeSelect').value = eventType;
+    }
+    syncTitleOptions(); // Ensure correct visibility on open
     document.getElementById('titleModal').style.display = 'flex';
+}
+
+function syncTitleOptions() {
+    const sel = document.getElementById('titleTypeSelect');
+    const box = document.getElementById('customTitleBox');
+    if (!sel || !box) return;
+
+    // Show custom title box ONLY if 'Custom' is selected
+    if (sel.value === 'Custom') {
+        box.classList.remove('hidden');
+    } else {
+        box.classList.add('hidden');
+    }
 }
 function syncAddOptions() {
     const sel = document.getElementById('eventTypeSelect');
@@ -110,7 +127,11 @@ function syncAddOptions() {
     box.classList.toggle('hidden', sel.value !== 'Custom');
 }
 function openAddModal() { document.getElementById('addModal').style.display = 'flex'; syncAddOptions(); }
-function openTitleModal(d, t) { document.getElementById('titleModal').style.display = 'flex'; document.getElementById('titleDateInput').value = d; document.getElementById('titleTextInput').value = t; }
+function openDateModal(oldDate, oldRawDate) {
+    document.getElementById('dateModalOldDate').value = oldDate;
+    document.getElementById('dateModalNewDate').value = oldRawDate;
+    document.getElementById('dateModal').style.display = 'flex';
+}
 function openUserMenu() { document.getElementById('userMenuModal').style.display = 'flex'; }
 
 function applyFocus() {

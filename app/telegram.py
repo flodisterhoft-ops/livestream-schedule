@@ -4,8 +4,10 @@ Sends reminders to group chat for upcoming events.
 """
 import os
 import datetime
+import uuid
 import requests
-from .models import Event, Assignment
+from .models import Event, Assignment, PickupToken
+from .extensions import db
 
 # Configuration from environment variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -152,7 +154,30 @@ def send_morning_reminder(event: Event) -> bool:
     return send_telegram_message(message)
 
 
-def send_swap_needed_alert(event: Event, assignment: Assignment, original_person: str) -> bool:
+def generate_pickup_token(assignment: Assignment) -> str:
+    """
+    Generate a single pickup token for an assignment.
+    
+    Args:
+        assignment: The Assignment that needs coverage
+    
+    Returns:
+        Pickup URL for the assignment
+    """
+    base_url = os.environ.get("BASE_URL", "http://localhost:5000")
+    token_str = str(uuid.uuid4())
+    pickup_token = PickupToken(
+        token=token_str,
+        assignment_id=assignment.id,
+        person=""  # Not needed for single-link approach
+    )
+    db.session.add(pickup_token)
+    db.session.commit()
+    return f"{base_url}/pickup/{token_str}"
+
+
+def send_swap_needed_alert(event: Event, assignment: Assignment, original_person: str, 
+                           pickup_url: str = None) -> bool:
     """
     Send an alert when someone marks they can't make it.
     
@@ -160,6 +185,7 @@ def send_swap_needed_alert(event: Event, assignment: Assignment, original_person
         event: The Event with the swap needed
         assignment: The Assignment that needs coverage
         original_person: Who originally had the assignment
+        pickup_url: Optional URL for picking up the shift
     
     Returns:
         True if sent successfully
@@ -173,8 +199,12 @@ def send_swap_needed_alert(event: Event, assignment: Assignment, original_person
 {original_person} can't make it to:
 📆 <b>{title}</b> on {date_str}
 {role_emoji} <b>{assignment.role}</b>
-
-Can someone cover this shift? 🙏"""
+"""
+    
+    if pickup_url:
+        message += f'\n👉 <a href="{pickup_url}">Click here to pick up this shift</a>'
+    else:
+        message += "\nCan someone cover this shift? 🙏"
     
     return send_telegram_message(message)
 

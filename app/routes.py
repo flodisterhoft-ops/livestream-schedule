@@ -1,9 +1,9 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app, make_response
-from .models import Event, Assignment, Token, Availability
+from .models import Event, Assignment, Token, Availability, PickupToken
 from .extensions import db
 from .utils import check_and_init, send_access_email, ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats
 from .scheduler import generate_month
-from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message
+from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message, generate_pickup_token
 import datetime
 import uuid
 import calendar
@@ -75,16 +75,20 @@ def home():
             "full_date": d_key,
             "day_num": d_obj.strftime("%d"),
             "month": d_obj.strftime("%b"),
-            "month_year": d_obj.strftime("%B %Y"),
+            "month_year_abbr": d_obj.strftime("%b"),  # Just month abbreviation
+            "month_year": d_obj.strftime("%B %Y"),  # Keep full for data tracking
             "title": event.custom_title or ("Bible Study" if event.day_type == "Friday" else "Sunday Service"),
+            "custom_title": event.custom_title or "",
             "assignments": assigns_view,
             "raw_date": d_obj.strftime("%Y-%m-%d"),
             "is_past": is_past,
             "day_type": event.day_type
         })
 
-    month_list = sorted(list(set(item['month_year'] for item in schedule_data)), key=lambda x: datetime.datetime.strptime(x, "%B %Y"))
-    month_list.insert(0, "All Time")
+    # Create compact month list - use 3-letter abbrev without year
+    month_list = sorted(list(set(item['month_year_abbr'] for item in schedule_data)), 
+                       key=lambda x: datetime.datetime.strptime(x + " 2026", "%b %Y"))
+    month_list.insert(0, "All")
 
     return render_template(
         "index.html",
@@ -172,6 +176,72 @@ def manager_login(token):
         flash("Invalid or expired token", "error")
     return redirect(url_for("main.home"))
 
+@bp.route("/pickup/<token>", methods=["GET", "POST"])
+def pickup_via_token(token):
+    """Handle shift pickup from Telegram link."""
+    pickup_token = PickupToken.query.filter_by(token=token, used=False).first()
+    
+    if not pickup_token:
+        flash("This link has expired or already been used.", "error")
+        return redirect(url_for("main.home"))
+    
+    assignment = Assignment.query.get(pickup_token.assignment_id)
+    if not assignment or assignment.status != "swap_needed":
+        flash("This shift is no longer available.", "error")
+        # Mark this token as used anyway
+        pickup_token.used = True
+        db.session.commit()
+        return redirect(url_for("main.home"))
+    
+    event = assignment.event
+    
+    # GET request - show the selection page
+    if request.method == "GET":
+        return render_template(
+            "pickup.html",
+            token=token,
+            event=event,
+            assignment=assignment,
+            all_names=ALL_NAMES
+        )
+    
+    # POST request - process the pickup
+    person = request.form.get("person")
+    if not person or person not in ALL_NAMES:
+        flash("Please select a valid name.", "error")
+        return redirect(url_for("main.pickup_via_token", token=token))
+    
+    # Assign the shift to the selected person
+    assignment.cover = person
+    assignment.status = "confirmed"
+    
+    # Add to history
+    h = assignment.history
+    h.append({
+        "action": "pickup_via_telegram",
+        "by": person,
+        "prev_status": "swap_needed",
+        "ts": str(datetime.datetime.now())
+    })
+    assignment.history = h
+    
+    # Mark token as used
+    pickup_token.used = True
+    
+    db.session.commit()
+    
+    # Send confirmation to Telegram
+    try:
+        send_shift_covered_alert(event, assignment, person)
+    except Exception as e:
+        print(f"Telegram notification error: {e}")
+    
+    # Set session so user sees the result
+    session["user_name"] = person
+    flash(f"You've picked up the {assignment.role} shift! Thank you! 🎉", "success")
+    return redirect(url_for("main.home"))
+
+
 @bp.route("/generate_specific", methods=["POST"])
 def generate_specific_route():
     if not session.get("manager"): return redirect(url_for("main.home"))
@@ -215,6 +285,38 @@ def test_telegram():
             flash(f"Bot connected (@{bot_name}) but couldn't send message. Check CHAT_ID.", "error")
     else:
         flash(f"Telegram error: {result.get('error', 'Unknown error')}", "error")
+    
+    return redirect(url_for("main.home"))
+
+@bp.route("/notify_event", methods=["POST"])
+def notify_event():
+    """Send Telegram notification for a specific event."""
+    if not session.get("manager"):
+        return redirect(url_for("main.home"))
+    
+    d_str = request.form.get("event_date")
+    if d_str:
+        d_obj = datetime.datetime.strptime(d_str, "%B %d, %Y").date()
+        event = Event.query.filter_by(date=d_obj).first()
+        
+        if event:
+            # Build notification message
+            title = event.custom_title or ("Bible Study" if event.day_type == "Friday" else "Sunday Service")
+            date_formatted = event.date.strftime("%A, %B %d, %Y")
+            
+            msg_parts = [f"📅 <b>{title}</b>", f"📆 {date_formatted}\n"]
+            
+            for a in event.assignments:
+                worker = a.cover if a.cover else a.person
+                status_icon = "✅" if a.status == "confirmed" else "⏳"
+                msg_parts.append(f"{status_icon} {a.role}: {worker}")
+            
+            message = "\n".join(msg_parts)
+            
+            if send_telegram_message(message):
+                flash(f"Telegram notification sent for {event.date.strftime('%b %d')}", "success")
+            else:
+                flash("Failed to send Telegram notification", "error")
     
     return redirect(url_for("main.home"))
 
@@ -349,9 +451,11 @@ def action_route():
              if is_mgr or target_a.person == curr:
                  target_a.status = "swap_needed"
                  changed = True
-                 # Send Telegram notification
+                 db.session.commit()  # Commit first so assignment.id is available
+                 # Generate pickup token and send Telegram notification with link
                  try:
-                     send_swap_needed_alert(event, target_a, target_a.person)
+                     pickup_url = generate_pickup_token(target_a)
+                     send_swap_needed_alert(event, target_a, target_a.person, pickup_url)
                  except Exception as e:
                      print(f"Telegram notification error: {e}")
                  
@@ -621,20 +725,58 @@ def update_notes():
 
 @bp.route("/update_title", methods=["POST"])
 def update_title():
-    """Update event title (manager only)."""
+    """Update event title and type (manager only)."""
     if not session.get("manager"):
         return redirect(url_for("main.home"))
     
     d_str = request.form.get("date")
     new_title = request.form.get("title", "").strip()
+    new_type = request.form.get("event_type", "").strip()
     
-    if d_str and new_title:
-        d_obj = datetime.datetime.strptime(d_str, "%B %d, %Y").date()
-        event = Event.query.filter_by(date=d_obj).first()
+    if d_str:
+        try:
+            d_obj = datetime.datetime.strptime(d_str, "%B %d, %Y").date()
+            event = Event.query.filter_by(date=d_obj).first()
+            if event:
+                # Update custom title (allowing it to be empty/cleared)
+                event.custom_title = new_title if new_title else None
+                
+                # Update event type
+                if new_type:
+                    event.day_type = new_type
+                
+                db.session.commit()
+                flash("Event updated and saved! ✅", "success")
+        except Exception as e:
+            flash(f"Error updating event: {e}", "error")
+    
+    return redirect(url_for("main.home"))
+
+
+@bp.route("/update_date", methods=["POST"])
+def update_date():
+    """Update event date (manager only)."""
+    if not session.get("manager"):
+        return redirect(url_for("main.home"))
+    
+    old_d_str = request.form.get("old_date")
+    new_d_str = request.form.get("new_date")
+    
+    if old_d_str and new_d_str:
+        old_d_obj = datetime.datetime.strptime(old_d_str, "%B %d, %Y").date()
+        new_d_obj = datetime.datetime.strptime(new_d_str, "%Y-%m-%d").date()
+        
+        # Check if new date already has an event
+        existing = Event.query.filter_by(date=new_d_obj).first()
+        if existing:
+            flash(f"An event already exists on {new_d_obj.strftime('%B %d, %Y')}", "error")
+            return redirect(url_for("main.home"))
+        
+        event = Event.query.filter_by(date=old_d_obj).first()
         if event:
-            event.title = new_title
+            event.date = new_d_obj
             db.session.commit()
-            flash("Title updated!", "success")
+            flash(f"Event date changed to {new_d_obj.strftime('%B %d, %Y')}", "success")
     
     return redirect(url_for("main.home"))
 
@@ -755,4 +897,56 @@ def stats_page():
                           available_months=available_months,
                           selected_month=selected_month)
 
+
+@bp.route("/generate_year_2026", methods=["POST"])
+def generate_year_2026():
+    """
+    Generate schedule for all remaining months of 2026.
+    Manager-only endpoint.
+    """
+    if not session.get("manager"):
+        flash("Unauthorized access", "error")
+        return redirect(url_for("main.home"))
+    
+    try:
+        generated_months = []
+        skipped_months = []
+        
+        # Generate March through December 2026
+        for month in range(3, 13):  # March (3) to December (12)
+            # Check if month already has events
+            start_date = datetime.date(2026, month, 1)
+            _, num_days = calendar.monthrange(2026, month)
+            end_date = datetime.date(2026, month, num_days)
+            
+            existing_events = Event.query.filter(
+                Event.date >= start_date,
+                Event.date <= end_date
+            ).count()
+            
+            if existing_events > 0:
+                skipped_months.append(calendar.month_name[month])
+                continue
+            
+            # Generate the month
+            generate_month(2026, month)
+            generated_months.append(calendar.month_name[month])
+        
+        # Build success message
+        if generated_months:
+            months_str = ", ".join(generated_months)
+            flash(f"✅ Successfully generated schedule for: {months_str}", "success")
+        
+        if skipped_months:
+            months_str = ", ".join(skipped_months)
+            flash(f"ℹ️ Skipped (already scheduled): {months_str}", "info")
+        
+        if not generated_months and not skipped_months:
+            flash("No months needed generation", "info")
+            
+    except Exception as e:
+        flash(f"Error generating year schedule: {str(e)}", "error")
+        current_app.logger.error(f"Year generation error: {e}")
+    
+    return redirect(url_for("main.home"))
 

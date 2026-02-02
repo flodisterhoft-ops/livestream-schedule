@@ -4,3 +4,6 @@ Flask-SQLAlchemy>=3.0.0
 
 # HTTP requests (for Telegram API)
 requests>=2.28.0
+
+# Production server
+gunicorn>=21.0.0

@@ -1,17 +1,38 @@
 :root {
+    /* Premium Palette */
     --bg: #0f172a;
-    --card-bg: rgba(30, 41, 59, 0.6);
+    --card-bg: rgba(30, 41, 59, 0.7);
+    /* Slightly more opacity for readability */
+    --card-border: rgba(255, 255, 255, 0.08);
+
+    /* Brand Colors */
     --accent: #38bdf8;
-    --accent-glow: rgba(56, 189, 248, 0.3);
-    --text: #f1f5f9;
-    --muted: #94a3b8;
+    --accent-glow: rgba(56, 189, 248, 0.25);
+    --secondary: #a855f7;
+
+    /* Status Colors */
+    --text: #f8fafc;
+    /* Brighter white for better contrast */
+    --text-muted: #94a3b8;
     --highlight: #facc15;
     --success: #10b981;
     --danger: #ef4444;
-    --glass: blur(12px) saturate(180%);
-    --open-text: #fb923c;
-    --gradient-1: linear-gradient(135deg, #38bdf8 0%, #a855f7 100%);
-    --gradient-2: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --danger-glow: rgba(239, 68, 68, 0.25);
+
+    /* Effects */
+    --glass: blur(16px) saturate(180%);
+    --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+    /* Blue to Indigo */
+    --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --gradient-surface: linear-gradient(145deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
+
+    /* Shadows */
+    --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-glow: 0 0 20px var(--accent-glow);
 }
 
 /* Import Inter font */
@@ -28,11 +49,14 @@ body {
     color: var(--text);
     padding-bottom: 80px;
     -webkit-tap-highlight-color: transparent;
-    /* Subtle gradient background */
-    background-image: radial-gradient(ellipse at top, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
-        radial-gradient(ellipse at bottom right, rgba(168, 85, 247, 0.06) 0%, transparent 50%);
+    /* Richer, deeper background */
+    background-image:
+        radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(168, 85, 247, 0.08) 0%, transparent 40%);
     background-attachment: fixed;
     min-height: 100vh;
+    letter-spacing: -0.015em;
+    /* Modern tight tracking */
 }
 
 .container {
@@ -59,10 +83,12 @@ header {
 
 .app-title a {
     text-decoration: none;
-    background: linear-gradient(135deg, #38bdf8 0%, #a855f7 100%);
+    background: var(--gradient-primary);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    text-shadow: 0 10px 20px rgba(56, 189, 248, 0.15);
+    /* Subtle glowing text */
 }
 
 /* Toolbar buttons */
@@ -104,7 +130,7 @@ header {
     width: 40px;
     height: 40px;
     border-radius: 12px;
-    background: var(--gradient-1);
+    background: var(--gradient-primary);
     color: #0f172a;
     display: flex;
     align-items: center;
@@ -161,15 +187,9 @@ header {
 .month-nav {
     display: flex;
     gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    scrollbar-width: none;
+    flex-wrap: wrap;
+    /* Wrap to multiple rows instead of horizontal scroll */
     margin-bottom: 10px;
-    -webkit-overflow-scrolling: touch;
-}
-
-.month-nav::-webkit-scrollbar {
-    display: none;
 }
 
 .month-pill {
@@ -192,7 +212,7 @@ header {
 }
 
 .month-pill.active {
-    background: var(--gradient-1);
+    background: var(--gradient-primary);
     color: #0f172a;
     border-color: transparent;
     box-shadow: 0 4px 15px var(--accent-glow);
@@ -228,16 +248,19 @@ header {
 }
 
 .card {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(30, 41, 59, 0.5) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 12px;
+    background: var(--gradient-surface);
+    border: var(--glass-border);
+    border-radius: 20px;
+    /* Softer, larger radius */
+    padding: 16px;
+    /* Slightly more breathing room */
     display: flex;
     gap: 12px;
     align-items: flex-start;
     backdrop-filter: var(--glass);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    transition: all 0.3s ease;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Smoother animation */
 }
 
 .card:hover {
@@ -276,6 +299,15 @@ header {
     border-radius: 14px;
     padding: 10px 8px;
     height: fit-content;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.2s ease;
+}
+
+.date-col.mgr-only:hover {
+    background: linear-gradient(180deg, rgba(56, 189, 248, 0.3) 0%, rgba(168, 85, 247, 0.2) 100%);
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--accent-glow);
 }
 
 .day-num {
@@ -305,8 +337,10 @@ header {
 .card-header {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     align-items: center;
+    gap: 15px;
+    /* Add gap between title and actions */
 }
 
 .event-title {
@@ -314,10 +348,52 @@ header {
     font-size: 1.05rem;
     color: white;
     letter-spacing: -0.2px;
-    white-space: nowrap;
+    /* Allow wrapping but keep it clean */
     overflow: hidden;
-    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    flex-grow: 1;
 }
+
+.mgr-btn {
+    background: rgba(51, 65, 85, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.85rem;
+    /* Match action-btn size */
+    transition: all 0.2s ease;
+    backdrop-filter: blur(4px);
+}
+
+.mgr-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.mgr-btn.telegram {
+    color: #38bdf8;
+}
+
+.mgr-btn.delete {
+    color: #ef4444;
+}
+
+.mgr-btn.edit {
+    color: var(--muted);
+    width: 24px;
+    height: 24px;
+    font-size: 0.8rem;
+}
+
 
 /* Role rows */
 .role-row {
@@ -325,7 +401,7 @@ header {
     justify-content: space-between;
     align-items: center;
     padding: 6px 0;
-    gap: 6px;
+    gap: 4px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     transition: all 0.2s ease;
 }
@@ -337,9 +413,9 @@ header {
 .role-row.highlight-yellow {
     background: linear-gradient(90deg, rgba(250, 204, 21, 0.15) 0%, transparent 100%);
     border-radius: 8px;
-    padding-left: 8px;
+    padding-left: 4px;
     padding-right: 8px;
-    margin: 0 -8px;
+    margin: 0;
     border-left: 3px solid var(--highlight);
 }
 
@@ -386,18 +462,22 @@ header {
     width: 32px;
     height: 32px;
     border-radius: 10px;
-    border: none;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    /* Subtle border for definition */
     cursor: pointer;
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 0.85rem;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    /* Subtle depth */
 }
 
 .action-btn:hover {
-    transform: scale(1.08);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .action-btn:active {
@@ -405,7 +485,7 @@ header {
 }
 
 .btn-confirm {
-    background: var(--gradient-2);
+    background: var(--gradient-success);
     box-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);
 }
 
@@ -424,7 +504,7 @@ header {
 }
 
 .btn-take {
-    background: var(--gradient-1);
+    background: var(--gradient-primary);
     color: #0f172a;
     width: auto;
     padding: 0 14px;
@@ -474,11 +554,14 @@ header {
 }
 
 .role-icon {
-    width: 22px;
+    width: 20px;
+    /* Fixed width to align */
     text-align: center;
     color: var(--muted);
     font-size: 0.85rem;
-    margin-right: 8px;
+    margin-right: 6px;
+    display: flex;
+    justify-content: center;
 }
 
 .role-left {
@@ -487,6 +570,8 @@ header {
     overflow: hidden;
     white-space: nowrap;
     flex-wrap: wrap;
+    padding-left: 0;
+    /* Force left alignment */
 }
 
 /* Manager-only elements */
@@ -522,29 +607,43 @@ header {
 
 .modal h3 {
     margin-top: 0;
-    font-size: 1.3rem;
-    margin-bottom: 20px;
+    font-size: 1.5rem;
+    /* Larger, more impactful */
+    margin-bottom: 24px;
+    font-weight: 700;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 input,
-select {
+select,
+.modern-select {
     width: 100%;
     padding: 14px 16px;
     margin: 8px 0;
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: white;
+    background: rgba(15, 23, 42, 0.6);
+    /* Darker, more contrast */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text);
     border-radius: 12px;
     box-sizing: border-box;
-    font-size: 1rem;
+    font-size: 0.95rem;
+    /* Slightly smaller, more refined */
     outline: none;
     transition: all 0.2s ease;
+    height: 48px;
+    /* Consistent height */
+    font-family: inherit;
 }
 
 input:focus,
-select:focus {
+select:focus,
+.modern-select:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
+    background: rgba(15, 23, 42, 0.9);
 }
 
 .modal-btn {
@@ -556,12 +655,14 @@ select:focus {
     font-weight: 700;
     margin-top: 8px;
     font-size: 1rem;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-sizing: border-box;
+    letter-spacing: -0.01em;
 }
 
 .modal-btn:hover {
     transform: translateY(-2px);
+    filter: brightness(1.1);
 }
 
 .modal-btn:active {
@@ -569,9 +670,10 @@ select:focus {
 }
 
 .save-btn {
-    background: var(--gradient-1);
-    color: #0f172a;
+    background: var(--gradient-primary);
+    color: white;
     box-shadow: 0 4px 15px var(--accent-glow);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* Leaderboard */
@@ -607,7 +709,7 @@ select:focus {
 
 .lb-total {
     font-weight: 800;
-    background: var(--gradient-1);
+    background: var(--gradient-primary);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -638,29 +740,33 @@ select:focus {
 }
 
 .identity-overlay h2 {
-    background: var(--gradient-1);
+    background: var(--gradient-primary);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    font-size: 1.8rem;
-    margin-bottom: 30px;
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 40px;
+    letter-spacing: -0.03em;
+    text-align: center;
 }
 
 .id-card {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(30, 41, 59, 0.6) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 18px 28px;
-    border-radius: 16px;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 24px 32px;
+    border-radius: 20px;
     width: 85%;
-    max-width: 320px;
-    margin-bottom: 12px;
+    max-width: 340px;
+    margin-bottom: 16px;
     text-align: center;
-    color: white;
+    color: var(--text);
     font-weight: 600;
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     text-decoration: none;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .id-card:hover {
@@ -671,7 +777,7 @@ select:focus {
 
 .id-card:active {
     transform: scale(0.97);
-    background: var(--gradient-1);
+    background: var(--gradient-primary);
     color: #000;
 }
 
@@ -792,7 +898,7 @@ body.light-mode .month-pill:hover {
 }
 
 body.light-mode .month-pill.active {
-    background: var(--gradient-1);
+    background: var(--gradient-primary);
     color: white;
     border-color: transparent;
 }
@@ -877,6 +983,96 @@ body.light-mode .btn-undo {
     background: white;
     color: #64748b;
     border: 1px solid #e2e8f0;
+}
+
+/* ===== CRITICAL: Complete Light Mode Button Visibility ===== */
+
+/* Manager Buttons */
+body.light-mode .mgr-btn {
+    background: white;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .mgr-btn:hover {
+    background: #f8fafc;
+    border-color: var(--accent);
+}
+
+body.light-mode .mgr-btn.telegram {
+    color: #0284c7;
+}
+
+body.light-mode .mgr-btn.telegram:hover {
+    background: rgba(56, 189, 248, 0.1);
+}
+
+body.light-mode .mgr-btn.delete {
+    color: #dc2626;
+}
+
+body.light-mode .mgr-btn.delete:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+body.light-mode .mgr-btn.edit {
+    color: #64748b;
+}
+
+/* Action Button Variants */
+body.light-mode .btn-decline {
+    background: white;
+    color: #dc2626;
+    border: 1px solid #dc2626;
+}
+
+body.light-mode .btn-decline:hover {
+    background: #fef2f2;
+}
+
+body.light-mode .btn-help {
+    background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+    color: white;
+}
+
+body.light-mode .btn-take,
+body.light-mode .btn-swap {
+    background: var(--gradient-primary);
+    color: white;
+}
+
+/* Status Badges */
+body.light-mode .status-badge {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.light-mode .st-ok {
+    background: rgba(16, 185, 129, 0.12);
+    color: #059669;
+}
+
+body.light-mode .st-swap {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
+}
+
+/* Modal Buttons */
+body.light-mode .save-btn {
+    background: var(--gradient-primary);
+    color: white;
+}
+
+/* User Button */
+body.light-mode .user-btn {
+    background: var(--gradient-primary);
+    color: white;
+}
+
+/* Swap Animation */
+body.light-mode .row-swap-needed {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.3);
 }
 
 /* Animations */
