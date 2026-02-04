@@ -79,7 +79,7 @@ def seed_database():
     db.session.flush()
     db.session.add_all([
         Assignment(event_id=e.id, role="Leader", person="Marvin", status="confirmed"),
-        Assignment(event_id=e.id, role="Helper", person="Viktor", status="confirmed"),
+        Assignment(event_id=e.id, role="Helper", person="Viktor", status="pending"),
     ])
     
     # Jan 25 - Sunday Service (with swaps)
