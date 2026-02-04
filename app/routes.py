@@ -452,12 +452,16 @@ def action_route():
                  target_a.status = "swap_needed"
                  changed = True
                  db.session.commit()  # Commit first so assignment.id is available
-                 # Generate pickup token and send Telegram notification with link
-                 try:
-                     pickup_url = generate_pickup_token(target_a)
-                     send_swap_needed_alert(event, target_a, target_a.person, pickup_url)
-                 except Exception as e:
-                     print(f"Telegram notification error: {e}")
+                 
+                 # Only send Telegram notification for FUTURE events
+                 # Past events are just record corrections, no need to alert
+                 today = datetime.date.today()
+                 if d_obj >= today:
+                     try:
+                         pickup_url = generate_pickup_token(target_a)
+                         send_swap_needed_alert(event, target_a, target_a.person, pickup_url)
+                     except Exception as e:
+                         print(f"Telegram notification error: {e}")
                  
         elif atype == "volunteer": 
              if not is_mgr and target_a.person == "Select Helper":
