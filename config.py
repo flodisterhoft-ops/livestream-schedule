@@ -3,9 +3,12 @@ import os
 class Config:
     SECRET_KEY = os.environ.get('SCHEDULE_SECRET_KEY') or 'dev_key_change_in_production'
     
-    # Database
+    # Database - fix for Render's postgres:// URL (SQLAlchemy requires postgresql://)
     basedir = os.path.abspath(os.path.dirname(__file__))
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///' + os.path.join(basedir, 'schedule.db')
+    _db_url = os.environ.get('DATABASE_URL')
+    if _db_url and _db_url.startswith('postgres://'):
+        _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+    SQLALCHEMY_DATABASE_URI = _db_url or 'sqlite:///' + os.path.join(basedir, 'schedule.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Session security

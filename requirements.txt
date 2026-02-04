@@ -7,3 +7,6 @@ requests>=2.28.0
 
 # Production server
 gunicorn>=21.0.0
+
+# PostgreSQL driver
+psycopg2-binary>=2.9.0
