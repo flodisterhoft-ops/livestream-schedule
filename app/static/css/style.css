@@ -287,6 +287,11 @@ header {
     display: none;
 }
 
+/* Allow managers to interact with past event buttons */
+body.manager-mode .card.past .action-btn {
+    display: flex;
+}
+
 /* Date column */
 .date-col {
     text-align: center;
