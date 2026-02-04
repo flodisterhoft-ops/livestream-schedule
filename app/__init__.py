@@ -13,5 +13,9 @@ def create_app(config_class='config.Config'):
     with app.app_context():
         # Create tables if they don't exist
         db.create_all()
+        
+        # Seed database with schedule data if empty
+        from .seed_data import seed_database
+        seed_database()
 
     return app
