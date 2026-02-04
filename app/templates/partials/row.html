@@ -97,8 +97,7 @@
     </div>
 
     {# Swap-needed UI for OTHER users (only for actual people, not 'Select Helper' unassigned slots) #}
-    {% if assign.status == 'swap_needed' and current_user and current_user != assign.person and assign.person != 'Select
-    Helper' %}
+    {% if assign.status == 'swap_needed' and current_user and current_user != assign.person and assign.person != 'Select Helper' %}
     <div class="swap-ui">
         <!-- Always show "Pick Up" option -->
         <button class="action-btn btn-take" hx-post="/action"
