@@ -3,7 +3,7 @@ from .models import Event, Assignment, Token, Availability, PickupToken
 from .extensions import db
 from .utils import check_and_init, send_access_email, ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats
 from .scheduler import generate_month
-from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message, generate_pickup_token
+from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message, generate_pickup_token, send_daily_reminders
 import datetime
 import uuid
 import calendar
@@ -953,4 +953,35 @@ def generate_year_2026():
         current_app.logger.error(f"Year generation error: {e}")
     
     return redirect(url_for("main.home"))
+
+# ============================================================
+# CRON WEBHOOK - Daily Reminders
+# ============================================================
+@bp.route("/cron/daily-reminder", methods=["GET", "POST"])
+def cron_daily_reminder():
+    """
+    Webhook endpoint for external cron service to trigger daily reminders.
+    Called at 8AM on event days to send Telegram notifications.
+    
+    Security: Uses a simple secret key check to prevent abuse.
+    Set CRON_SECRET environment variable on Render.
+    """
+    import os
+    
+    # Check secret key (optional but recommended)
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    provided_secret = request.args.get("secret", "") or request.headers.get("X-Cron-Secret", "")
+    
+    # If CRON_SECRET is set, require it to match
+    if cron_secret and provided_secret != cron_secret:
+        return {"error": "Unauthorized"}, 401
+    
+    # Send reminders for today's events
+    sent_count = send_daily_reminders()
+    
+    return {
+        "success": True,
+        "reminders_sent": sent_count,
+        "message": f"Sent {sent_count} reminder(s)"
+    }
 
