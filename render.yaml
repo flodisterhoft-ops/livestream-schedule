@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: cgf-livestream-scheduler
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SCHEDULE_SECRET_KEY
+        generateValue: true
+      - key: BASE_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
