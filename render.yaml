@@ -25,3 +25,14 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+
+  # Keep-alive cron job - pings the app every 5 minutes to prevent sleeping
+  - type: cron
+    name: cgf-scheduler-keepalive
+    runtime: python
+    schedule: "*/5 * * * *"  # Every 5 minutes
+    buildCommand: pip install -r requirements.txt
+    startCommand: "curl https://livestream-schedule.onrender.com || echo 'Ping failed'"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
