@@ -17,6 +17,9 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'
     PERMANENT_SESSION_LIFETIME = 60 * 60 * 24 * 90  # 90 days
     
+    # Ensure generated links use HTTPS
+    PREFERRED_URL_SCHEME = 'https'
+    
     # Email settings
     EMAIL_ADDRESS = os.environ.get('SCHEDULE_EMAIL', '')
     EMAIL_PASSWORD = os.environ.get('SCHEDULE_EMAIL_APP_PASSWORD', '')

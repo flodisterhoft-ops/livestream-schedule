@@ -458,7 +458,17 @@ def action_route():
                  today = datetime.date.today()
                  if d_obj >= today:
                      try:
-                         pickup_url = generate_pickup_token(target_a)
+                         token_str = generate_pickup_token(target_a)
+                         
+                         # Robust URL generation
+                         base_url = current_app.config.get('BASE_URL')
+                         if base_url:
+                             # Use explicit BASE_URL if set (removes trailing slash if present)
+                             pickup_url = f"{base_url.rstrip('/')}/pickup/{token_str}"
+                         else:
+                             # Fallback to url_for, forcing HTTPS
+                             pickup_url = url_for('main.pickup_via_token', token=token_str, _external=True, _scheme='https')
+                             
                          send_swap_needed_alert(event, target_a, target_a.person, pickup_url)
                      except Exception as e:
                          print(f"Telegram notification error: {e}")

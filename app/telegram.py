@@ -157,14 +157,13 @@ def send_morning_reminder(event: Event) -> bool:
 def generate_pickup_token(assignment: Assignment) -> str:
     """
     Generate a single pickup token for an assignment.
-    
+
     Args:
         assignment: The Assignment that needs coverage
-    
+
     Returns:
-        Pickup URL for the assignment
+        The token string
     """
-    base_url = os.environ.get("BASE_URL", "http://localhost:5000")
     token_str = str(uuid.uuid4())
     pickup_token = PickupToken(
         token=token_str,
@@ -173,7 +172,7 @@ def generate_pickup_token(assignment: Assignment) -> str:
     )
     db.session.add(pickup_token)
     db.session.commit()
-    return f"{base_url}/pickup/{token_str}"
+    return token_str
 
 
 def send_swap_needed_alert(event: Event, assignment: Assignment, original_person: str, 
