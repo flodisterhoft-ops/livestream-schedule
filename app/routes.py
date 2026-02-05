@@ -967,10 +967,15 @@ def regenerate_future():
     try:
         # Wipe future events (Mar 1, 2026 onwards)
         start_date = datetime.date(2026, 3, 1)
-        # Delete assignments first (cascade should handle this but let's be safe if no cascade)
-        # Actually Event has cascade="all, delete-orphan", so deleting Event is enough
         
-        deleted_count = Event.query.filter(Event.date >= start_date).delete()
+        # Determine existing events to delete
+        # Use loop to ensure SQLAlchemy cascade (delete-orphan) is triggered
+        events_to_delete = Event.query.filter(Event.date >= start_date).all()
+        deleted_count = len(events_to_delete)
+        
+        for event in events_to_delete:
+            db.session.delete(event)
+            
         db.session.commit()
         
         # Regenerate Mar-Dec
