@@ -2,7 +2,6 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from .models import Event, Assignment, Token, Availability, PickupToken
 from .extensions import db
 from .utils import check_and_init, send_access_email, ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats
-from .scheduler import generate_month
 from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message, generate_pickup_token, send_daily_reminders
 import datetime
 import uuid
@@ -248,6 +247,7 @@ def generate_specific_route():
     
     ym_str = request.form.get("gen_month") # YYYY-MM
     if ym_str:
+        from .scheduler import generate_month
         y, m = map(int, ym_str.split("-"))
         generate_month(y, m)
         flash(f"Generated events for {ym_str}", "CONFETTI")
@@ -952,6 +952,39 @@ def generate_year_2026():
         flash(f"Error generating year schedule: {str(e)}", "error")
         current_app.logger.error(f"Year generation error: {e}")
     
+    return redirect(url_for("main.home"))
+
+@bp.route("/regenerate_future", methods=["POST"])
+def regenerate_future():
+    """
+    Wipe all events from March 1st onwards and regenerate them.
+    This applies the 'fairness' fix to the rest of the year.
+    Manager-only.
+    """
+    if not session.get("manager"):
+        return redirect(url_for("main.home"))
+        
+    try:
+        # Wipe future events (Mar 1, 2026 onwards)
+        start_date = datetime.date(2026, 3, 1)
+        # Delete assignments first (cascade should handle this but let's be safe if no cascade)
+        # Actually Event has cascade="all, delete-orphan", so deleting Event is enough
+        
+        deleted_count = Event.query.filter(Event.date >= start_date).delete()
+        db.session.commit()
+        
+        # Regenerate Mar-Dec
+        generated = []
+        from .scheduler import generate_month
+        for month in range(3, 13):
+            generate_month(2026, month)
+            generated.append(calendar.month_name[month])
+            
+        flash(f"Refreshed schedule for {len(generated)} months (Fairness Fix Applied!)", "CONFETTI")
+        
+    except Exception as e:
+        flash(f"Error regenerating: {e}", "error")
+        
     return redirect(url_for("main.home"))
 
 # ============================================================

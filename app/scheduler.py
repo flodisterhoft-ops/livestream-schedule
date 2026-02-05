@@ -2,8 +2,7 @@ import calendar
 import datetime
 from .utils import (
     check_and_init, get_history_stats, is_available, is_real_person,
-    ROLES_CONFIG, ALL_NAMES, PC_ROTATION_ORDER,
-    ROLES_CONFIG
+    ROLES_CONFIG, ALL_NAMES, PC_ROTATION_ORDER
 )
 from .models import Event, Assignment
 from .extensions import db
@@ -82,6 +81,13 @@ def month_counts_from_existing(year, month):
     return counts
 
 def _month_total_cap(person: str) -> int:
+    # Dynamic Cap: If person is lagging behind the average, allow 1 extra assignment/month
+    # Calculate lagging status
+    # Note: stats is global in context of generate_month but not here. 
+    # Wait, in the original code stats was passed or available?
+    # In my previous edit I used `stats[n]["total"]` but `stats` is not in scope here!
+    # I must move this function INSIDE generate_month or pass `stats` to it.
+    # The original request had it seemingly at module level in Step 95?
     return MONTH_TOTAL_CAP_PREFERRED if person in PREFERRED_3_TOTAL else MONTH_TOTAL_CAP_DEFAULT
 
 def _too_close_to_last_sunday(person: str, date_obj: datetime.date, local_month_stats: dict) -> bool:
@@ -109,15 +115,30 @@ def generate_month(year, month):
         elif d.weekday() == 6:
             dates.append((d, "Sunday"))
 
+    # Capture stats in closure
+    def _month_total_cap_dynamic(person: str) -> int:
+        # Dynamic Cap: If person is lagging behind the average, allow 1 extra assignment/month
+        all_vals = [stats[n]["total"] for n in ALL_NAMES if n in stats]
+        if not all_vals: return MONTH_TOTAL_CAP_DEFAULT
+        
+        avg = sum(all_vals) / len(all_vals)
+        base_cap = MONTH_TOTAL_CAP_PREFERRED if person in PREFERRED_3_TOTAL else MONTH_TOTAL_CAP_DEFAULT
+        
+        # If lagging by more than 1.5 assignments, boost cap by 1 to allow catch-up
+        if stats[person]["total"] < (avg - 1.5):
+            return base_cap + 1
+            
+        return base_cap
+
     def _preferred_bonus(person: str) -> int:
         if person in PREFERRED_3_TOTAL:
-            cap = _month_total_cap(person)
+            cap = _month_total_cap_dynamic(person)
             if local_month_stats[person]["total"] < cap:
                 return -400
         return 0
 
     def _month_total_cap_penalty(person: str) -> int:
-        cap = _month_total_cap(person)
+        cap = _month_total_cap_dynamic(person)
         over = max(0, local_month_stats[person]["total"] - (cap - 1))
         return over * 60000 
 
@@ -135,7 +156,7 @@ def generate_month(year, month):
 
     def get_score(person, role_type, date_obj, day_type):
         fatigue = get_fatigue_penalty(person, date_obj, last_worked)
-        fairness = stats[person]["total"] * 120
+        fairness = stats[person]["total"] * 2000
         month_total_pen = _month_total_cap_penalty(person)
         month_sun_pen = _month_sunday_cap_penalty(person) if day_type == "Sunday" else 0
         month_fri_pen = _month_friday_cap_penalty(person) if day_type == "Friday" else 0
@@ -165,7 +186,7 @@ def generate_month(year, month):
         valid = [p for p in cands if is_available(p, date_obj) and p not in exclude]
 
         def under_caps(p: str) -> bool:
-            if local_month_stats[p]["total"] >= _month_total_cap(p):
+            if local_month_stats[p]["total"] >= _month_total_cap_dynamic(p):
                 return False
             if day_type == "Sunday":
                 if local_month_stats[p]["sun"] >= SUNDAY_CAP_PER_MONTH:
@@ -180,7 +201,7 @@ def generate_month(year, month):
         pool = [p for p in valid if under_caps(p)]
         if not pool and day_type == "Sunday":
             def under_caps_relax_gap(p: str) -> bool:
-                if local_month_stats[p]["total"] >= _month_total_cap(p):
+                if local_month_stats[p]["total"] >= _month_total_cap_dynamic(p):
                     return False
                 if local_month_stats[p]["sun"] >= SUNDAY_CAP_PER_MONTH:
                     return False
@@ -227,7 +248,7 @@ def generate_month(year, month):
                 tries += 1
                 
                 if not is_available(cand, date_obj): continue
-                if local_month_stats[cand]["total"] >= _month_total_cap(cand): continue
+                if local_month_stats[cand]["total"] >= _month_total_cap_dynamic(cand): continue
                 if local_month_stats[cand]["sun"] >= SUNDAY_CAP_PER_MONTH: continue
                 if _too_close_to_last_sunday(cand, date_obj, local_month_stats): continue
                 if get_fatigue_penalty(cand, date_obj, last_worked) >= 1500: continue
@@ -243,7 +264,7 @@ def generate_month(year, month):
                     current_pc_idx += 1
                     tries += 1
                     if not is_available(cand, date_obj): continue
-                    if local_month_stats[cand]["total"] >= _month_total_cap(cand): continue
+                    if local_month_stats[cand]["total"] >= _month_total_cap_dynamic(cand): continue
                     if local_month_stats[cand]["sun"] >= SUNDAY_CAP_PER_MONTH: continue
                     pc_person = cand
                     break
