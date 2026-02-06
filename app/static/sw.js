@@ -1,9 +1,9 @@
 // Service Worker for Livestream Schedule PWA
-const CACHE_NAME = 'livestream-schedule-v1';
+const CACHE_NAME = 'livestream-schedule-v2';
 const urlsToCache = [
     '/',
-    '/static/css/style.css',
-    '/static/js/script.js',
+    '/static/css/style.css?v=2',
+    '/static/js/script.js?v=2',
     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
 ];
 

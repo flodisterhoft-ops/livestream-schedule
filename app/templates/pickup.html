@@ -9,13 +9,12 @@
     </header>
 
     <div class="admin-panel" style="max-width: 500px; margin: 40px auto; text-align: center;">
-        <h2 style="margin-bottom: 10px;">🙋 Pick Up This Shift</h2>
+        <h2 style="margin-bottom: 10px;">Pick Up This Shift</h2>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
         {% for category, message in messages %}
-        <div class="flash-message flash-{{ category }}"
-            style="margin-bottom: 15px; padding: 10px; border-radius: 8px; 
+        <div style="margin-bottom: 15px; padding: 10px; border-radius: 8px;
             {% if category == 'error' %}background: rgba(239, 68, 68, 0.2); color: #ef4444;{% else %}background: rgba(34, 197, 94, 0.2); color: #22c55e;{% endif %}">
             {{ message }}
         </div>
@@ -25,10 +24,10 @@
 
         <!-- Event Details -->
         <div
-            style="background: var(--surface); border-radius: 12px; padding: 20px; margin-bottom: 25px; text-align: left;">
+            style="background: var(--card-bg); border-radius: 12px; padding: 20px; margin-bottom: 25px; text-align: left; border: 1px solid var(--card-border);">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
                 <div
-                    style="background: var(--gradient-1); padding: 12px 16px; border-radius: 10px; text-align: center;">
+                    style="background: var(--gradient-primary); padding: 12px 16px; border-radius: 10px; text-align: center;">
                     <div style="font-size: 1.5rem; font-weight: 700; color: white;">{{ event.date.strftime('%d') }}
                     </div>
                     <div style="font-size: 0.75rem; color: rgba(255,255,255,0.8);">{{ event.date.strftime('%b') }}</div>
@@ -36,7 +35,7 @@
                 <div>
                     <div style="font-weight: 600; font-size: 1.1rem;">{{ event.custom_title or ('Bible Study' if
                         event.day_type == 'Friday' else 'Sunday Service') }}</div>
-                    <div style="color: var(--muted); font-size: 0.9rem;">{{ event.date.strftime('%A, %B %d, %Y') }}
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">{{ event.date.strftime('%A, %B %d, %Y') }}
                     </div>
                 </div>
             </div>
@@ -49,25 +48,25 @@
                 </span>
                 <div>
                     <div style="font-weight: 600;">{{ assignment.role }}</div>
-                    <div style="font-size: 0.85rem; color: var(--muted);">Originally assigned to {{ assignment.person }}
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">Originally assigned to {{ assignment.person }}
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Name Selection -->
-        <p style="color: var(--muted); margin-bottom: 15px;">Select your name to pick up this shift:</p>
+        <p style="color: var(--text-muted); margin-bottom: 15px;">Select your name to pick up this shift:</p>
 
         <form action="/pickup/{{ token }}" method="POST">
             <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
                 {% for name in all_names %}
-                {% if name != assignment.person %}
+                {% if name != assignment.person and name != 'TBD' and name != 'Select Helper' %}
                 <button type="submit" name="person" value="{{ name }}"
-                    style="width: 100%; padding: 14px 20px; background: var(--surface); border: 2px solid var(--border); border-radius: 12px; color: var(--text); font-weight: 500; font-size: 1rem; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s ease;"
-                    onmouseover="this.style.borderColor='var(--accent)'; this.style.background='rgba(139, 92, 246, 0.1)';"
-                    onmouseout="this.style.borderColor='var(--border)'; this.style.background='var(--surface)';">
+                    style="width: 100%; padding: 14px 20px; background: var(--card-bg); border: 2px solid var(--card-border); border-radius: 12px; color: var(--text); font-weight: 500; font-size: 1rem; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s ease;"
+                    onmouseover="this.style.borderColor='var(--accent)'; this.style.background='rgba(56, 189, 248, 0.1)';"
+                    onmouseout="this.style.borderColor='var(--card-border)'; this.style.background='var(--card-bg)';">
                     <span
-                        style="width: 36px; height: 36px; background: var(--gradient-1); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;">
+                        style="width: 36px; height: 36px; background: var(--gradient-primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;">
                         {{ name[0] }}
                     </span>
                     {{ name }}
@@ -77,7 +76,7 @@
             </div>
         </form>
 
-        <a href="/" style="display: block; margin-top: 15px; color: var(--muted);">
+        <a href="/" style="display: block; margin-top: 15px; color: var(--text-muted);">
             <i class="fas fa-arrow-left"></i> Cancel
         </a>
     </div>

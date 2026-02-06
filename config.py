@@ -32,7 +32,8 @@ class Config:
     REMINDER_HOUR = int(os.environ.get('REMINDER_HOUR', '8'))  # 8 AM
     
     # External URL for generating links (e.g., Telegram pickup links)
-    BASE_URL = os.environ.get('BASE_URL', 'http://localhost:5000')
+    # Empty default so url_for() fallback is used when not set
+    BASE_URL = os.environ.get('BASE_URL', '')
 
 
 class DevelopmentConfig(Config):

@@ -26,7 +26,7 @@
         <div class="tool-bar">
             <div class="tool-btn" onclick="toggleDarkMode()" title="Toggle Light/Dark Mode"><i class="fas fa-moon"></i>
             </div>
-            <a href="/stats" class="tool-btn" title="Team Stats"><i class="fas fa-trophy"></i></a>
+            <div class="tool-btn" onclick="toggleLeaderboard()" title="Leaderboard"><i class="fas fa-trophy"></i></div>
             <div class="tool-btn" onclick="toggleToolsMenu()" title="Settings"><i class="fas fa-cog"></i></div>
             {% if current_user == 'Florian' %}
             <a href="/toggle_manager" class="tool-btn"
@@ -184,13 +184,16 @@
 
 <div class="modal" id="lbModal">
     <div class="modal-content">
-        <h3 style="color:var(--accent);">Team Stats</h3>
+        <h3 style="color:var(--accent);">Leaderboard</h3>
         <select id="lbPeriodSelect" onchange="updateLbView()" style="margin-bottom:15px; background:#334155;">
-            {% for m in month_list %}
-            <option value="{{ m }}">{{ m }}</option>
+            {% for key in stats.keys() %}
+            <option value="{{ key }}">{{ key }}</option>
             {% endfor %}
         </select>
         <div id="lb-list"></div>
+        <a href="/stats" style="display:block; margin-top:12px; color:var(--accent); font-size:0.85rem; text-decoration:none;">
+            <i class="fas fa-chart-bar"></i> View Full Stats
+        </a>
         <button class="modal-btn" style="background:transparent; color:var(--muted);"
             onclick="closeModal('lbModal')">Close</button>
     </div>
