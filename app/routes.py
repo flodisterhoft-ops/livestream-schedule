@@ -2,36 +2,39 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from .models import Event, Assignment, Token, Availability, PickupToken
 from .extensions import db
 from .utils import check_and_init, send_access_email, ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats
-from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message, generate_pickup_token, send_daily_reminders
+from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message, generate_pickup_token, send_daily_reminders, edit_telegram_message, delete_telegram_message
 import datetime
 import uuid
 import calendar
 
 bp = Blueprint('main', __name__)
 
-def get_swap_options(person, roster_data):
+def get_auto_swap_target(person, day_type, exclude_date):
+    """Find the person's next assignment of the same day_type to offer as an auto-swap."""
     today = datetime.date.today()
-    future_assigns = Assignment.query.join(Event).filter(
+    match = Assignment.query.join(Event).filter(
         Assignment.person == person,
         Event.date >= today,
-        Assignment.status != 'decline' 
-    ).order_by(Event.date).all()
-    
-    options = []
-    for a in future_assigns:
-        if a.status in ('confirmed', 'pending'):
-            options.append({
-                "date": a.event.date.strftime("%B %d, %Y"),
-                "readable_date": a.event.date.strftime("%b %d"),
-                "event_name": a.event.custom_title or a.event.day_type,
-                "role": a.role
-            })
-    return options
+        Event.date != exclude_date,
+        Event.day_type == day_type,
+        Assignment.status.in_(['confirmed', 'pending'])
+    ).order_by(Event.date).first()
+
+    if match:
+        return {
+            "date": match.event.date.strftime("%B %d, %Y"),
+            "readable_date": match.event.date.strftime("%b %d"),
+            "role": match.role
+        }
+    return None
 
 def render_row(assign_dict, full_date, current_user, is_manager, roster_data=None):
-    swap_op = []
+    swap_target = None
     if current_user and current_user != assign_dict['person'] and assign_dict['status'] == 'swap_needed':
-        swap_op = get_swap_options(current_user, roster_data)
+        d_obj = datetime.datetime.strptime(full_date, "%B %d, %Y").date()
+        event = Event.query.filter_by(date=d_obj).first()
+        if event:
+            swap_target = get_auto_swap_target(current_user, event.day_type, d_obj)
 
     return render_template(
         "partials/row.html",
@@ -39,7 +42,7 @@ def render_row(assign_dict, full_date, current_user, is_manager, roster_data=Non
         full_date=full_date,
         current_user=current_user,
         is_manager=is_manager,
-        swap_options=swap_op,
+        swap_target=swap_target,
         all_names=ALL_NAMES
     )
 
@@ -494,9 +497,22 @@ def action_route():
         elif atype == "undo":
              if target_a.cover:
                  target_a.cover = None
-                 target_a.status = "swap_needed" 
+                 target_a.status = "swap_needed"
              elif target_a.status == "swap_needed":
-                 target_a.status = "confirmed" 
+                 target_a.status = "confirmed"
+                 # Clean up: edit/delete Telegram message
+                 if target_a.telegram_message_id:
+                     try:
+                         title = event.custom_title or event.day_type
+                         date_str = event.date.strftime("%B %d")
+                         resolved_msg = f"✅ <b>Resolved</b>\n\n{target_a.person} is back for:\n📆 <b>{title}</b> on {date_str}"
+                         if not edit_telegram_message(target_a.telegram_message_id, resolved_msg):
+                             delete_telegram_message(target_a.telegram_message_id)
+                         target_a.telegram_message_id = None
+                     except Exception as e:
+                         print(f"Telegram cleanup error: {e}")
+                 # Invalidate pickup tokens so the link no longer works
+                 PickupToken.query.filter_by(assignment_id=target_a.id, used=False).update({"used": True})
              elif target_a.status == "confirmed":
                  target_a.status = "pending"
              changed = True

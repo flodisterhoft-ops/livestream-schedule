@@ -99,26 +99,16 @@
     {# Swap-needed UI for OTHER users (only for actual people, not 'Select Helper' unassigned slots) #}
     {% if assign.status == 'swap_needed' and current_user and current_user != assign.person and assign.person != 'Select Helper' %}
     <div class="swap-ui">
-        <!-- Always show "Pick Up" option -->
         <button class="action-btn btn-take" hx-post="/action"
             hx-vals='{"type":"pickup","date":"{{ full_date }}","idx":"{{ assign.idx }}"}'
             hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" hx-swap="outerHTML"
             title="Take this shift">Pick Up</button>
 
-        <!-- Show "Swap" option only if user has shifts -->
-        {% if swap_options %}
-        <form hx-post="/action" hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}"
-            hx-swap="outerHTML" style="display:inline-flex; gap:6px; align-items:center;">
-            <input type="hidden" name="type" value="swap_shift">
-            <input type="hidden" name="date" value="{{ full_date }}">
-            <input type="hidden" name="idx" value="{{ assign.idx }}">
-            <select name="swap_offer_date" class="modern-select swap-select">
-                {% for s in swap_options %}
-                <option value="{{ s.date }}">Swap: {{ s.readable_date }}</option>
-                {% endfor %}
-            </select>
-            <button class="action-btn btn-swap" title="Swap shifts">Swap</button>
-        </form>
+        {% if swap_target %}
+        <button class="action-btn btn-swap" hx-post="/action"
+            hx-vals='{"type":"swap_shift","date":"{{ full_date }}","idx":"{{ assign.idx }}","swap_offer_date":"{{ swap_target.date }}"}'
+            hx-target="#row-{{ full_date | replace(',','') | replace(' ','') }}-{{ assign.idx }}" hx-swap="outerHTML"
+            title="Swap with your {{ swap_target.readable_date }} shift">Swap</button>
         {% endif %}
     </div>
     {% endif %}
