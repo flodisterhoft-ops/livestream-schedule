@@ -237,8 +237,6 @@ def send_swap_needed_alert(event: Event, assignment: Assignment, original_person
 """
 
     if pickup_url:
-        message += f'\n👉 <a href="{pickup_url}">Pick up this shift</a>'
-        message += f'\n\nWould you like to swap your shift with theirs?'
         message += f'\n🔄 <a href="{pickup_url}">Swap Shifts</a>'
     else:
         message += "\nCan someone cover this shift? 🙏"
