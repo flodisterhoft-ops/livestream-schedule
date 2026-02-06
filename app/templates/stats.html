@@ -132,23 +132,18 @@
             </div>
         </div>
 
-        <!-- Monthly Trend -->
-        <div class="stat-card">
-            <h3><i class="fas fa-chart-line"></i> Monthly Activity</h3>
-            <div class="chart-container">
-                <canvas id="trendChart"></canvas>
-            </div>
-        </div>
     </div>
 
     <!-- Leaderboard -->
     <div class="stat-card">
         <h3><i class="fas fa-trophy"></i> All-Time Leaderboard</h3>
         {% for item in leaderboard %}
-        <div class="lb-row">
+        <div class="lb-row {% if loop.index <= 3 %}lb-top{{ loop.index }}{% endif %}">
             <div class="lb-name">
-                {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{
-                loop.index }}.{% endif %}
+                {% if loop.index == 1 %}<span class="lb-medal">&#129351;</span>
+                {% elif loop.index == 2 %}<span class="lb-medal">&#129352;</span>
+                {% elif loop.index == 3 %}<span class="lb-medal">&#129353;</span>
+                {% else %}<span class="lb-rank">{{ loop.index }}.</span>{% endif %}
                 {{ item.name }}
             </div>
             <div class="lb-val-group">
@@ -230,30 +225,6 @@
     }
     });
 
-    // Trend Chart (Line)
-    new Chart(document.getElementById('trendChart'), {
-        type: 'line',
-        data: {
-            labels: {{ month_labels | tojson }},
-        datasets: [{
-            label: 'Events',
-            data: {{ month_data | tojson }},
-        borderColor: '#38bdf8',
-        backgroundColor: 'rgba(56, 189, 248, 0.1)',
-        fill: true,
-        tension: 0.4
-            }]
-        },
-        options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
-            x: { grid: { display: false } }
-        }
-    }
-    });
 
     {% if selected_user and selected_user != 'all' %}
     // Personal Role Chart (Pie)

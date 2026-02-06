@@ -26,7 +26,8 @@ class Assignment(db.Model):
     status = db.Column(db.String(20), default="pending")  # pending, confirmed, swap_needed
     cover = db.Column(db.String(50))
     swapped_with = db.Column(db.String(50))
-    _history_json = db.Column(db.Text, default="[]") 
+    _history_json = db.Column(db.Text, default="[]")
+    telegram_message_id = db.Column(db.Integer)  # Track Telegram msg for edit/delete
 
     @property
     def history(self):

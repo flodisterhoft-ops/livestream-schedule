@@ -46,18 +46,26 @@ function initMonthNav() {
     const cards = document.querySelectorAll('.card');
     const months = new Set();
     cards.forEach(c => months.add(c.getAttribute('data-month')));
-    const sortedMonths = Array.from(months).sort((a, b) => new Date(a) - new Date(b));
+
+    const monthOrder = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const sortedMonths = Array.from(months).sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
     if (sortedMonths.length === 0) { nav.style.display = 'none'; return; }
+
+    const currentMonthIdx = new Date().getMonth(); // 0-based
 
     sortedMonths.forEach(m => {
         const btn = document.createElement('div');
         btn.className = 'month-pill';
+        const mIdx = monthOrder.indexOf(m);
+        if (mIdx >= 0 && mIdx < currentMonthIdx) {
+            btn.classList.add('past');
+        }
         btn.innerText = m;
         btn.onclick = () => selectMonth(m);
         nav.appendChild(btn);
     });
 
-    const nowStr = new Date().toLocaleString('default', { month: 'short', year: 'numeric' });
+    const nowStr = monthOrder[currentMonthIdx];
     if (months.has(nowStr)) selectMonth(nowStr);
     else selectMonth(sortedMonths[sortedMonths.length - 1]);
 }
@@ -164,11 +172,19 @@ function updateLbView() {
     }
 
     arr.sort((a, b) => b.count - a.count);
+    let rank = 0;
     arr.forEach(p => {
         if (p.count > 0) {
+            rank++;
+            let rankDisplay;
+            if (rank === 1) rankDisplay = '<span class="lb-medal">&#129351;</span>';
+            else if (rank === 2) rankDisplay = '<span class="lb-medal">&#129352;</span>';
+            else if (rank === 3) rankDisplay = '<span class="lb-medal">&#129353;</span>';
+            else rankDisplay = `<span class="lb-rank">${rank}.</span>`;
+
             list.innerHTML += `
-            <div class="lb-row">
-                <div class="lb-name">${p.name}</div>
+            <div class="lb-row ${rank <= 3 ? 'lb-top' + rank : ''}">
+                <div class="lb-name">${rankDisplay} ${p.name}</div>
                 <div class="lb-val-group">
                     <span><i class="fas fa-church"></i> ${p.sun}</span>
                     <span><i class="fas fa-book"></i> ${p.fri}</span>

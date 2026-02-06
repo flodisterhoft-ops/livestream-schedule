@@ -17,7 +17,15 @@ def create_app(config_class='config.Config'):
     with app.app_context():
         # Create tables if they don't exist
         db.create_all()
-        
+
+        # Auto-migrate: add columns that db.create_all() won't add to existing tables
+        from sqlalchemy import text, inspect
+        insp = inspect(db.engine)
+        cols = [c['name'] for c in insp.get_columns('assignment')]
+        if 'telegram_message_id' not in cols:
+            db.session.execute(text('ALTER TABLE assignment ADD COLUMN telegram_message_id INTEGER'))
+            db.session.commit()
+
         # Seed database with schedule data if empty
         from .seed_data import seed_database
         seed_database()

@@ -29,42 +29,84 @@ ROLE_EMOJI = {
 }
 
 
-def send_telegram_message(message: str, chat_id: str = None, parse_mode: str = "HTML") -> bool:
+def send_telegram_message(message: str, chat_id: str = None, parse_mode: str = "HTML"):
     """
     Send a message to a Telegram chat.
-    
-    Args:
-        message: The message text to send (supports HTML formatting)
-        chat_id: Target chat ID (defaults to configured group chat)
-        parse_mode: Parsing mode for message formatting ("HTML" or "Markdown")
-    
+
     Returns:
-        True if message was sent successfully, False otherwise
+        Integer message_id on success, False on failure
     """
     if not TELEGRAM_BOT_TOKEN:
         print("Telegram: No bot token configured")
         return False
-    
+
     target_chat = chat_id or TELEGRAM_CHAT_ID
     if not target_chat:
         print("Telegram: No chat ID configured")
         return False
-    
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    
+
     payload = {
         "chat_id": target_chat,
         "text": message,
         "parse_mode": parse_mode,
-        "disable_web_page_preview": True,
+        "disable_web_page_preview": False,
     }
-    
+
     try:
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
-        return True
+        result = response.json()
+        return result.get("result", {}).get("message_id", True)
     except requests.RequestException as e:
         print(f"Telegram send error: {e}")
+        return False
+
+
+def edit_telegram_message(message_id: int, text: str) -> bool:
+    """Edit an existing Telegram message. Returns True on success."""
+    if not TELEGRAM_BOT_TOKEN or not message_id:
+        return False
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "message_id": message_id,
+        "text": text,
+        "parse_mode": "HTML",
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            print(f"[Telegram] Message {message_id} edited successfully.")
+            return True
+        print(f"[Telegram] Failed to edit message: {resp.status_code} {resp.text}")
+        return False
+    except requests.RequestException as e:
+        print(f"[Telegram] Error editing message: {e}")
+        return False
+
+
+def delete_telegram_message(message_id: int) -> bool:
+    """Delete a Telegram message. Returns True on success."""
+    if not TELEGRAM_BOT_TOKEN or not message_id:
+        return False
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "message_id": message_id,
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            print(f"[Telegram] Message {message_id} deleted successfully.")
+            return True
+        print(f"[Telegram] Failed to delete message: {resp.status_code} {resp.text}")
+        return False
+    except requests.RequestException as e:
+        print(f"[Telegram] Error deleting message: {e}")
         return False
 
 
@@ -175,63 +217,64 @@ def generate_pickup_token(assignment: Assignment) -> str:
     return token_str
 
 
-def send_swap_needed_alert(event: Event, assignment: Assignment, original_person: str, 
-                           pickup_url: str = None) -> bool:
+def send_swap_needed_alert(event: Event, assignment: Assignment, original_person: str,
+                           pickup_url: str = None):
     """
     Send an alert when someone marks they can't make it.
-    
-    Args:
-        event: The Event with the swap needed
-        assignment: The Assignment that needs coverage
-        original_person: Who originally had the assignment
-        pickup_url: Optional URL for picking up the shift
-    
+
     Returns:
-        True if sent successfully
+        Integer message_id on success, False on failure
     """
     title = event.custom_title or event.day_type
     date_str = event.date.strftime("%B %d")
     role_emoji = ROLE_EMOJI.get(assignment.role, "👤")
-    
+
     message = f"""🔴 <b>Coverage Needed!</b>
 
 {original_person} can't make it to:
 📆 <b>{title}</b> on {date_str}
 {role_emoji} <b>{assignment.role}</b>
 """
-    
+
     if pickup_url:
-        message += f'\n👉 <a href="{pickup_url}">Click here to pick up this shift</a>'
+        message += f'\n👉 <a href="{pickup_url}">Pick up this shift</a>'
+        message += f'\n\nWould you like to swap your shift with theirs?'
+        message += f'\n🔄 <a href="{pickup_url}">Swap Shifts</a>'
     else:
         message += "\nCan someone cover this shift? 🙏"
-    
+
     return send_telegram_message(message)
 
 
-def send_shift_covered_alert(event: Event, assignment: Assignment, helper_name: str) -> bool:
+def send_shift_covered_alert(event: Event, assignment: Assignment, helper_name: str,
+                              original_message_id: int = None):
     """
     Send a notification when someone covers a shift.
-    
-    Args:
-        event: The Event
-        assignment: The Assignment that was covered
-        helper_name: Who picked up the shift
-    
+    Tries to edit the original swap-needed message first, falls back to delete+send.
+
     Returns:
-        True if sent successfully
+        Integer message_id on success, False on failure
     """
     title = event.custom_title or event.day_type
     date_str = event.date.strftime("%B %d")
     role_emoji = ROLE_EMOJI.get(assignment.role, "👤")
-    
-    message = f"""✅ <b>Shift Covered!</b>
+
+    message = f"""✅ <b>Shift Covered — Resolved!</b>
 
 {helper_name} will cover:
 📆 <b>{title}</b> on {date_str}
 {role_emoji} <b>{assignment.role}</b>
 
 Thank you {helper_name}! 🎉"""
-    
+
+    if original_message_id:
+        # Try to edit the original "Coverage Needed" message
+        if edit_telegram_message(original_message_id, message):
+            return original_message_id
+        # Edit failed (e.g. message older than 48h) — delete and send new
+        print(f"[Telegram] Edit failed, deleting old message and sending new one")
+        delete_telegram_message(original_message_id)
+
     return send_telegram_message(message)
 
 
