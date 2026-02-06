@@ -87,4 +87,4 @@ class PickupToken(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     used = db.Column(db.Boolean, default=False)  # Mark as used after pickup
     
-    assignment = db.relationship('Assignment', backref='pickup_tokens')
+    assignment = db.relationship('Assignment', backref=db.backref('pickup_tokens', cascade='all, delete-orphan'))
