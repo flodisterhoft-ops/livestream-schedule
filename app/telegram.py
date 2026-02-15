@@ -8,6 +8,7 @@ import uuid
 import requests
 from .models import Event, Assignment, PickupToken
 from .extensions import db
+from .utils import vancouver_today
 
 # Configuration from environment variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -286,7 +287,7 @@ def get_upcoming_events(days_ahead: int = 1) -> list:
     Returns:
         List of Event objects
     """
-    today = datetime.date.today()
+    today = vancouver_today()
     target_date = today + datetime.timedelta(days=days_ahead)
     
     return Event.query.filter_by(date=target_date).all()
@@ -299,7 +300,7 @@ def get_todays_events() -> list:
     Returns:
         List of Event objects
     """
-    today = datetime.date.today()
+    today = vancouver_today()
     return Event.query.filter_by(date=today).all()
 
 

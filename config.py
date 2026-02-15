@@ -29,7 +29,7 @@ class Config:
     TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
     
     # Notification settings
-    REMINDER_HOUR = int(os.environ.get('REMINDER_HOUR', '8'))  # 8 AM
+    REMINDER_HOUR = int(os.environ.get('REMINDER_HOUR', '9'))  # 9 AM Vancouver time
     
     # External URL for generating links (e.g., Telegram pickup links)
     # Empty default so url_for() fallback is used when not set

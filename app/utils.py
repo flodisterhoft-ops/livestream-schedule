@@ -2,12 +2,26 @@ import datetime
 import os
 import smtplib
 import uuid
+from zoneinfo import ZoneInfo
 from flask import url_for
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from .models import Event, Assignment, Token
 from .extensions import db
 from sqlalchemy.exc import IntegrityError
+
+# ============================================================
+# Timezone helpers — server runs in UTC, we need Vancouver time
+# ============================================================
+VANCOUVER_TZ = ZoneInfo("America/Vancouver")
+
+def vancouver_now():
+    """Current datetime in Vancouver timezone."""
+    return datetime.datetime.now(VANCOUVER_TZ)
+
+def vancouver_today():
+    """Current date in Vancouver timezone."""
+    return vancouver_now().date()
 
 # ============================================================
 # Constants

@@ -37,11 +37,11 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
 
-  # Daily Reminder Cron - Sends Telegram messages at 8 AM PST (16:00 UTC)
+  # Daily Reminder Cron - 9 AM PST / 10 AM PDT (17:00 UTC, adjust for DST if needed)
   - type: cron
     name: daily-reminders
     runtime: python
-    schedule: "0 16 * * *"
+    schedule: "0 17 * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: "curl --retry 3 --retry-delay 10 --max-time 120 https://livestream-schedule.onrender.com/cron/daily-reminder"
     envVars:

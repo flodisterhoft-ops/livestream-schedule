@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app, make_response
 from .models import Event, Assignment, Token, Availability, PickupToken
 from .extensions import db
-from .utils import check_and_init, send_access_email, ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats
+from .utils import check_and_init, send_access_email, ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats, vancouver_today, vancouver_now
 from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message, generate_pickup_token, send_daily_reminders, edit_telegram_message, delete_telegram_message
 import datetime
 import uuid
@@ -11,7 +11,7 @@ bp = Blueprint('main', __name__)
 
 def get_auto_swap_target(person, day_type, exclude_date):
     """Find the person's next assignment of the same day_type to offer as an auto-swap."""
-    today = datetime.date.today()
+    today = vancouver_today()
     match = Assignment.query.join(Event).filter(
         Assignment.person == person,
         Event.date >= today,
@@ -56,7 +56,7 @@ def home():
     events = Event.query.order_by(Event.date).all()
     
     schedule_data = []
-    today = datetime.date.today()
+    today = vancouver_today()
     stats, _ = get_history_stats()
     
     for event in events:
@@ -223,7 +223,7 @@ def pickup_via_token(token):
         "action": "pickup_via_telegram",
         "by": person,
         "prev_status": "swap_needed",
-        "ts": str(datetime.datetime.now())
+        "ts": str(vancouver_now())
     })
     assignment.history = h
     
@@ -410,7 +410,7 @@ def update_person():
             hist = target_a.history
             hist.append({
                 "from": current_p, "to": new_p,
-                "by": curr, "ts": str(datetime.datetime.now())
+                "by": curr, "ts": str(vancouver_now())
             })
             target_a.history = hist
             
@@ -443,7 +443,7 @@ def action_route():
         
         def push_h():
             h = target_a.history
-            h.append({"action": atype, "by": curr, "prev_status": target_a.status, "ts": str(datetime.datetime.now())})
+            h.append({"action": atype, "by": curr, "prev_status": target_a.status, "ts": str(vancouver_now())})
             target_a.history = h
 
         changed = False
@@ -460,7 +460,7 @@ def action_route():
                  db.session.commit()  # Commit first so assignment.id is available
 
                  # Only send Telegram notification for FUTURE events
-                 today = datetime.date.today()
+                 today = vancouver_today()
                  if d_obj >= today:
                      try:
                          token_str = generate_pickup_token(target_a)

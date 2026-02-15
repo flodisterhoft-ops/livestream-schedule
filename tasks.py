@@ -21,6 +21,7 @@ sys.path.insert(0, project_dir)
 # Set up Flask app context
 from app import create_app
 from app.telegram import send_daily_reminders, get_upcoming_events, send_event_reminder
+from app.utils import vancouver_now, vancouver_today
 
 app = create_app()
 
@@ -51,7 +52,7 @@ def cleanup_old_tokens():
     from app.models import Token
     
     with app.app_context():
-        cutoff = datetime.date.today() - datetime.timedelta(days=7)
+        cutoff = vancouver_today() - datetime.timedelta(days=7)
         old_tokens = Token.query.filter(Token.created_at < cutoff).all()
         count = len(old_tokens)
         for token in old_tokens:
@@ -68,10 +69,10 @@ def main():
     On PythonAnywhere free tier, you get ONE scheduled task per day.
     We recommend scheduling this at 8:00 AM to send morning reminders.
     """
-    print(f"=== Scheduled Task Running at {datetime.datetime.now()} ===")
-    
-    # Determine what to do based on current hour
-    current_hour = datetime.datetime.now().hour
+    print(f"=== Scheduled Task Running at {vancouver_now()} ===")
+
+    # Determine what to do based on current hour (Vancouver time)
+    current_hour = vancouver_now().hour
     
     # Morning (6 AM - 10 AM): Send today's reminders
     if 6 <= current_hour < 10:
