@@ -5,6 +5,9 @@ Flask-SQLAlchemy>=3.0.0
 # HTTP requests (for Telegram API)
 requests>=2.28.0
 
+# Timezone data (fallback for zoneinfo on minimal environments)
+tzdata
+
 # Production server
 gunicorn>=21.0.0
 
