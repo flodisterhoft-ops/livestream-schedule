@@ -33,11 +33,11 @@ def apply_data_hotfixes():
             leader.role = "Computer"
             computer = leader
         else:
-            computer = Assignment(event_id=event.id, role="Computer", person="Stefan", status="pending")
+            computer = Assignment(event_id=event.id, role="Computer", person="Rene", status="pending")
             db.session.add(computer)
 
-    if computer.person in ("Marvin", "TBD", "Select Helper", None, ""):
-        computer.person = "Stefan"
+    if computer.person in ("Marvin", "Stefan", "TBD", "Select Helper", None, ""):
+        computer.person = "Rene"
     if not computer.status:
         computer.status = "pending"
 
