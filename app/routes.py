@@ -9,6 +9,20 @@ import calendar
 
 bp = Blueprint('main', __name__)
 
+def external_url(endpoint, **kwargs):
+    """Build a public-facing URL using BASE_URL config.
+    
+    Flask's url_for(_external=True) generates http://localhost/... when running
+    behind a reverse proxy (Nginx). This helper uses BASE_URL to produce the
+    correct public URL (e.g. http://192.18.138.167/pickup/...).
+    """
+    path = url_for(endpoint, **kwargs)  # relative path like /pickup/abc
+    base = current_app.config.get('BASE_URL', '').rstrip('/')
+    if base:
+        return base + path
+    # Fallback to Flask's _external if BASE_URL is not set
+    return url_for(endpoint, _external=True, **kwargs)
+
 def get_auto_swap_target(person, day_type, exclude_date):
     """Find the person's next assignment of the same day_type to offer as an auto-swap."""
     today = vancouver_today()
@@ -154,8 +168,7 @@ def request_access():
     db.session.add(new_token)
     db.session.commit()
     
-    # Generate magic link
-    magic_link = url_for("main.manager_login", token=token_str, _external=True)
+    magic_link = external_url("main.manager_login", token=token_str)
     
     if send_access_email(magic_link, user):
         flash("Admin notified! Check email for magic link.", "success")
@@ -465,7 +478,7 @@ def action_route():
                      try:
                          token_str = generate_pickup_token(target_a)
 
-                         pickup_url = url_for('main.pickup_via_token', token=token_str, _external=True)
+                         pickup_url = external_url('main.pickup_via_token', token=token_str)
 
                          msg_id = send_swap_needed_alert(event, target_a, target_a.person, pickup_url)
                          # Store telegram message_id for later edit/delete
