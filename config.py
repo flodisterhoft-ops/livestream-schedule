@@ -12,13 +12,16 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Session security
+    # Only enable Secure cookies when explicitly set AND using HTTPS.
+    # Plain HTTP (e.g. Oracle Cloud IP without SSL) will silently drop
+    # Secure cookies, breaking login entirely.
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     PERMANENT_SESSION_LIFETIME = 60 * 60 * 24 * 90  # 90 days
     
-    # Ensure generated links use HTTPS
-    PREFERRED_URL_SCHEME = 'https'
+    # Use HTTPS for generated links only when Secure cookies are enabled
+    PREFERRED_URL_SCHEME = 'https' if os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true' else 'http'
     
     # Email settings
     EMAIL_ADDRESS = os.environ.get('SCHEDULE_EMAIL', '')
@@ -33,7 +36,7 @@ class Config:
     
     # External URL for generating links (e.g., Telegram pickup links)
     # Empty default so url_for() fallback is used when not set
-    BASE_URL = os.environ.get('BASE_URL', '')
+    BASE_URL = os.environ.get('BASE_URL', 'http://192.18.138.167')
 
 
 class DevelopmentConfig(Config):
