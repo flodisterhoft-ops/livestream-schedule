@@ -135,3 +135,17 @@ class PickupToken(db.Model):
     used = db.Column(db.Boolean, default=False)  # Mark as used after pickup
     
     assignment = db.relationship('Assignment', backref=db.backref('pickup_tokens', cascade='all, delete-orphan'))
+
+
+class InteractionLog(db.Model):
+    """Logs every Telegram button press for the admin stats page."""
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    telegram_user_id = db.Column(db.String(20))
+    first_name = db.Column(db.String(100))
+    action = db.Column(db.String(50))       # confirm, decline, expand, pickup_as, etc.
+    person_name = db.Column(db.String(50))  # Resolved team member name
+    assignment_id = db.Column(db.Integer)
+    event_date = db.Column(db.Date)
+    role = db.Column(db.String(50))
+    details = db.Column(db.Text)            # Extra context

@@ -16,7 +16,7 @@ import uuid
 import datetime
 import hashlib
 import requests
-from .models import Event, Assignment, PickupToken, TeamMember
+from .models import Event, Assignment, PickupToken, TeamMember, InteractionLog
 from .extensions import db
 from .utils import vancouver_today, vancouver_now
 
@@ -51,9 +51,64 @@ ROLE_SHORT = {
 
 STATUS_EMOJI = {
     "confirmed": "✅",
-    "pending": "⏳",
+    "pending": "",
     "swap_needed": "🔴",
 }
+
+# ── Friendly action labels for notifications ─────────────────────
+ACTION_LABELS = {
+    "confirm": "✅ Confirmed",
+    "decline": "🔴 Can't make it",
+    "undo": "↩️ Undo",
+    "pickup": "👀 Picking up…",
+    "pickup_as": "✅ Picked up shift",
+    "cancel_pickup": "❌ Cancelled pickup",
+    "expand": "👆 Tapped name",
+    "collapse": "👆 Collapsed",
+    "noop": "ℹ️ Info tap",
+}
+
+
+def _log_interaction(telegram_user_id, first_name, action, person_name,
+                     assignment=None, event=None, details=None):
+    """Log a Telegram interaction to the database."""
+    log = InteractionLog(
+        telegram_user_id=telegram_user_id,
+        first_name=first_name,
+        action=action,
+        person_name=person_name,
+        assignment_id=assignment.id if assignment else None,
+        event_date=event.date if event else None,
+        role=assignment.role if assignment else None,
+        details=details,
+    )
+    db.session.add(log)
+    # Don't commit here — let the caller's commit include this
+
+
+def _notify_admin(action, person_name, assignment=None, event=None):
+    """Send a short DM to the admin when someone interacts."""
+    if not PERSONAL_CHAT_ID:
+        return
+    label = ACTION_LABELS.get(action, action)
+    parts = [f"🔔 <b>{label}</b> — {person_name}"]
+    if event:
+        title = event.custom_title or event.day_type
+        parts.append(f"📆 {title} · {event.date.strftime('%b %d')}")
+    if assignment:
+        icon = ROLE_EMOJI.get(assignment.role, "")
+        parts.append(f"{icon} {assignment.role}")
+    text = "\n".join(parts)
+    # Fire-and-forget to personal chat
+    try:
+        _api_call("sendMessage", {
+            "chat_id": PERSONAL_CHAT_ID,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_notification": True,
+        })
+    except Exception as e:
+        print(f"[Telegram] Admin notification failed: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -471,6 +526,8 @@ def handle_callback_query(data):
     action = parts[0] if parts else ""
 
     if action == "noop":
+        _log_interaction(telegram_user_id, first_name, "noop", first_name)
+        db.session.commit()
         answer_callback(callback_id, "ℹ️ Tap the buttons below to confirm or decline.")
         return
 
@@ -500,7 +557,9 @@ def handle_callback_query(data):
         h = assignment.history
         h.append({"action": "confirm", "by": person_name, "via": "telegram", "ts": str(vancouver_now())})
         assignment.history = h
+        _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
         db.session.commit()
+        _notify_admin("confirm", person_name, assignment, event)
         answer_callback(callback_id, f"✅ {person_name} confirmed!")
 
     elif action == "decline":
@@ -508,7 +567,9 @@ def handle_callback_query(data):
         h = assignment.history
         h.append({"action": "decline", "by": person_name, "via": "telegram", "ts": str(vancouver_now())})
         assignment.history = h
+        _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event)
         db.session.commit()
+        _notify_admin("decline", person_name, assignment, event)
         answer_callback(callback_id, f"🔴 Marked as unavailable. Others will be notified.")
 
         # Send a separate swap-needed alert with pickup buttons
@@ -525,11 +586,15 @@ def handle_callback_query(data):
         h = assignment.history
         h.append({"action": "undo", "by": person_name, "via": "telegram", "ts": str(vancouver_now())})
         assignment.history = h
+        _log_interaction(telegram_user_id, first_name, "undo", person_name, assignment, event)
         db.session.commit()
+        _notify_admin("undo", person_name, assignment, event)
         answer_callback(callback_id, f"↩️ Undone by {person_name}")
 
     elif action == "pickup":
         # Show name selection for pickup
+        _log_interaction(telegram_user_id, first_name, "pickup", person_name, assignment, event)
+        db.session.commit()
         buttons = _build_pickup_buttons(assignment)
         edit_message_markup(chat_id, message_id, buttons)
         answer_callback(callback_id, "Select who's covering:")
@@ -542,22 +607,31 @@ def handle_callback_query(data):
         h = assignment.history
         h.append({"action": "pickup", "by": cover_name, "via": "telegram", "ts": str(vancouver_now())})
         assignment.history = h
+        _log_interaction(telegram_user_id, first_name, "pickup_as", cover_name, assignment, event,
+                         details=f"Covered by {cover_name}")
         db.session.commit()
+        _notify_admin("pickup_as", cover_name, assignment, event)
         answer_callback(callback_id, f"✅ {cover_name} is covering! Thank you! 🎉")
 
         # Send confirmation
         send_shift_covered(event, assignment, cover_name, chat_id=chat_id)
 
     elif action == "cancel_pickup":
+        _log_interaction(telegram_user_id, first_name, "cancel_pickup", person_name, assignment, event)
+        db.session.commit()
         answer_callback(callback_id, "Cancelled.")
 
     elif action == "expand":
+        _log_interaction(telegram_user_id, first_name, "expand", person_name, assignment, event)
+        db.session.commit()
         buttons = _build_event_buttons(event, expanded_id=assignment.id)
         edit_message_markup(chat_id, message_id, buttons)
         answer_callback(callback_id)
         return
 
     elif action == "collapse":
+        _log_interaction(telegram_user_id, first_name, "collapse", person_name, assignment, event)
+        db.session.commit()
         buttons = _build_event_buttons(event, expanded_id=None)
         edit_message_markup(chat_id, message_id, buttons)
         answer_callback(callback_id)

@@ -926,6 +926,18 @@ def stats_page():
     # Get all team names for the dropdown
     from .utils import ALL_NAMES
     all_names = ALL_NAMES
+
+    # Telegram activity log (admin-only)
+    is_admin = bool(session.get("manager"))
+    interaction_log = []
+    team_members_list = []
+    if is_admin:
+        from .models import InteractionLog, TeamMember as TM
+        interaction_log = (InteractionLog.query
+                           .order_by(InteractionLog.timestamp.desc())
+                           .limit(100)
+                           .all())
+        team_members_list = TM.query.order_by(TM.name).all()
     
     return render_template("stats.html",
                           total_events=total_events,
@@ -945,7 +957,10 @@ def stats_page():
                           personal_top_role=personal_top_role,
                           personal_top_count=personal_top_count,
                           available_months=available_months,
-                          selected_month=selected_month)
+                          selected_month=selected_month,
+                          is_admin=is_admin,
+                          interaction_log=interaction_log,
+                          team_members_list=team_members_list)
 
 
 @bp.route("/generate_year_2026", methods=["POST"])

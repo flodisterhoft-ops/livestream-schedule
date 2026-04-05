@@ -154,6 +154,89 @@
         </div>
         {% endfor %}
     </div>
+
+    {% if is_admin %}
+    <!-- Telegram Team Members (Admin Only) -->
+    <div class="stat-card" style="margin-top:20px;">
+        <h3><i class="fas fa-users-cog"></i> Telegram Link Status</h3>
+        <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">
+            Team members auto-link when they first press a button in the Telegram bot.
+        </p>
+        <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+            <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                    <th style="text-align:left; padding:8px; color:var(--muted);">Name</th>
+                    <th style="text-align:left; padding:8px; color:var(--muted);">Telegram ID</th>
+                    <th style="text-align:center; padding:8px; color:var(--muted);">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in team_members_list %}
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <td style="padding:8px;">{{ m.name }}</td>
+                    <td style="padding:8px; font-family:monospace; font-size:0.8rem; color:var(--muted);">{{ m.telegram_user_id or '—' }}</td>
+                    <td style="padding:8px; text-align:center;">
+                        {% if m.telegram_user_id %}
+                            <span style="color:#10b981;">✅ Linked</span>
+                        {% else %}
+                            <span style="color:#94a3b8;">⏳ Waiting</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Telegram Activity Log (Admin Only) -->
+    <div class="stat-card" style="margin-top:20px;">
+        <h3><i class="fas fa-bell"></i> Telegram Activity Log</h3>
+        <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">
+            Last 100 button presses from the Telegram bot.
+        </p>
+        {% if interaction_log %}
+        <div style="max-height:400px; overflow-y:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                <thead style="position:sticky; top:0; background:var(--card-bg);">
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                        <th style="text-align:left; padding:6px 8px; color:var(--muted);">Time</th>
+                        <th style="text-align:left; padding:6px 8px; color:var(--muted);">Who</th>
+                        <th style="text-align:left; padding:6px 8px; color:var(--muted);">Action</th>
+                        <th style="text-align:left; padding:6px 8px; color:var(--muted);">Event</th>
+                        <th style="text-align:left; padding:6px 8px; color:var(--muted);">Role</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in interaction_log %}
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+                        <td style="padding:6px 8px; white-space:nowrap; color:var(--muted); font-size:0.8rem;">
+                            {{ log.timestamp.strftime('%b %d %H:%M') if log.timestamp else '—' }}
+                        </td>
+                        <td style="padding:6px 8px;">{{ log.person_name or log.first_name or '?' }}</td>
+                        <td style="padding:6px 8px;">
+                            {% if log.action == 'confirm' %}<span style="color:#10b981;">✅ Confirmed</span>
+                            {% elif log.action == 'decline' %}<span style="color:#ef4444;">🔴 Declined</span>
+                            {% elif log.action == 'undo' %}<span style="color:#f59e0b;">↩️ Undo</span>
+                            {% elif log.action == 'pickup_as' %}<span style="color:#10b981;">🤝 Picked up</span>
+                            {% elif log.action == 'expand' %}<span style="color:#94a3b8;">👆 Tapped</span>
+                            {% elif log.action == 'collapse' %}<span style="color:#94a3b8;">👆 Collapsed</span>
+                            {% else %}<span style="color:#94a3b8;">{{ log.action }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding:6px 8px; font-size:0.8rem;">
+                            {{ log.event_date.strftime('%b %d') if log.event_date else '—' }}
+                        </td>
+                        <td style="padding:6px 8px; font-size:0.8rem; color:var(--muted);">{{ log.role or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="color:var(--muted); text-align:center; padding:20px;">No interactions logged yet. Activity will appear here after someone presses a button.</p>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 
 <script>
