@@ -99,6 +99,7 @@ def create_app(config_class='config.Config'):
     # ── Serve React v2 frontend ──────────────────────────────
     v2_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scheduler-site', 'dist')
 
+    @app.route('/v2')
     @app.route('/v2/')
     @app.route('/v2/<path:path>')
     def serve_v2(path='index.html'):
