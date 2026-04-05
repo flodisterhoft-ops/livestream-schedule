@@ -13,8 +13,8 @@ def external_url(endpoint, **kwargs):
     """Build a public-facing URL using BASE_URL config.
     
     Flask's url_for(_external=True) generates http://localhost/... when running
-    behind a reverse proxy (Nginx). This helper uses BASE_URL to produce the
-    correct public URL (e.g. http://192.18.138.167/pickup/...).
+    behind a reverse proxy. This helper uses BASE_URL to produce the
+    correct public URL (for example https://livestream.disterhoft.com/pickup/...).
     """
     path = url_for(endpoint, **kwargs)  # relative path like /pickup/abc
     base = current_app.config.get('BASE_URL', '').rstrip('/')
@@ -1042,7 +1042,7 @@ def cron_daily_reminder():
     Called at 8AM on event days to send Telegram notifications.
     
     Security: Uses a simple secret key check to prevent abuse.
-    Set CRON_SECRET environment variable on Render.
+    Set CRON_SECRET in the live environment that serves the Oracle-hosted app.
     """
     import os
     

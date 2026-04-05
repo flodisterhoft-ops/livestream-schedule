@@ -11,7 +11,7 @@ from .extensions import db
 def seed_database():
     """
     Seed the database with schedule data if no events exist.
-    This ensures data persists across Render deployments.
+    This gives a fresh database a usable baseline schedule.
     """
     # Check if there are already events (don't overwrite)
     if Event.query.first():

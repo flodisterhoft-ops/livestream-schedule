@@ -2,6 +2,51 @@ from .extensions import db
 from datetime import datetime
 import json
 
+
+class TeamMember(db.Model):
+    """Tracks team members and their eligible roles."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    telegram_user_id = db.Column(db.String(20))
+    _sunday_roles_json = db.Column(db.Text, default='[]')
+    _friday_roles_json = db.Column(db.Text, default='[]')
+    active = db.Column(db.Boolean, default=True)
+    active_from = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def sunday_roles(self):
+        try:
+            return json.loads(self._sunday_roles_json or '[]')
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    @sunday_roles.setter
+    def sunday_roles(self, value):
+        self._sunday_roles_json = json.dumps(value)
+
+    @property
+    def friday_roles(self):
+        try:
+            return json.loads(self._friday_roles_json or '[]')
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    @friday_roles.setter
+    def friday_roles(self, value):
+        self._friday_roles_json = json.dumps(value)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "telegram_user_id": self.telegram_user_id,
+            "sunday_roles": self.sunday_roles,
+            "friday_roles": self.friday_roles,
+            "active": self.active,
+            "active_from": self.active_from.isoformat() if self.active_from else None,
+        }
+
 class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, unique=True, nullable=False)

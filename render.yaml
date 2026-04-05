@@ -1,3 +1,7 @@
+# Legacy Render manifest kept for historical reference.
+# The current documented live hosting is the Oracle bundle shared with the
+# Young Couples Scheduler. See README.md and DEPLOYMENT_CONTEXT.md.
+
 databases:
   - name: cgf-scheduler-db
     plan: free
@@ -26,7 +30,7 @@ services:
       - key: TELEGRAM_CHAT_ID
         sync: false
 
-  # Keep-alive cron job - pings the app every 5 minutes to prevent sleeping
+  # Legacy Render keep-alive cron job - not the default live hosting path.
   - type: cron
     name: cgf-scheduler-keepalive
     runtime: python
@@ -37,7 +41,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
 
-  # Daily Reminder Cron - 9 AM PST / 10 AM PDT (17:00 UTC, adjust for DST if needed)
+  # Legacy Render reminder cron - kept for reference only.
   - type: cron
     name: daily-reminders
     runtime: python

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix Telegram pickup links and HTTPS handling\n\n- Restore missing generate_pickup_token function definition \\(was causing app crash\\)\n- Add ProxyFix middleware for proper HTTPS detection behind Render proxy\n- Move pickup URL generation to routes.py for reliable BASE_URL handling\n- Add PREFERRED_URL_SCHEME config for HTTPS links\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(cd:*)",
+      "Bash(python3:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(timeout /t:*)",
+      "Bash(ping:*)",
+      "Bash(where:*)",
+      "Bash(py -c:*)",
+      "Bash(gh api:*)"
+    ]
+  }
+}
