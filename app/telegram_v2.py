@@ -573,11 +573,31 @@ def handle_callback_query(data):
 
 
 def _resolve_person(telegram_user_id, fallback_name):
-    """Try to match a Telegram user ID to a team member name."""
+    """Try to match a Telegram user ID to a team member name.
+
+    If the user ID isn't linked yet, attempt to auto-link by matching
+    the Telegram first_name to a TeamMember.name.
+    """
     if telegram_user_id:
         member = TeamMember.query.filter_by(telegram_user_id=telegram_user_id).first()
         if member:
             return member.name
+
+        # Auto-link: try matching fallback_name to an unlinked team member
+        if fallback_name and fallback_name != "Unknown":
+            candidate = TeamMember.query.filter_by(name=fallback_name, telegram_user_id=None).first()
+            if not candidate:
+                # Try case-insensitive / partial match
+                candidate = TeamMember.query.filter(
+                    TeamMember.telegram_user_id.is_(None),
+                    db.func.lower(TeamMember.name) == fallback_name.lower()
+                ).first()
+            if candidate:
+                candidate.telegram_user_id = telegram_user_id
+                db.session.commit()
+                print(f"[Telegram] Auto-linked user {fallback_name} (ID {telegram_user_id}) to TeamMember '{candidate.name}'")
+                return candidate.name
+
     # Fallback: use first_name from Telegram
     return fallback_name
 
