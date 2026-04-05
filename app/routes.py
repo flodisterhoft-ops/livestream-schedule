@@ -3,6 +3,7 @@ from .models import Event, Assignment, Token, Availability, PickupToken
 from .extensions import db
 from .utils import check_and_init, send_access_email, ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats, vancouver_today, vancouver_now
 from .telegram import send_swap_needed_alert, send_shift_covered_alert, test_telegram_connection, send_telegram_message, generate_pickup_token, send_daily_reminders, edit_telegram_message, delete_telegram_message
+from .telegram_v2 import refresh_event_telegram
 import datetime
 import uuid
 import calendar
@@ -559,6 +560,7 @@ def action_route():
         if changed:
             push_h()
             db.session.commit()
+            refresh_event_telegram(event)
             if request.headers.get("HX-Request"):
                 ad = target_a.to_dict()
                 ad['idx'] = idx
@@ -585,12 +587,16 @@ def bulk_confirm():
         # Get all events in the month
         events = Event.query.filter(Event.date >= start_date, Event.date <= end_date).all()
         count = 0
+        changed_events = set()
         for event in events:
             for a in event.assignments:
                 if a.status == "pending":
                     a.status = "confirmed"
                     count += 1
+                    changed_events.add(event)
         db.session.commit()
+        for event in changed_events:
+            refresh_event_telegram(event)
         flash(f"Confirmed {count} assignments!", "CONFETTI")
     
     return redirect(url_for("main.home"))

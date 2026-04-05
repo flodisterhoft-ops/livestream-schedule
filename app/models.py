@@ -53,6 +53,8 @@ class Event(db.Model):
     day_type = db.Column(db.String(20), nullable=False)  # Sunday, Friday, Custom
     custom_title = db.Column(db.String(100))
     notes = db.Column(db.Text)  # Event notes/comments
+    telegram_message_id = db.Column(db.Integer)  # v2 reminder message ID
+    telegram_chat_id = db.Column(db.String(30))  # Chat where reminder was sent
     assignments = db.relationship('Assignment', backref='event', lazy=True, cascade="all, delete-orphan", order_by="Assignment.id")
 
     def to_dict(self):

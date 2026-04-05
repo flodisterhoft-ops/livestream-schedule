@@ -356,10 +356,13 @@ def send_event_reminder(event, chat_id=None):
     """Send an event reminder with inline confirmation buttons."""
     text = format_event_message(event, header="📋 Reminder!")
     buttons = _build_event_buttons(event)
-    msg_id = send_message(text, chat_id=chat_id, reply_markup=buttons)
+    target = chat_id or TELEGRAM_CHAT_ID
+    msg_id = send_message(text, chat_id=target, reply_markup=buttons)
 
-    # Store message ID on assignments for later editing
+    # Store message ID on event and assignments for later editing
     if msg_id:
+        event.telegram_message_id = msg_id
+        event.telegram_chat_id = str(target)
         for a in event.assignments:
             a.telegram_message_id = msg_id
         db.session.commit()
@@ -584,6 +587,22 @@ def _refresh_event_message(event, chat_id, message_id):
     text = format_event_message(event, header="📋 Reminder!")
     buttons = _build_event_buttons(event)
     edit_message(chat_id, message_id, text, reply_markup=buttons)
+
+
+def refresh_event_telegram(event):
+    """Public helper: refresh the Telegram reminder message for an event.
+
+    Called from v1 routes so status changes made through the web UI
+    are reflected in the Telegram inline message.
+    """
+    chat_id = event.telegram_chat_id
+    message_id = event.telegram_message_id
+    if not chat_id or not message_id:
+        return
+    try:
+        _refresh_event_message(event, chat_id, message_id)
+    except Exception as e:
+        print(f"[Telegram] Failed to refresh event message: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════
