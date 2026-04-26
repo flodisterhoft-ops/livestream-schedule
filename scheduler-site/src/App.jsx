@@ -292,7 +292,9 @@ export default function App() {
               aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
               aria-pressed={isManager}
             >
-              {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
+              <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
+                {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
+              </span>
             </button>
           )}
           {!user && hasSavedAuth && (
@@ -338,6 +340,22 @@ export default function App() {
 
 function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isManager, doAction, showFlash, loadSchedule, team }) {
   const [expandedYears, setExpandedYears] = useState({})
+  const navRef = useRef(null)
+  const [indicator, setIndicator] = useState(null)
+  useEffect(() => {
+    const measure = () => {
+      const nav = navRef.current
+      if (!nav) return
+      const active = nav.querySelector('.month-pill.active')
+      if (!active) { setIndicator(null); return }
+      const navRect = nav.getBoundingClientRect()
+      const r = active.getBoundingClientRect()
+      setIndicator({ x: r.left - navRect.left, y: r.top - navRect.top, w: r.width, h: r.height })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [activeMonth, expandedYears, months.length, schedule.length])
 
   const handleNotify = async (date) => {
     try {
@@ -409,7 +427,18 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
   return (
     <div className="schedule-tab">
       {/* Month navigation */}
-      <div className="month-nav">
+      <div className="month-nav" ref={navRef}>
+        {indicator && (
+          <span
+            className="month-indicator"
+            style={{
+              transform: `translate(${indicator.x}px, ${indicator.y}px)`,
+              width: indicator.w,
+              height: indicator.h,
+            }}
+            aria-hidden="true"
+          />
+        )}
         {pastYears.map(year => {
           const yearMonths = monthGroups[year]
           const hasActiveMonth = yearMonths.includes(activeMonth)
@@ -539,8 +568,9 @@ function EventCard({ event, user, isManager, doAction, onNotify, onAssign, onEve
             {isToday && <span className="today-pill">TODAY</span>}
           </TitleTag>
           {isManager && !event.is_past && (
-            <button className="icon-btn-sm" onClick={onNotify} title="Send Telegram">
-              {'\uD83D\uDCE8'}
+            <button className="notify-btn" onClick={onNotify} title="Send Telegram reminder">
+              <span aria-hidden="true">{'\uD83D\uDCE8'}</span>
+              <span className="notify-btn-label">Notify</span>
             </button>
           )}
         </div>

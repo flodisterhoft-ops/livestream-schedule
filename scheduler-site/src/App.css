@@ -215,30 +215,52 @@ body {
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-card);
-  color: var(--text);
-  font-size: 1.05rem;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  line-height: 1;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
   position: relative;
+  overflow: hidden;
+  transition:
+    background 0.28s cubic-bezier(.2,.8,.2,1),
+    border-color 0.28s cubic-bezier(.2,.8,.2,1),
+    color 0.28s cubic-bezier(.2,.8,.2,1),
+    box-shadow 0.28s ease,
+    transform 0.18s ease;
 }
 
 .manager-btn:hover {
-  background: var(--bg-hover);
   border-color: var(--accent);
+  color: var(--accent);
+}
+
+.manager-btn:active {
+  transform: scale(0.94);
 }
 
 .manager-btn.active {
-  background: var(--accent);
+  background: var(--accent-light);
   border-color: var(--accent);
-  color: white;
+  color: var(--accent);
   animation: managerBtnPulse 2.2s ease-out infinite;
 }
 
+.manager-btn-icon {
+  display: inline-block;
+  animation: iconSwap 0.32s cubic-bezier(.2,.8,.2,1) both;
+}
+
+@keyframes iconSwap {
+  0% { opacity: 0; transform: scale(0.5) rotate(-30deg); }
+  60% { opacity: 1; transform: scale(1.12) rotate(6deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
 @keyframes managerBtnPulse {
-  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.55); }
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.45); }
   70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
   100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
 }
@@ -287,6 +309,39 @@ body {
 
 .icon-btn-sm:hover { background: var(--bg-hover); }
 .icon-btn-sm.danger:hover { background: var(--danger-light); }
+
+.notify-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+}
+
+.notify-btn:hover {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.25);
+}
+
+.notify-btn:active { transform: scale(0.96); }
+
+.notify-btn-label {
+  letter-spacing: 0.2px;
+}
+
+@media (max-width: 380px) {
+  .notify-btn-label { display: none; }
+  .notify-btn { padding: 5px 8px; }
+}
 
 /* ── Tab Navigation ───────────────────────────────────────── */
 
@@ -551,13 +606,31 @@ body {
 /* ── Month Navigation ─────────────────────────────────────── */
 
 .month-nav {
+  position: relative;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
 
+.month-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  z-index: 0;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+  transition:
+    transform 0.36s cubic-bezier(.2,.8,.2,1),
+    width 0.36s cubic-bezier(.2,.8,.2,1),
+    height 0.36s cubic-bezier(.2,.8,.2,1);
+}
+
 .month-pill {
+  position: relative;
+  z-index: 1;
   padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
@@ -570,9 +643,10 @@ body {
 }
 
 .month-pill.active {
-  background: var(--accent);
+  background: transparent;
   color: white;
   border-color: var(--accent);
+  transition: color 0.18s ease 0.06s, border-color 0.18s ease;
 }
 
 .month-pill.past {
