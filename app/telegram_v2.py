@@ -981,7 +981,14 @@ def handle_callback_query(data):
             TempChat.status == "active",
             TempChat.chat_id != str(chat_id),
         ).all():
-            _delete_temp_chat(other)
+            if other.message_id:
+                edit_message(other.chat_id, other.message_id, (
+                    f"✅ <b>Covered</b>\n\n"
+                    f"{person_name} already swapped with {original_person}, so this shift is taken care of.\n\n"
+                    f"Thanks for being available!\n\n"
+                    f"<i>This chat will auto-destruct in 10 seconds.</i>"
+                ))
+            _delete_temp_chat(other, delay=10)
         _send_temp_group(
             "swap_notice",
             original_person,
