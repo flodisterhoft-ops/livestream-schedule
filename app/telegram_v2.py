@@ -222,6 +222,8 @@ def _schedule_url(person=None):
 def _schedule_button(label="📅 View Schedule", person=None):
     if person:
         return {"text": label, "url": _schedule_url(person)}
+    if os.environ.get("TELEGRAM_LOGIN_URL_ENABLED", "").lower() not in ("1", "true", "yes", "on"):
+        return {"text": label, "url": _schedule_url()}
     return {
         "text": label,
         "login_url": {
