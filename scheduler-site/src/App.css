@@ -622,7 +622,6 @@ body {
   border-radius: var(--radius-pill);
   z-index: 0;
   pointer-events: none;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
   transition:
     transform 0.36s cubic-bezier(.2,.8,.2,1),
     width 0.36s cubic-bezier(.2,.8,.2,1),
