@@ -44,10 +44,8 @@ async function api(path, opts = {}) {
 export default function App() {
   const [user, setUser] = useState(null)
   const [isManager, setIsManager] = useState(false)
-  const [tab, setTab] = useState('schedule')
   const [schedule, setSchedule] = useState([])
   const [team, setTeam] = useState([])
-  const [stats, setStats] = useState({})
   const [loading, setLoading] = useState(true)
   const [flash, setFlash] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState(null)
@@ -70,17 +68,12 @@ export default function App() {
     api('/team').then(setTeam).catch(console.error)
   }, [])
 
-  const loadStats = useCallback(() => {
-    api('/leaderboard').then(d => setStats(d.stats || {})).catch(console.error)
-  }, [])
-
   useEffect(() => {
     if (user) {
       loadSchedule()
       loadTeam()
-      loadStats()
     }
-  }, [user, loadSchedule, loadTeam, loadStats])
+  }, [user, loadSchedule, loadTeam])
 
   const showFlash = (msg, type = 'success') => {
     setFlash({ msg, type })
@@ -148,9 +141,13 @@ export default function App() {
   const currentMonth = new Date().toISOString().slice(0, 7)
   const activeMonth = selectedMonth || (months.includes(currentMonth) ? currentMonth : months[months.length - 1])
 
+  const today = new Date().toISOString().slice(0, 10)
   const filtered = activeMonth
     ? schedule.filter(e => e.date.startsWith(activeMonth))
     : schedule
+  const visibleSchedule = activeMonth === currentMonth
+    ? filtered.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date))
+    : filtered.sort((a, b) => a.date.localeCompare(b.date))
 
   return (
     <div className="app">
@@ -178,45 +175,18 @@ export default function App() {
         </div>
       </header>
 
-      {/* Tab navigation */}
-      <nav className="tab-nav">
-        {['schedule', 'leaderboard', 'team'].map(t => (
-          <button
-            key={t}
-            className={`tab-btn ${tab === t ? 'active' : ''}`}
-            onClick={() => setTab(t)}
-          >
-            {t === 'schedule' && '\uD83D\uDCC5 Schedule'}
-            {t === 'leaderboard' && '\uD83C\uDFC6 Leaderboard'}
-            {t === 'team' && '\uD83D\uDC65 Team'}
-          </button>
-        ))}
-      </nav>
-
-      {/* Tab content */}
-      {tab === 'schedule' && (
-        <ScheduleTab
-          schedule={filtered}
-          months={months}
-          activeMonth={activeMonth}
-          onMonthChange={setSelectedMonth}
-          user={user}
-          isManager={isManager}
-          doAction={doAction}
-          showFlash={showFlash}
-          loadSchedule={loadSchedule}
-          team={team}
-        />
-      )}
-      {tab === 'leaderboard' && <LeaderboardTab stats={stats} />}
-      {tab === 'team' && (
-        <TeamTab
-          team={team}
-          isManager={isManager}
-          loadTeam={loadTeam}
-          showFlash={showFlash}
-        />
-      )}
+      <ScheduleTab
+        schedule={visibleSchedule}
+        months={months}
+        activeMonth={activeMonth}
+        onMonthChange={setSelectedMonth}
+        user={user}
+        isManager={isManager}
+        doAction={doAction}
+        showFlash={showFlash}
+        loadSchedule={loadSchedule}
+        team={team}
+      />
     </div>
   )
 }
