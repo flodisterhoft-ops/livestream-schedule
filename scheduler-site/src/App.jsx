@@ -343,22 +343,6 @@ export default function App() {
 
 function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team }) {
   const [expandedYears, setExpandedYears] = useState({})
-  const navRef = useRef(null)
-  const [indicator, setIndicator] = useState(null)
-  useEffect(() => {
-    const measure = () => {
-      const nav = navRef.current
-      if (!nav) return
-      const active = nav.querySelector('.month-pill.active')
-      if (!active) { setIndicator(null); return }
-      const navRect = nav.getBoundingClientRect()
-      const r = active.getBoundingClientRect()
-      setIndicator({ x: r.left - navRect.left, y: r.top - navRect.top, w: r.width, h: r.height })
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [activeMonth, expandedYears, months.length, schedule.length])
 
   const handleNotify = async (date) => {
     try {
@@ -430,18 +414,7 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isAdm
   return (
     <div className="schedule-tab">
       {/* Month navigation */}
-      <div className="month-nav" ref={navRef}>
-        {indicator && (
-          <span
-            className="month-indicator"
-            style={{
-              transform: `translate(${indicator.x}px, ${indicator.y}px)`,
-              width: indicator.w,
-              height: indicator.h,
-            }}
-            aria-hidden="true"
-          />
-        )}
+      <div className="month-nav">
         {pastYears.map(year => {
           const yearMonths = monthGroups[year]
           const hasActiveMonth = yearMonths.includes(activeMonth)
