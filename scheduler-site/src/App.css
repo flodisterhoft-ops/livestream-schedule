@@ -634,10 +634,23 @@ body {
   margin-bottom: 16px;
 }
 
+.month-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  z-index: 0;
+  pointer-events: none;
+  transition:
+    transform 0.42s cubic-bezier(.2,.8,.2,1),
+    width 0.42s cubic-bezier(.2,.8,.2,1),
+    height 0.42s cubic-bezier(.2,.8,.2,1);
+}
+
 .month-pill {
   position: relative;
-  isolation: isolate;
-  overflow: hidden;
+  z-index: 1;
   padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
@@ -648,29 +661,14 @@ body {
   cursor: pointer;
   transition:
     color 0.32s cubic-bezier(.2,.8,.2,1),
-    border-color 0.32s cubic-bezier(.2,.8,.2,1);
-}
-
-.month-pill::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--accent);
-  border-radius: inherit;
-  z-index: -1;
-  transform: scaleX(0);
-  transform-origin: right center;
-  transition: transform 0.42s cubic-bezier(.2,.8,.2,1);
+    border-color 0.32s cubic-bezier(.2,.8,.2,1),
+    background 0.18s ease;
 }
 
 .month-pill.active {
+  background: transparent;
   color: white;
-  border-color: var(--accent);
-}
-
-.month-pill.active::before {
-  transform: scaleX(1);
-  transform-origin: left center;
+  border-color: transparent;
 }
 
 .month-pill.past {
