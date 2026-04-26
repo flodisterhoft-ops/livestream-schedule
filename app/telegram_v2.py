@@ -220,7 +220,15 @@ def _schedule_url(person=None):
 
 
 def _schedule_button(label="📅 View Schedule", person=None):
-    return {"text": label, "url": _schedule_url(person)}
+    if person:
+        return {"text": label, "url": _schedule_url(person)}
+    return {
+        "text": label,
+        "login_url": {
+            "url": _schedule_url(),
+            "request_write_access": False,
+        },
+    }
 
 
 def _event_title(event):

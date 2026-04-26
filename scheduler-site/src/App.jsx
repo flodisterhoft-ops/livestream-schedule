@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 
 const API = '/api/v2'
 const AUTH_TOKEN_KEY = 'livestreamV2AuthToken'
+const TELEGRAM_LOGIN_KEYS = ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date', 'hash']
 
 const ROLE_ICONS = {
   Computer: '\uD83D\uDDA5\uFE0F',
@@ -74,15 +75,21 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const urlToken = params.get('auth')
+    const telegramHash = params.get('hash')
     const storedToken = localStorage.getItem(AUTH_TOKEN_KEY)
     const token = urlToken || storedToken
     const finish = (d) => {
       setUser(d.name || null)
       setIsAdmin(Boolean(d.is_admin))
       setIsManager(Boolean(d.is_manager))
+      if (d.auth_token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, d.auth_token)
+        setHasSavedAuth(true)
+      }
     }
-    const clearAuthParam = () => {
+    const clearAuthParams = () => {
       params.delete('auth')
+      TELEGRAM_LOGIN_KEYS.forEach(key => params.delete(key))
       const query = params.toString()
       window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
     }
@@ -93,18 +100,32 @@ export default function App() {
       setHasSavedAuth(Boolean(storedToken))
     }
 
-    const request = token
+    const telegramLoginData = {}
+    TELEGRAM_LOGIN_KEYS.forEach(key => {
+      const value = params.get(key)
+      if (value) telegramLoginData[key] = value
+    })
+
+    const request = telegramHash
+      ? api('/auth/telegram-login', {
+          method: 'POST',
+          body: JSON.stringify(telegramLoginData),
+        }).then(d => {
+          clearAuthParams()
+          return d
+        })
+      : token
       ? api('/auth/token-login', {
           method: 'POST',
           body: JSON.stringify({ token }),
         }).then(d => {
-          if (urlToken) clearAuthParam()
+          if (urlToken) clearAuthParams()
           return d
         })
       : api('/auth/me')
 
     request.then(finish).catch(() => {
-      if (token) {
+      if (token || telegramHash) {
         localStorage.removeItem(AUTH_TOKEN_KEY)
         setHasSavedAuth(false)
       }

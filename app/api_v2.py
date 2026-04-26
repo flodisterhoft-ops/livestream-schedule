@@ -7,6 +7,9 @@ All endpoints are prefixed with /api/v2/.
 import datetime
 import calendar
 import os
+import hashlib
+import hmac
+import time
 from itsdangerous import BadSignature, URLSafeSerializer
 from flask import Blueprint, request, jsonify, session, current_app
 from .models import Event, Assignment, TeamMember, Availability, PickupToken, SwapRequest, TempChat
@@ -22,6 +25,56 @@ api_v2 = Blueprint('api_v2', __name__, url_prefix='/api/v2')
 
 def _auth_serializer():
     return URLSafeSerializer(current_app.secret_key, salt="v2-auth")
+
+
+def _auth_response(name):
+    session["user_name"] = name
+    session["manager"] = name == "Florian"
+    session.permanent = True
+    token = _auth_serializer().dumps({"name": name, "manager": name == "Florian"})
+    return jsonify({
+        "name": name,
+        "is_admin": name == "Florian",
+        "is_manager": bool(session.get("manager")),
+        "auth_token": token,
+    })
+
+
+def _validate_telegram_login(data):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    received_hash = data.get("hash", "")
+    auth_date = data.get("auth_date", "")
+    if not token or not received_hash or not auth_date:
+        return False
+    try:
+        if time.time() - int(auth_date) > 86400:
+            return False
+    except (TypeError, ValueError):
+        return False
+    pairs = []
+    for key, value in data.items():
+        if key != "hash" and value not in (None, ""):
+            pairs.append(f"{key}={value}")
+    check_string = "\n".join(sorted(pairs))
+    secret_key = hashlib.sha256(token.encode()).digest()
+    expected = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, received_hash)
+
+
+def _team_member_from_telegram(data):
+    tg_id = str(data.get("id", "")).strip()
+    first_name = (data.get("first_name") or "").strip()
+    if tg_id:
+        member = TeamMember.query.filter_by(telegram_user_id=tg_id).first()
+        if member:
+            return member
+    if first_name:
+        member = TeamMember.query.filter(db.func.lower(TeamMember.name) == first_name.lower()).first()
+        if member and tg_id and not member.telegram_user_id:
+            member.telegram_user_id = tg_id
+            db.session.commit()
+        return member
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -44,11 +97,7 @@ def login():
     if name not in team and name not in ALL_NAMES:
         return jsonify({"error": "Unknown team member"}), 400
 
-    session["user_name"] = name
-    if name == "Florian":
-        session["manager"] = True
-    session.permanent = True
-    return jsonify({"name": name, "is_admin": name == "Florian", "is_manager": bool(session.get("manager"))})
+    return _auth_response(name)
 
 
 @api_v2.route("/auth/token-login", methods=["POST"])
@@ -70,10 +119,18 @@ def token_login():
     if name not in team and name not in ALL_NAMES:
         return jsonify({"error": "Unknown team member"}), 400
 
-    session["user_name"] = name
-    session["manager"] = name == "Florian"
-    session.permanent = True
-    return jsonify({"name": name, "is_admin": name == "Florian", "is_manager": bool(session.get("manager"))})
+    return _auth_response(name)
+
+
+@api_v2.route("/auth/telegram-login", methods=["POST"])
+def telegram_login():
+    data = request.json or {}
+    if not _validate_telegram_login(data):
+        return jsonify({"error": "Invalid Telegram login"}), 401
+    member = _team_member_from_telegram(data)
+    if not member:
+        return jsonify({"error": "Telegram user is not linked to the team"}), 403
+    return _auth_response(member.name)
 
 
 @api_v2.route("/auth/logout", methods=["POST"])
