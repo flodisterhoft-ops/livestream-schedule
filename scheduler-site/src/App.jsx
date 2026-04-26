@@ -608,6 +608,7 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
   const worker = a.cover || a.person
   const isMe = a.person === user || a.cover === user
   const isUnassigned = a.person === 'Select Helper' || a.person === 'TBD'
+  const isConfirmed = a.status === 'confirmed'
   const nameOptions = [...new Set([...(isUnassigned ? [] : [a.person]), ...teamNames].filter(Boolean))]
   const chooseName = (name) => {
     onAssign(a.id, name)
@@ -655,6 +656,17 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
   }, [showNames, computePos])
 
   const roleClass = `role-${baseRole.replace(/\s+/g, '-')}`
+  const personDisplay = isUnassigned ? (
+    'Unassigned'
+  ) : a.cover ? (
+    <>
+      <span className="person-original covered">{a.person}</span>
+      <span className="cover-arrow" aria-hidden="true"> → </span>
+      <span className={isConfirmed ? 'person-confirmed' : ''}>{a.cover}</span>
+    </>
+  ) : (
+    <span className={isConfirmed ? 'person-confirmed' : ''}>{worker}</span>
+  )
   return (
     <div className={`assignment-row ${a.status === 'swap_needed' ? 'swap-needed' : ''} ${isMe ? 'is-me' : ''}`}>
       <div className="assignment-left">
@@ -670,8 +682,7 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
               aria-expanded={showNames}
               aria-haspopup="listbox"
             >
-              {isUnassigned ? 'Unassigned' : worker}
-              {a.cover && <span className="cover-tag"> (covering)</span>}
+              {personDisplay}
               {a.swapped_with && <span className="swap-tag"> (swapped with {a.swapped_with})</span>}
             </button>
             {showNames && menuPos && createPortal(
@@ -699,8 +710,7 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
           </div>
         ) : (
           <span className={`person-name ${isUnassigned ? 'unassigned' : ''}`}>
-            {isUnassigned ? 'Unassigned' : worker}
-            {a.cover && <span className="cover-tag"> (covering)</span>}
+            {personDisplay}
             {a.swapped_with && <span className="swap-tag"> (swapped with {a.swapped_with})</span>}
           </span>
         )}

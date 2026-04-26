@@ -771,6 +771,22 @@ body {
   font-style: italic;
 }
 
+.person-original.covered {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.cover-arrow {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.person-confirmed {
+  color: var(--success);
+  font-weight: 700;
+}
+
 .name-picker {
   position: relative;
   min-width: 0;
