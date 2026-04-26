@@ -264,9 +264,16 @@ export default function App() {
 
       {/* Header */}
       <header className={`app-header ${headerStuck ? 'is-stuck' : ''}`}>
-        <h1 className="app-title">Livestream Schedule</h1>
+        <div className="header-titles">
+          <h1 className="app-title">Livestream Schedule</h1>
+          {user && (
+            <div className="user-greeting">
+              Hi <strong>{user}</strong>
+              <span className="wave" role="img" aria-label="waving hand">{'\uD83D\uDC4B'}</span>
+            </div>
+          )}
+        </div>
         <div className="header-actions">
-          {user && <span className="user-chip">{user}</span>}
           {isManager && (
             <button
               className="icon-btn primary"

@@ -100,11 +100,52 @@ body {
   border-bottom-color: var(--border);
 }
 
+.header-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .app-title {
   font-size: 1.5rem;
   font-weight: 800;
   color: var(--accent);
   letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+
+.user-greeting {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.user-greeting strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.user-greeting .wave {
+  display: inline-block;
+  transform-origin: 70% 70%;
+  animation: handWave 2.4s ease-in-out infinite;
+}
+
+@keyframes handWave {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+  30% { transform: rotate(14deg); }
+  40% { transform: rotate(-4deg); }
+  50% { transform: rotate(10deg); }
+}
+
+@media (max-width: 480px) {
+  .app-title { font-size: 1.2rem; }
 }
 
 .header-actions {
