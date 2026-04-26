@@ -5,6 +5,7 @@ import threading
 _client = None
 _loop = None
 _thread = None
+_telethon_lock = threading.RLock()
 
 
 def _ensure_loop():
@@ -38,28 +39,34 @@ def _session_path():
 
 def get_client():
     global _client
-    if _client is not None:
-        return _client
-    api_id = os.environ.get("TELETHON_API_ID")
-    api_hash = os.environ.get("TELETHON_API_HASH")
-    if not api_id or not api_hash:
-        return None
-    try:
-        from telethon import TelegramClient
-    except ImportError:
-        return None
-    loop = _ensure_loop()
-
-    async def _connect():
-        client = TelegramClient(_session_path(), int(api_id), api_hash, loop=loop)
-        await client.connect()
-        if not await client.is_user_authorized():
-            await client.disconnect()
+    with _telethon_lock:
+        if _client is not None:
+            return _client
+        api_id = os.environ.get("TELETHON_API_ID")
+        api_hash = os.environ.get("TELETHON_API_HASH")
+        if not api_id or not api_hash:
             return None
-        return client
+        try:
+            from telethon import TelegramClient
+        except ImportError:
+            return None
+        loop = _ensure_loop()
 
-    _client = _run_sync(_connect())
-    return _client
+        async def _connect():
+            client = TelegramClient(_session_path(), int(api_id), api_hash, loop=loop)
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.disconnect()
+                return None
+            return client
+
+        try:
+            _client = _run_sync(_connect())
+            return _client
+        except Exception as e:
+            print(f"[TempGroup] Connect failed: {e}")
+            _client = None
+            return None
 
 
 def is_available():
@@ -67,76 +74,86 @@ def is_available():
 
 
 def create_temp_group(title, user_ids, bot_token=None, bot_username=None):
-    client = get_client()
-    if not client:
-        return None
-    bot_id = bot_token.split(":")[0] if bot_token else None
+    with _telethon_lock:
+        client = get_client()
+        if not client:
+            return None
+        bot_id = bot_token.split(":")[0] if bot_token else None
 
-    async def _create():
-        from telethon.tl.functions.channels import CreateChannelRequest, EditAdminRequest, InviteToChannelRequest
-        from telethon.tl.types import ChatAdminRights
+        async def _create():
+            from telethon.tl.functions.channels import CreateChannelRequest, EditAdminRequest, InviteToChannelRequest
+            from telethon.tl.types import ChatAdminRights
 
-        result = await client(CreateChannelRequest(title=title, about="Temporary livestream reminder", megagroup=True))
-        channel = result.chats[0]
-        chat_id = -1000000000000 - channel.id
-        entities = []
-        for uid in user_ids:
-            try:
-                entities.append(await client.get_entity(int(uid)))
-            except Exception as e:
-                print(f"[TempGroup] Could not resolve user {uid}: {e}")
-        bot_entity = None
-        if bot_username:
-            try:
-                bot_entity = await client.get_entity(bot_username)
-            except Exception as e:
-                print(f"[TempGroup] Could not resolve bot @{bot_username}: {e}")
-        elif bot_id:
-            try:
-                bot_entity = await client.get_entity(int(bot_id))
-            except Exception as e:
-                print(f"[TempGroup] Could not resolve bot {bot_id}: {e}")
-        if bot_entity:
-            entities.append(bot_entity)
-        if entities:
-            await client(InviteToChannelRequest(channel, entities))
-        if bot_entity:
-            try:
-                await client(EditAdminRequest(
-                    channel,
-                    bot_entity,
-                    admin_rights=ChatAdminRights(
-                        post_messages=True,
-                        edit_messages=True,
-                        delete_messages=True,
-                        ban_users=True,
-                    ),
-                    rank="Bot",
-                ))
-            except Exception as e:
-                print(f"[TempGroup] Could not promote bot: {e}")
-        return chat_id
+            result = await client(CreateChannelRequest(title=title, about="Temporary livestream reminder", megagroup=True))
+            channel = result.chats[0]
+            chat_id = -1000000000000 - channel.id
+            entities = []
+            for uid in user_ids:
+                try:
+                    entities.append(await client.get_entity(int(uid)))
+                except Exception as e:
+                    print(f"[TempGroup] Could not resolve user {uid}: {e}")
+            bot_entity = None
+            if bot_username:
+                try:
+                    bot_entity = await client.get_entity(bot_username)
+                except Exception as e:
+                    print(f"[TempGroup] Could not resolve bot @{bot_username}: {e}")
+            elif bot_id:
+                try:
+                    bot_entity = await client.get_entity(int(bot_id))
+                except Exception as e:
+                    print(f"[TempGroup] Could not resolve bot {bot_id}: {e}")
+            if bot_entity:
+                entities.append(bot_entity)
+            if entities:
+                await client(InviteToChannelRequest(channel, entities))
+            if bot_entity:
+                try:
+                    await client(EditAdminRequest(
+                        channel,
+                        bot_entity,
+                        admin_rights=ChatAdminRights(
+                            post_messages=True,
+                            edit_messages=True,
+                            delete_messages=True,
+                            ban_users=True,
+                        ),
+                        rank="Bot",
+                    ))
+                except Exception as e:
+                    print(f"[TempGroup] Could not promote bot: {e}")
+            return chat_id
 
-    return _run_sync(_create())
+        try:
+            return _run_sync(_create())
+        except Exception as e:
+            print(f"[TempGroup] Create failed: {e}")
+            return None
 
 
 def delete_group(chat_id):
-    client = get_client()
-    if not client:
-        return False
+    with _telethon_lock:
+        client = get_client()
+        if not client:
+            return False
 
-    async def _delete():
-        from telethon.tl.functions.channels import DeleteChannelRequest
-        from telethon.tl.types import PeerChannel
+        async def _delete():
+            from telethon.tl.functions.channels import DeleteChannelRequest
+            from telethon.tl.types import PeerChannel
 
-        numeric_chat_id = int(chat_id)
-        channel_id = -(numeric_chat_id + 1000000000000) if numeric_chat_id < -1000000000000 else abs(numeric_chat_id)
+            numeric_chat_id = int(chat_id)
+            channel_id = -(numeric_chat_id + 1000000000000) if numeric_chat_id < -1000000000000 else abs(numeric_chat_id)
+            try:
+                entity = await client.get_entity(PeerChannel(channel_id))
+                await client(DeleteChannelRequest(entity))
+                return True
+            except Exception as e:
+                print(f"[TempGroup] Delete failed for {chat_id}: {e}")
+                return False
+
         try:
-            entity = await client.get_entity(PeerChannel(channel_id))
-            await client(DeleteChannelRequest(entity))
-            return True
+            return _run_sync(_delete())
         except Exception as e:
             print(f"[TempGroup] Delete failed for {chat_id}: {e}")
             return False
-
-    return _run_sync(_delete())

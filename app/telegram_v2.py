@@ -68,6 +68,7 @@ ACTION_LABELS = {
     "decline": "🔴 Can't make it",
     "ack": "👍 Reminder acknowledged",
     "swap_accept": "🔄 Swap accepted",
+    "swap_cover": "✅ Voluntary cover",
     "swap_decline": "👍 Swap declined",
     "undo": "↩️ Undo",
     "pickup": "👀 Picking up…",
@@ -285,22 +286,42 @@ def _notify_admin_text(text):
         print(f"[Telegram] Admin notification failed: {e}")
 
 
-def _delete_temp_group_later(chat_id, delay=10):
+def _delete_temp_group_later(temp_chat_id, chat_id, delay=10, app=None):
     def _delete():
         time.sleep(delay)
-        telegram_temp_groups.delete_group(chat_id)
+        ok = False
+        for attempt in range(3):
+            ok = telegram_temp_groups.delete_group(chat_id)
+            if ok:
+                break
+            time.sleep(5 * (attempt + 1))
+        if app:
+            with app.app_context():
+                temp_chat = TempChat.query.get(temp_chat_id)
+                if temp_chat:
+                    temp_chat.status = "deleted" if ok else "delete_failed"
+                    db.session.commit()
+        if not ok:
+            print(f"[TempGroup] Scheduled delete failed for {chat_id}")
     threading.Thread(target=_delete, daemon=True).start()
 
 
 def _delete_temp_chat(temp_chat, delay=0):
     if not temp_chat or not temp_chat.chat_id:
-        return
-    temp_chat.status = "deleted"
+        return False
+    temp_chat.status = "deleting" if delay else temp_chat.status
     db.session.commit()
     if delay:
-        _delete_temp_group_later(temp_chat.chat_id, delay=delay)
-    else:
-        telegram_temp_groups.delete_group(temp_chat.chat_id)
+        try:
+            app = current_app._get_current_object()
+        except RuntimeError:
+            app = None
+        _delete_temp_group_later(temp_chat.id, temp_chat.chat_id, delay=delay, app=app)
+        return True
+    ok = telegram_temp_groups.delete_group(temp_chat.chat_id)
+    temp_chat.status = "deleted" if ok else "delete_failed"
+    db.session.commit()
+    return ok
 
 
 def _send_temp_group(kind, person, text, buttons, assignment=None, swap_request=None,
@@ -717,20 +738,30 @@ def send_shift_covered(event, assignment, helper_name, original_msg_id=None, cha
     return send_message(text, chat_id=target)
 
 
-def _find_future_swap_assignment(person, role, day_type, after_date):
-    return (
+def _compact_date(date_obj):
+    return f"{date_obj.strftime('%a %b')} {date_obj.day}"
+
+
+def _find_future_swap_assignment(person, role, day_type, after_date, original_person=None):
+    assignments = (
         Assignment.query.join(Event)
         .filter(
             Event.date > after_date,
             Event.day_type == day_type,
             Assignment.person == person,
-            Assignment.role == role,
             Assignment.status.in_(["pending", "confirmed"]),
             Assignment.cover.is_(None),
         )
         .order_by(Event.date)
-        .first()
+        .all()
     )
+    safe = []
+    for assignment in assignments:
+        if original_person and any((a.cover or a.person) == original_person for a in assignment.event.assignments):
+            continue
+        safe.append(assignment)
+    safe.sort(key=lambda a: (0 if a.role == role else 1, a.event.date))
+    return safe[0] if safe else None
 
 
 def _eligible_swap_members(assignment):
@@ -741,48 +772,41 @@ def _eligible_swap_members(assignment):
     for member in members:
         if member.name == assignment.person or not member.telegram_user_id:
             continue
-        roles = member.friday_roles if day_type == "Friday" else member.sunday_roles
-        if assignment.role not in roles:
-            continue
         if not is_available(member.name, event.date):
             continue
         if any((a.cover or a.person) == member.name for a in event.assignments):
             continue
-        future = _find_future_swap_assignment(member.name, assignment.role, day_type, event.date)
-        if future:
-            eligible.append((member.name, future))
+        future = _find_future_swap_assignment(member.name, assignment.role, day_type, event.date, assignment.person)
+        eligible.append((member.name, future))
     return eligible
 
 
 def _format_swap_request(assignment, recipient, future_assignment):
     event = assignment.event
-    future_event = future_assignment.event
     title = _event_title(event)
-    future_title = _event_title(future_event)
     icon = ROLE_EMOJI.get(assignment.role, "👤")
     return (
-        f"🔄 <b>Swap request</b>\n\n"
-        f"{assignment.person} can't make their livestream shift today.\n\n"
-        f"📅 <b>Needs coverage:</b>\n"
-        f"{title} - {_date_line(event.date)}\n"
-        f"{icon} Role: {assignment.role}\n\n"
-        f"Your next matching future shift is:\n\n"
-        f"📅 <b>Your shift:</b>\n"
-        f"{future_title} - {_date_line(future_event.date)}\n"
-        f"{icon} Role: {future_assignment.role}\n\n"
-        f"Would you like to swap?\n\n"
-        f"If you accept:\n"
-        f"- You serve today instead of {assignment.person}.\n"
-        f"- {assignment.person} takes your future shift on {_short_date(future_event.date)}."
+        f"🔄 <b>Coverage needed</b>\n\n"
+        f"{assignment.person} can’t make his livestream shift.\n\n"
+        f"{title} - {_compact_date(event.date)}\n"
+        f"{icon} Role: {assignment.role}"
     )
 
 
-def _swap_buttons(swap_request, future_assignment):
-    return [
-        [{"text": f"✅ Yes, swap with {swap_request.requestor}", "callback_data": f"swap_accept:{swap_request.id}:{future_assignment.id}"}],
-        [{"text": "❌ No, I'm good", "callback_data": f"swap_decline:{swap_request.id}"}],
-        [_schedule_button("📅 Open Schedule", person=future_assignment.person)],
+def _swap_buttons(swap_request, recipient, future_assignment):
+    buttons = [
+        [{"text": "✅ I can cover it voluntarily", "callback_data": f"swap_cover:{swap_request.id}"}],
     ]
+    if future_assignment:
+        buttons.append([{
+            "text": f"🔄 Swap with my {future_assignment.role} - {_short_date(future_assignment.event.date)} shift",
+            "callback_data": f"swap_accept:{swap_request.id}:{future_assignment.id}",
+        }])
+    buttons.extend([
+        [{"text": "❌ No, I'm good", "callback_data": f"swap_decline:{swap_request.id}"}],
+        [_schedule_button("📅 Open Schedule", person=recipient)],
+    ])
+    return buttons
 
 
 def send_swap_request_temp_groups(assignment, swap_request):
@@ -792,7 +816,7 @@ def send_swap_request_temp_groups(assignment, swap_request):
             "swap_request",
             recipient,
             _format_swap_request(assignment, recipient, future_assignment),
-            _swap_buttons(swap_request, future_assignment),
+            _swap_buttons(swap_request, recipient, future_assignment),
             assignment=assignment,
             swap_request=swap_request,
             future_assignment=future_assignment,
@@ -916,12 +940,12 @@ def handle_callback_query(data):
         _delete_temp_chat(temp_chat, delay=10)
         return
 
-    if action in ("swap_accept", "swap_decline"):
+    if action in ("swap_cover", "swap_accept", "swap_decline"):
         swap_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
         swap = SwapRequest.query.get(swap_id) if swap_id else None
         if not swap or swap.status != "active":
             answer_callback(callback_id, "This shift has already been covered. Thanks!", show_alert=True)
-            temp_chat = TempChat.query.filter_by(chat_id=str(chat_id), status="active").first()
+            temp_chat = TempChat.query.filter_by(chat_id=str(chat_id)).order_by(TempChat.id.desc()).first()
             if temp_chat:
                 edit_message(chat_id, message_id, "✅ <b>Already covered</b>\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
                 _delete_temp_chat(temp_chat, delay=10)
@@ -941,12 +965,50 @@ def handle_callback_query(data):
             edit_message(chat_id, message_id, "👍 <b>No problem</b>\n\nThanks for letting us know.\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
             _delete_temp_chat(temp_chat, delay=10)
             return
+        original_person = assignment.person
+        if action == "swap_cover":
+            assignment.cover = person_name
+            assignment.status = "confirmed"
+            swap.status = "accepted"
+            swap.accepted_by = person_name
+            swap.accepted_at = datetime.datetime.utcnow()
+            swap.reschedule_event_date = None
+            swap.reschedule_notes = f"{person_name} voluntarily covered {event.date}; no future shift changed"
+            _log_interaction(telegram_user_id, first_name, "swap_cover", person_name, assignment, event)
+            db.session.commit()
+            _notify_admin_text(f"✅ {person_name} volunteered to cover {original_person}\n{_event_title(event)} · {assignment.role}")
+            answer_callback(callback_id, f"Thanks {person_name} - you're covering it. ✅", show_alert=True)
+            edit_message(chat_id, message_id, (
+                f"✅ <b>Covered voluntarily</b>\n\n"
+                f"Thanks {person_name}!\n\n"
+                f"You are now covering:\n\n"
+                f"📅 <b>{_event_title(event)}</b>\n"
+                f"🗓 {_date_line(event.date)}\n"
+                f"{ROLE_EMOJI.get(assignment.role, '👤')} Role: {assignment.role}\n\n"
+                f"Your future shifts stay unchanged.\n\n"
+                f"<i>This chat will auto-destruct in 10 seconds.</i>"
+            ))
+            refresh_event_telegram(event)
+            for other in TempChat.query.filter(
+                TempChat.swap_request_id == swap.id,
+                TempChat.status == "active",
+                TempChat.chat_id != str(chat_id),
+            ).all():
+                if other.message_id:
+                    edit_message(other.chat_id, other.message_id, (
+                        f"✅ <b>Covered</b>\n\n"
+                        f"{person_name} volunteered to cover {original_person}, so this shift is taken care of.\n\n"
+                        f"Thanks for being available!\n\n"
+                        f"<i>This chat will auto-destruct in 10 seconds.</i>"
+                    ))
+                _delete_temp_chat(other, delay=10)
+            _delete_temp_chat(temp_chat, delay=10)
+            return
         future_assignment_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         future_assignment = Assignment.query.get(future_assignment_id) if future_assignment_id else None
         if not future_assignment:
             answer_callback(callback_id, "❌ Future shift not found", show_alert=True)
             return
-        original_person = assignment.person
         future_event = future_assignment.event
         assignment.cover = person_name
         assignment.status = "confirmed"
@@ -976,6 +1038,7 @@ def handle_callback_query(data):
             f"<i>This chat will auto-destruct in 10 seconds.</i>"
         ))
         refresh_event_telegram(event)
+        refresh_event_telegram(future_event)
         for other in TempChat.query.filter(
             TempChat.swap_request_id == swap.id,
             TempChat.status == "active",
