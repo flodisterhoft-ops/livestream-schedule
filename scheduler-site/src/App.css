@@ -639,14 +639,16 @@ body {
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    color 0.36s cubic-bezier(.2,.8,.2,1),
+    border-color 0.36s cubic-bezier(.2,.8,.2,1),
+    background 0.18s ease;
 }
 
 .month-pill.active {
   background: transparent;
   color: white;
-  border-color: var(--accent);
-  transition: color 0.18s ease 0.06s, border-color 0.18s ease;
+  border-color: transparent;
 }
 
 .month-pill.past {
