@@ -274,12 +274,14 @@ export default function App() {
           )}
         </div>
         <div className="header-actions">
-          {isManager && (
+          {isAdmin && (
             <button
-              className="icon-btn primary"
+              className={`icon-btn primary manager-only ${isManager ? 'visible' : ''}`}
               onClick={() => setShowCreate(true)}
               title="New event"
               aria-label="Create event"
+              tabIndex={isManager ? 0 : -1}
+              aria-hidden={!isManager}
             >
               {'+'}
             </button>
@@ -309,6 +311,7 @@ export default function App() {
         schedule={visibleSchedule}
         months={months}
         activeMonth={activeMonth}
+        isAdmin={isAdmin}
         onMonthChange={setSelectedMonth}
         user={user}
         isManager={isManager}
@@ -338,24 +341,8 @@ export default function App() {
 //  Schedule Tab
 // ═══════════════════════════════════════════════════════════════
 
-function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isManager, doAction, showFlash, loadSchedule, team }) {
+function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team }) {
   const [expandedYears, setExpandedYears] = useState({})
-  const navRef = useRef(null)
-  const [indicator, setIndicator] = useState(null)
-  useEffect(() => {
-    const measure = () => {
-      const nav = navRef.current
-      if (!nav) return
-      const active = nav.querySelector('.month-pill.active')
-      if (!active) { setIndicator(null); return }
-      const navRect = nav.getBoundingClientRect()
-      const r = active.getBoundingClientRect()
-      setIndicator({ x: r.left - navRect.left, y: r.top - navRect.top, w: r.width, h: r.height })
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [activeMonth, expandedYears, months.length, schedule.length])
 
   const handleNotify = async (date) => {
     try {
@@ -427,18 +414,7 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
   return (
     <div className="schedule-tab">
       {/* Month navigation */}
-      <div className="month-nav" ref={navRef}>
-        {indicator && (
-          <span
-            className="month-indicator"
-            style={{
-              transform: `translate(${indicator.x}px, ${indicator.y}px)`,
-              width: indicator.w,
-              height: indicator.h,
-            }}
-            aria-hidden="true"
-          />
-        )}
+      <div className="month-nav">
         {pastYears.map(year => {
           const yearMonths = monthGroups[year]
           const hasActiveMonth = yearMonths.includes(activeMonth)
@@ -474,6 +450,7 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
             key={event.date}
             event={event}
             user={user}
+            isAdmin={isAdmin}
             isManager={isManager}
             doAction={doAction}
             onNotify={() => handleNotify(event.date)}
@@ -491,7 +468,7 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
 //  Event Card
 // ═══════════════════════════════════════════════════════════════
 
-function EventCard({ event, user, isManager, doAction, onNotify, onAssign, onEventUpdate, teamNames }) {
+function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, teamNames }) {
   const [editingEvent, setEditingEvent] = useState(false)
   const [editType, setEditType] = useState(event.day_type === 'Sunday' ? 'Sunday' : event.day_type === 'Friday' ? 'Bible Study' : 'Other')
   const [editTitle, setEditTitle] = useState(event.custom_title || event.title || '')
@@ -567,8 +544,14 @@ function EventCard({ event, user, isManager, doAction, onNotify, onAssign, onEve
             {event.title}
             {isToday && <span className="today-pill">TODAY</span>}
           </TitleTag>
-          {isManager && !event.is_past && (
-            <button className="notify-btn" onClick={onNotify} title="Send Telegram reminder">
+          {isAdmin && !event.is_past && (
+            <button
+              className={`notify-btn manager-only ${isManager ? 'visible' : ''}`}
+              onClick={onNotify}
+              title="Send Telegram reminder"
+              tabIndex={isManager ? 0 : -1}
+              aria-hidden={!isManager}
+            >
               <span aria-hidden="true">{'\uD83D\uDCE8'}</span>
               <span className="notify-btn-label">Notify</span>
             </button>
