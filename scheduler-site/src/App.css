@@ -113,6 +113,16 @@ body {
   align-items: center;
 }
 
+.user-chip {
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .manager-chip {
   position: relative;
   padding: 4px 9px;
@@ -157,6 +167,34 @@ body {
 
 .icon-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
 .icon-btn.active { background: var(--accent-light); border-color: var(--accent); }
+
+.manager-toggle {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--text);
+  transition: all 0.15s ease;
+}
+
+.manager-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.manager-toggle.active {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .icon-btn-sm {
   width: 32px;

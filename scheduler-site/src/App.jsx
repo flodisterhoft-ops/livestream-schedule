@@ -52,6 +52,7 @@ async function api(path, opts = {}) {
 
 export default function App() {
   const [user, setUser] = useState(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [isManager, setIsManager] = useState(false)
   const [schedule, setSchedule] = useState([])
   const [team, setTeam] = useState([])
@@ -77,6 +78,7 @@ export default function App() {
     const token = urlToken || storedToken
     const finish = (d) => {
       setUser(d.name || null)
+      setIsAdmin(Boolean(d.is_admin))
       setIsManager(Boolean(d.is_manager))
     }
     const clearAuthParam = () => {
@@ -132,6 +134,7 @@ export default function App() {
   const handleLogout = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => {})
     setUser(null)
+    setIsAdmin(false)
     setIsManager(false)
   }
 
@@ -147,6 +150,7 @@ export default function App() {
         body: JSON.stringify({ token }),
       })
       setUser(d.name || null)
+      setIsAdmin(Boolean(d.is_admin))
       setIsManager(Boolean(d.is_manager))
       setHasSavedAuth(true)
     } catch (e) {
@@ -241,7 +245,8 @@ export default function App() {
       <header className={`app-header ${headerStuck ? 'is-stuck' : ''}`}>
         <h1 className="app-title">Livestream Schedule</h1>
         <div className="header-actions">
-          {isManager && <span className="manager-chip">Manager</span>}
+          {user && <span className="user-chip">{user}</span>}
+          {isManager && <span className="manager-chip">Manager On</span>}
           {isManager && (
             <button
               className="icon-btn primary"
@@ -252,13 +257,15 @@ export default function App() {
               {'+'}
             </button>
           )}
-          {user === 'Florian' && (
+          {isAdmin && (
             <button
-              className={`icon-btn ${isManager ? 'active' : ''}`}
+              className={`manager-toggle ${isManager ? 'active' : ''}`}
               onClick={toggleManager}
               title={isManager ? 'Exit Manager' : 'Manager Mode'}
+              aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
             >
-              {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD12'}
+              <span>{isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD12'}</span>
+              <span>{isManager ? 'Manager' : 'Admin'}</span>
             </button>
           )}
           {!user && hasSavedAuth && (

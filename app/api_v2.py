@@ -71,7 +71,7 @@ def token_login():
         return jsonify({"error": "Unknown team member"}), 400
 
     session["user_name"] = name
-    session["manager"] = bool(payload.get("manager")) and name == "Florian"
+    session["manager"] = name == "Florian"
     session.permanent = True
     return jsonify({"name": name, "is_admin": name == "Florian", "is_manager": bool(session.get("manager"))})
 
@@ -86,6 +86,8 @@ def logout():
 @api_v2.route("/auth/me")
 def me():
     name = session.get("user_name")
+    if name == "Florian" and not session.get("manager"):
+        session["manager"] = True
     is_manager = bool(session.get("manager"))
     return jsonify({
         "name": name,
