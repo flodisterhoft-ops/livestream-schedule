@@ -100,7 +100,7 @@ def _notify_admin(action, person_name, assignment=None, event=None):
     if not PERSONAL_CHAT_ID:
         return
     label = ACTION_LABELS.get(action, action)
-    parts = [f"🔔 <b>{label}</b> — {person_name}"]
+    parts = [f"🔔 <b>{label}</b> - {person_name}"]
     if event:
         title = event.custom_title or event.day_type
         parts.append(f"📆 {title} · {event.date.strftime('%b %d')}")
@@ -386,7 +386,7 @@ def _build_event_buttons(event, assignments=None, expanded_id=None):
 
         # ── Collapsed: single-button row showing status + name ──
         if a.status == "confirmed":
-            label = f"✅ {worker} — Confirmed"
+            label = f"✅ {worker} - Confirmed"
         elif a.status == "swap_needed":
             label = f"🔴 {worker} NEEDS COVERAGE"
         else:
@@ -451,7 +451,7 @@ def format_event_message(event, header=None):
     date_str = event.date.strftime("%A, %B %d, %Y")
     lines = [
         "🙏 <b>Today is your turn on the livestream team!</b>",
-        f"📅 {title} — {date_str}",
+        f"📅 {title} - {date_str}",
         "",
         "<i>Tap your name to confirm or let us know if you can't make it.</i>",
     ]
@@ -470,12 +470,12 @@ def format_today_group_post(event):
         icon = _role_icon(assignment, i)
         worker = _worker_name(assignment)
         if assignment.status == "swap_needed":
-            lines.append(f"{icon} {assignment.role} — 🔴 <s>{assignment.person}</s> needs coverage")
+            lines.append(f"{icon} {assignment.role} - 🔴 <s>{assignment.person}</s> needs coverage")
         elif assignment.cover:
-            lines.append(f"{icon} {assignment.role} — <s>{assignment.person}</s> → now swapped with {assignment.cover}")
+            lines.append(f"{icon} {assignment.role} - <s>{assignment.person}</s> -> now swapped with {assignment.cover}")
         else:
             prefix = "✅ " if assignment.status == "confirmed" else ""
-            lines.append(f"{icon} {assignment.role} — {prefix}{worker}")
+            lines.append(f"{icon} {assignment.role} - {prefix}{worker}")
     if any(a.cover for a in event.assignments):
         helper = next((a.cover for a in event.assignments if a.cover), None)
         lines.extend(["", f"Thank you {helper} for helping cover. 🙏"])
@@ -503,7 +503,7 @@ def format_weekday_ack_reminder(event, assignment):
     if pending:
         lines.extend(["We didn't get a response from you yet.", "", "You are scheduled tonight:", ""])
     for i, a in enumerate(event.assignments):
-        lines.append(f"{_role_icon(a, i)} {a.role} — {_worker_name(a)}")
+        lines.append(f"{_role_icon(a, i)} {a.role} - {_worker_name(a)}")
     lines.extend(["", "See you tonight!"])
     return "\n".join(lines)
 
@@ -551,7 +551,7 @@ def format_monthly_schedule(year, month):
         Event.date >= start, Event.date <= end
     ).order_by(Event.date).all()
 
-    lines = [f"📅 <b>{month_name} {year} — Livestream Schedule</b>", ""]
+    lines = [f"📅 <b>{month_name} {year} - Livestream Schedule</b>", ""]
 
     if not events:
         lines.append("<i>No events scheduled yet.</i>")
@@ -560,7 +560,7 @@ def format_monthly_schedule(year, month):
     for event in events:
         title = event.custom_title or ("Bible Study" if event.day_type == "Friday" else "Sunday Service")
         day = event.date.strftime("%a %d")
-        lines.append(f"<b>{day}</b> — {title}")
+        lines.append(f"<b>{day}</b> - {title}")
 
         is_friday = event.day_type == "Friday"
         for i, a in enumerate(event.assignments):
@@ -658,7 +658,7 @@ def send_swap_needed(event, assignment, chat_id=None, pickup_url=None):
     text = (
         f"🔴 <b>Coverage Needed!</b>\n\n"
         f"{assignment.person} can't make it:\n"
-        f"📆 <b>{title}</b> — {date_str}\n"
+        f"📆 <b>{title}</b> - {date_str}\n"
         f"{role_icon} <b>{assignment.role}</b>\n"
     )
 
@@ -686,7 +686,7 @@ def send_shift_covered(event, assignment, helper_name, original_msg_id=None, cha
     text = (
         f"✅ <b>Shift Covered!</b>\n\n"
         f"{helper_name} will cover:\n"
-        f"📆 <b>{title}</b> — {date_str}\n"
+        f"📆 <b>{title}</b> - {date_str}\n"
         f"{role_icon} <b>{assignment.role}</b>\n\n"
         f"Thank you {helper_name}! 🎉"
     )
@@ -747,11 +747,11 @@ def _format_swap_request(assignment, recipient, future_assignment):
         f"🔄 <b>Swap request</b>\n\n"
         f"{assignment.person} can't make their livestream shift today.\n\n"
         f"📅 <b>Needs coverage:</b>\n"
-        f"{title} — {_date_line(event.date)}\n"
+        f"{title} - {_date_line(event.date)}\n"
         f"{icon} Role: {assignment.role}\n\n"
         f"Your next matching future shift is:\n\n"
         f"📅 <b>Your shift:</b>\n"
-        f"{future_title} — {_date_line(future_event.date)}\n"
+        f"{future_title} - {_date_line(future_event.date)}\n"
         f"{icon} Role: {future_assignment.role}\n\n"
         f"Would you like to swap?\n\n"
         f"If you accept:\n"
@@ -848,7 +848,7 @@ def handle_callback_query(data):
             answer_callback(callback_id, "Thanks for confirming! 😊", show_alert=True)
             edit_message(chat_id, message_id, (
                 f"✅ <b>Confirmed</b>\n\n"
-                f"Thanks {assignment.person} — you're marked as coming for {_event_title(event)} today.\n\n"
+                f"Thanks {assignment.person} - you're marked as coming for {_event_title(event)} today.\n\n"
                 f"<i>This chat will auto-destruct in 10 seconds.</i>"
             ))
             refresh_event_telegram(event)
@@ -888,7 +888,7 @@ def handle_callback_query(data):
         _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event)
         db.session.commit()
         _notify_admin_text(f"❌ {assignment.person} can't make it\n{_event_title(event)} · {assignment.role}")
-        answer_callback(callback_id, "Got it — we'll ask the team if someone can swap with you.", show_alert=True)
+        answer_callback(callback_id, "Got it - we'll ask the team if someone can swap with you.", show_alert=True)
         edit_message(chat_id, message_id, (
             "Thanks for letting us know.\n\n"
             "We'll ask the team if someone can swap into your shift today.\n\n"
@@ -920,7 +920,7 @@ def handle_callback_query(data):
             _log_interaction(telegram_user_id, first_name, "swap_decline", person_name, assignment, event)
             db.session.commit()
             _notify_admin_text(f"👍 {person_name} declined swap\n{_event_title(event)} · {assignment.role}")
-            answer_callback(callback_id, "No problem — thanks for responding.", show_alert=True)
+            answer_callback(callback_id, "No problem - thanks for responding.", show_alert=True)
             edit_message(chat_id, message_id, "👍 <b>No problem</b>\n\nThanks for letting us know.\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
             _delete_temp_chat(temp_chat, delay=10)
             return
@@ -944,7 +944,7 @@ def handle_callback_query(data):
         _log_interaction(telegram_user_id, first_name, "swap_accept", person_name, assignment, event)
         db.session.commit()
         _notify_admin_text(f"🔄 {person_name} swapped with {original_person}\n{_event_title(event)} · {assignment.role}")
-        answer_callback(callback_id, f"Thanks {person_name} — swap completed. ✅", show_alert=True)
+        answer_callback(callback_id, f"Thanks {person_name} - swap completed. ✅", show_alert=True)
         edit_message(chat_id, message_id, (
             f"✅ <b>Swap confirmed</b>\n\n"
             f"Thanks {person_name}!\n\n"
@@ -1054,7 +1054,7 @@ def handle_callback_query(data):
             if hasattr(deadline_local, "strftime") else str(deadline_local)
         answer_callback(
             callback_id,
-            f"Got it — {person_name} can't make it. The shift is now open for someone "
+            f"Got it - {person_name} can't make it. The shift is now open for someone "
             f"else to pick up by {deadline_str}. You can undo anytime before the deadline.",
             show_alert=True,
         )
