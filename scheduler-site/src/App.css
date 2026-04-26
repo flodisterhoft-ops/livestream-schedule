@@ -638,19 +638,27 @@ body {
   padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  background: var(--bg-card);
+  background-image: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    var(--accent) 50%,
+    var(--bg-card) 50%,
+    var(--bg-card) 100%
+  );
+  background-size: 200% 100%;
+  background-position: 100% 0;
   color: var(--text-secondary);
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
   transition:
-    background 0.32s cubic-bezier(.2,.8,.2,1),
-    color 0.32s cubic-bezier(.2,.8,.2,1),
-    border-color 0.32s cubic-bezier(.2,.8,.2,1);
+    background-position 0.45s cubic-bezier(.2,.8,.2,1),
+    color 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .month-pill.active {
-  background: var(--accent);
+  background-position: 0% 0;
   color: white;
   border-color: var(--accent);
 }
