@@ -16,9 +16,9 @@ import uuid
 import datetime
 import hashlib
 import requests
-from .models import Event, Assignment, PickupToken, TeamMember, InteractionLog
+from .models import Event, Assignment, PickupToken, TeamMember, InteractionLog, SwapRequest
 from .extensions import db
-from .utils import vancouver_today, vancouver_now
+from .utils import vancouver_today, vancouver_now, VANCOUVER_TZ
 
 # ── Configuration ────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -30,21 +30,23 @@ BASE_API = "https://api.telegram.org/bot"
 
 # ── Emoji maps ───────────────────────────────────────────────────────
 ROLE_EMOJI = {
-    "Computer": "🖥",
-    "Camera 1": "📹",
-    "Camera 2": "📹",
+    "Computer": "🖥️",
+    "Camera 1": "🎦1️⃣",
+    "Camera 2": "🎦2️⃣",
+    "Camera": "🎦",
     "Leader": "🎤",
     "Helper": "🙌",
 }
 
 # Friday Bible Study: first person gets computer icon, second gets hands icon
-FRIDAY_ICONS = ["🖥", "🙌"]
+FRIDAY_ICONS = ["🖥️", "🙌"]
 
 # Short display names for roles
 ROLE_SHORT = {
     "Computer": "PC",
     "Camera 1": "Cam 1",
     "Camera 2": "Cam 2",
+    "Camera": "Cam",
     "Leader": "Leader",
     "Helper": "Helper",
 }
@@ -202,80 +204,84 @@ def _make_inline_keyboard(buttons_rows):
 
 def _build_event_buttons(event, assignments=None, expanded_id=None):
     """
-    Build confirmation/decline buttons for an event.
-    Initially shows just the person's name. Clicking the name expands options.
-    Always adds a 'Show full schedule' button at the bottom.
+    Build the collapsed/expand-on-click keyboard for an event.
+
+    Default (collapsed) — one button per assignment, row = [🖥️ Andy]
+      pending    → label: "🖥️ Andy"            (tap → expand to confirm/decline)
+      confirmed  → label: "✅ Andy — Confirmed" (tap → expand to undo)
+      swap_need  → label: "🔴 Andy NEEDS COVER" (tap → expand to undo/pickup)
+
+    Expanded — the tapped row becomes an action menu:
+      pending   : [✅ Confirm]  [❌ Can't make it]  [⬅️ Back]
+      confirmed : [↩️ Undo]                          [⬅️ Back]
+      swap_need : [🙋 I can cover] [↩️ Undo]        [⬅️ Back]
+
+    Always appends a "Show Schedule" URL button at the bottom.
     """
     if assignments is None:
         assignments = event.assignments
 
     rows = []
-    for a in assignments:
+    is_friday = event.day_type == "Friday"
+
+    for i, a in enumerate(assignments):
         if a.person in ("TBD", "Select Helper"):
             continue
 
         worker = a.cover if a.cover else a.person
-        role_icon = ROLE_EMOJI.get(a.role, "👤")
-        role_name = ROLE_SHORT.get(a.role, a.role)
-        status_icon = STATUS_EMOJI.get(a.status, "⏳")
 
-        if a.status == "confirmed":
-            if expanded_id == a.id:
-                rows.append([
-                    {"text": f"↩️ Undo",
-                     "callback_data": f"undo:{a.id}"},
-                    {"text": f"⬅️ Back",
-                     "callback_data": f"collapse:{a.id}"}
-                ])
-            else:
-                rows.append([
-                    {"text": f"✅ {worker} — Confirmed",
-                     "callback_data": f"expand:{a.id}"}
-                ])
-            
-        elif a.status == "swap_needed":
-            if expanded_id == a.id:
-                rows.append([
-                    {"text": f"🙋 I can cover this!",
-                     "callback_data": f"pickup:{a.id}"},
-                ])
-                rows.append([
-                    {"text": f"⬅️ Back",
-                     "callback_data": f"collapse:{a.id}"}
-                ])
-            else:
-                rows.append([
-                    {"text": f"🔴 {role_name} — NEEDS COVERAGE",
-                     "callback_data": f"expand:{a.id}"},
-                ])
+        if is_friday:
+            role_icon = FRIDAY_ICONS[i] if i < len(FRIDAY_ICONS) else "🙌"
         else:
-            # Pending status
-            if expanded_id == a.id:
-                rows.append([
-                    {"text": f"✅ Confirm",
-                     "callback_data": f"confirm:{a.id}"},
-                ])
-                rows.append([
-                    {"text": f"⬅️ Back",
-                     "callback_data": f"collapse:{a.id}"},
-                    {"text": f"❌ Can't make it",
-                     "callback_data": f"decline:{a.id}"},
-                ])
-            else:
-                # Not expanded — show icon + name button
-                rows.append([
-                    {"text": f"{role_icon} {worker}",
-                     "callback_data": f"expand:{a.id}"},
-                ])
+            role_icon = ROLE_EMOJI.get(a.role, "👤")
 
-    # Show full schedule button at the bottom
-    from config import Config
-    base_url = getattr(Config, 'BASE_URL', 'https://livestream-schedule.onrender.com') 
-    # Use BASE_URL if set, else generic. Or simply use the configured flask app
+        # ── Expanded: show action buttons for the tapped row ──
+        if expanded_id == a.id:
+            if a.status == "confirmed":
+                rows.append([
+                    {"text": "↩️ Undo",  "callback_data": f"undo:{a.id}"},
+                    {"text": "⬅️ Back",  "callback_data": f"collapse:{a.id}"},
+                ])
+            elif a.status == "swap_needed":
+                rows.append([
+                    {"text": "🙋 I can cover", "callback_data": f"pickup:{a.id}"},
+                ])
+                rows.append([
+                    {"text": "↩️ Undo",  "callback_data": f"undo:{a.id}"},
+                    {"text": "⬅️ Back",  "callback_data": f"collapse:{a.id}"},
+                ])
+            else:  # pending
+                rows.append([
+                    {"text": "✅ Yes, I'll be there",  "callback_data": f"confirm:{a.id}"},
+                ])
+                rows.append([
+                    {"text": "❌ Can't make it",       "callback_data": f"decline:{a.id}"},
+                    {"text": "⬅️ Back",                "callback_data": f"collapse:{a.id}"},
+                ])
+            continue
+
+        # ── Collapsed: single-button row showing status + name ──
+        if a.status == "confirmed":
+            label = f"✅ {worker} — Confirmed"
+        elif a.status == "swap_needed":
+            label = f"🔴 {worker} NEEDS COVERAGE"
+        else:
+            label = f"{role_icon} {worker}"
+
+        rows.append([
+            {"text": label, "callback_data": f"expand:{a.id}"},
+        ])
+
+    # "Show Schedule" button at the bottom (always present)
     from flask import current_app
-    site_url = current_app.config.get('BASE_URL', 'https://livestream.disterhoft.com') if current_app else base_url
+    site_url = "https://livestream.disterhoft.com"
+    try:
+        if current_app:
+            site_url = current_app.config.get('BASE_URL', site_url)
+    except RuntimeError:
+        pass
     rows.append([
-        {"text": "📅 Show full schedule", "url": site_url}
+        {"text": "📅 Show Schedule", "url": site_url}
     ])
 
     return _make_inline_keyboard(rows) if rows else None
@@ -301,7 +307,14 @@ def _build_pickup_buttons(assignment):
 # ═══════════════════════════════════════════════════════════════════
 
 def format_event_message(event, header=None):
-    """Format an event into a rich Telegram message with role icons and statuses."""
+    """Format a short header for the 8 AM reminder.
+
+    Example:
+        🙏 Today is your turn on the livestream team!
+        📅 Sunday Service — April 19, 2026
+
+        Tap your name to confirm or let us know if you can't make it.
+    """
     title = event.custom_title
     if not title:
         if event.day_type == "Friday":
@@ -311,46 +324,33 @@ def format_event_message(event, header=None):
         else:
             title = "Event"
 
-    date_str = event.date.strftime("%A, %B %d")
-
-    lines = []
-    if header:
-        lines.append(f"<b>{header}</b>")
-    lines.append(f"🗓️ <b>{title}</b> — {date_str}")
-    lines.append("")
-
-    is_friday = event.day_type == "Friday"
-    for i, a in enumerate(event.assignments):
-        worker = a.cover if a.cover else a.person
-
-        if is_friday:
-            icon = FRIDAY_ICONS[i] if i < len(FRIDAY_ICONS) else "🙌"
-            if a.status == "swap_needed":
-                lines.append(f"{icon} <b>NEEDS COVERAGE</b> 🔴")
-            elif worker in ("TBD", "Select Helper"):
-                lines.append(f"{icon} <i>TBD</i>")
-            else:
-                confirmed = "✅ " if a.status == "confirmed" else ""
-                lines.append(f"{icon} {confirmed}{worker}")
-        else:
-            role_icon = ROLE_EMOJI.get(a.role, "👤")
-            if a.status == "swap_needed":
-                lines.append(f"{role_icon} <b>NEEDS COVERAGE</b> 🔴")
-            elif worker in ("TBD", "Select Helper"):
-                lines.append(f"{role_icon} <i>Unassigned</i>")
-            else:
-                confirmed = "✅ " if a.status == "confirmed" else ""
-                if a.cover:
-                    lines.append(f"{role_icon} {confirmed}{worker} <i>(covering for {a.person})</i>")
-                else:
-                    lines.append(f"{role_icon} {confirmed}{worker}")
-
-    swap_count = sum(1 for a in event.assignments if a.status == "swap_needed")
-    if swap_count:
-        lines.append("")
-        lines.append(f"⚠️ {swap_count} position(s) still need coverage!")
-
+    date_str = event.date.strftime("%A, %B %d, %Y")
+    lines = [
+        "🙏 <b>Today is your turn on the livestream team!</b>",
+        f"📅 {title} — {date_str}",
+        "",
+        "<i>Tap your name to confirm or let us know if you can't make it.</i>",
+    ]
     return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Deadline helpers
+# ═══════════════════════════════════════════════════════════════════
+
+def compute_pickup_deadline(event_date, day_type):
+    """Return the Vancouver datetime by which an open shift must be picked up.
+
+    - Sunday events    → 16:00 Vancouver
+    - All other events → 21:00 Vancouver
+    """
+    if day_type == "Sunday" or event_date.weekday() == 6:
+        hour = 16
+    else:
+        hour = 21
+    return datetime.datetime.combine(
+        event_date, datetime.time(hour=hour, minute=0), tzinfo=VANCOUVER_TZ
+    )
 
 
 def format_monthly_schedule(year, month):
@@ -560,19 +560,52 @@ def handle_callback_query(data):
         _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
         db.session.commit()
         _notify_admin("confirm", person_name, assignment, event)
-        answer_callback(callback_id, f"✅ {person_name} confirmed!")
+        answer_callback(
+            callback_id,
+            f"🙏 Thank you for confirming, {person_name}! See you there.",
+            show_alert=True,
+        )
 
     elif action == "decline":
         assignment.status = "swap_needed"
         h = assignment.history
         h.append({"action": "decline", "by": person_name, "via": "telegram", "ts": str(vancouver_now())})
         assignment.history = h
+
+        # Create a SwapRequest with the appropriate deadline
+        deadline_local = compute_pickup_deadline(event.date, event.day_type)
+        deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        # Don't duplicate if one is already active
+        existing = SwapRequest.query.filter_by(
+            assignment_id=assignment.id, status="active"
+        ).first()
+        if existing:
+            swap = existing
+        else:
+            swap = SwapRequest(
+                assignment_id=assignment.id,
+                requestor=person_name,
+                event_date=event.date,
+                role=assignment.role,
+                expires_at=deadline_utc,
+                status="active",
+            )
+            db.session.add(swap)
+
         _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event)
         db.session.commit()
         _notify_admin("decline", person_name, assignment, event)
-        answer_callback(callback_id, f"🔴 Marked as unavailable. Others will be notified.")
 
-        # Send a separate swap-needed alert with pickup buttons
+        deadline_str = deadline_local.strftime("%a %b %d at %-I:%M %p") \
+            if hasattr(deadline_local, "strftime") else str(deadline_local)
+        answer_callback(
+            callback_id,
+            f"Got it — {person_name} can't make it. The shift is now open for someone "
+            f"else to pick up by {deadline_str}. You can undo anytime before the deadline.",
+            show_alert=True,
+        )
+
+        # Broadcast a separate swap-needed alert so everyone can pick it up
         send_swap_needed(event, assignment, chat_id=chat_id)
 
     elif action == "undo":
@@ -581,6 +614,12 @@ def handle_callback_query(data):
             assignment.status = "swap_needed"
         elif assignment.status == "swap_needed":
             assignment.status = "confirmed"
+            # Undo of a previous decline — cancel the active swap request
+            active_swap = SwapRequest.query.filter_by(
+                assignment_id=assignment.id, status="active"
+            ).first()
+            if active_swap:
+                active_swap.status = "cancelled"
         elif assignment.status == "confirmed":
             assignment.status = "pending"
         h = assignment.history
@@ -607,6 +646,16 @@ def handle_callback_query(data):
         h = assignment.history
         h.append({"action": "pickup", "by": cover_name, "via": "telegram", "ts": str(vancouver_now())})
         assignment.history = h
+
+        # Close out any active swap request for this assignment
+        active_swap = SwapRequest.query.filter_by(
+            assignment_id=assignment.id, status="active"
+        ).first()
+        if active_swap:
+            active_swap.status = "accepted"
+            active_swap.accepted_by = cover_name
+            active_swap.accepted_at = datetime.datetime.utcnow()
+
         _log_interaction(telegram_user_id, first_name, "pickup_as", cover_name, assignment, event,
                          details=f"Covered by {cover_name}")
         db.session.commit()
@@ -712,6 +761,78 @@ def send_daily_reminders_v2(chat_id=None):
         if send_event_reminder(event, chat_id=chat_id):
             sent += 1
     return sent
+
+
+def sweep_expired_swaps(chat_id=None):
+    """Expire any SwapRequests past their deadline and auto-reschedule.
+
+    Called hourly by APScheduler. For each SwapRequest that:
+      - is still 'active'
+      - has expires_at <= now (UTC)
+    we:
+      1. Mark it 'expired'
+      2. Run reschedule_declined() for the requestor
+      3. DM the admin with the outcome
+      4. Notify the requestor on their original Telegram message
+    Returns the number of expired swaps processed.
+    """
+    from .scheduler_v2 import reschedule_declined
+
+    now_utc = datetime.datetime.utcnow()
+    expired = SwapRequest.query.filter(
+        SwapRequest.status == "active",
+        SwapRequest.expires_at <= now_utc,
+    ).all()
+
+    processed = 0
+    for swap in expired:
+        swap.status = "expired"
+        try:
+            result = reschedule_declined(
+                requestor=swap.requestor,
+                original_event_date=swap.event_date,
+                role=swap.role,
+            )
+            swap.reschedule_event_date = result.get("new_event_date")
+            swap.reschedule_notes = result.get("notes")
+            db.session.commit()
+
+            # Admin DM
+            if result["status"] == "ok":
+                admin_text = (
+                    f"⏰ <b>Shift deadline passed — auto-rescheduled</b>\n\n"
+                    f"👤 <b>{swap.requestor}</b> — {swap.role}\n"
+                    f"🚫 Original: {swap.event_date.strftime('%a %b %d, %Y')}\n"
+                    f"📆 Moved to: {result['new_event_date'].strftime('%a %b %d, %Y')}\n"
+                )
+                if result["displaced"]:
+                    admin_text += (
+                        f"🔄 Displaced {result['displaced']} → "
+                        f"{result['displaced_moved_to'].strftime('%a %b %d, %Y') if result['displaced_moved_to'] else 'no move'}\n"
+                    )
+                admin_text += f"\n<i>{result['notes']}</i>"
+            else:
+                admin_text = (
+                    f"⚠️ <b>Auto-reschedule FAILED</b>\n\n"
+                    f"👤 <b>{swap.requestor}</b> — {swap.role}\n"
+                    f"🚫 Original: {swap.event_date.strftime('%a %b %d, %Y')}\n\n"
+                    f"<i>{result['notes']}</i>\n\n"
+                    f"Please handle manually."
+                )
+            if PERSONAL_CHAT_ID:
+                _api_call("sendMessage", {
+                    "chat_id": PERSONAL_CHAT_ID,
+                    "text": admin_text,
+                    "parse_mode": "HTML",
+                })
+        except Exception as e:
+            print(f"[sweep] Failed to process swap {swap.id}: {e}")
+            db.session.rollback()
+        processed += 1
+
+    if processed:
+        print(f"[sweep] Processed {processed} expired swap(s)")
+    return processed
 
 
 def send_day_before_reminders_v2(chat_id=None):

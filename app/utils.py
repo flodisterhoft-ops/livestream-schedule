@@ -27,13 +27,13 @@ def vancouver_today():
 # Constants
 # ============================================================
 ROLES_CONFIG = {
-    "Florian": {"sunday_roles": ["Computer"], "friday": True},
-    "Andy": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True},
-    "Marvin": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True},
-    "Patric": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True},
-    "Rene": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True},
-    "Stefan": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True},
-    "Viktor": {"sunday_roles": ["Camera 2"], "friday": True},
+    "Florian": {"sunday_roles": ["Computer"], "friday": True, "friday_roles": ["Computer"]},
+    "Andy": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True, "friday_roles": ["Computer", "Camera"]},
+    "Marvin": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True, "friday_roles": ["Computer", "Camera"]},
+    "Patric": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True, "friday_roles": ["Computer", "Camera"]},
+    "Rene": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True, "friday_roles": ["Computer", "Camera"]},
+    "Stefan": {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday": True, "friday_roles": ["Computer", "Camera"]},
+    "Viktor": {"sunday_roles": ["Camera 2"], "friday": True, "friday_roles": ["Camera"]},
 }
 ALL_NAMES = sorted(list(ROLES_CONFIG.keys()) + ["TBD"])
 PC_ROTATION_ORDER = ["Florian", "Marvin", "Rene", "Stefan", "Andy", "Patric"]

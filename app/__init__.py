@@ -5,6 +5,7 @@ from .routes import bp as main_bp
 from .api_v2 import api_v2
 import datetime
 import os
+import atexit
 
 
 def _seed_team_members():
@@ -12,14 +13,17 @@ def _seed_team_members():
     from .models import TeamMember
     import json
 
+    # Known Telegram user IDs (cross-referenced from Young Couples seen_users)
+    # Viktor and Stefan's IDs still need to be looked up — they'll be None until
+    # Florian provides them (see sync_telegram_ids() below for the update path).
     roster = {
-        "Florian": {"sunday": ["Computer"], "friday": ["Leader"]},
-        "Andy":    {"sunday": ["Computer", "Camera 1", "Camera 2"], "friday": ["Leader"]},
-        "Marvin":  {"sunday": ["Computer", "Camera 1", "Camera 2"], "friday": ["Leader"]},
-        "Patric":  {"sunday": ["Computer", "Camera 1", "Camera 2"], "friday": ["Leader"]},
-        "Rene":    {"sunday": ["Computer", "Camera 1", "Camera 2"], "friday": ["Leader"]},
-        "Stefan":  {"sunday": ["Computer", "Camera 1", "Camera 2"], "friday": ["Leader"]},
-        "Viktor":  {"sunday": ["Camera 2"], "friday": ["Leader"]},
+        "Florian": {"sunday": ["Computer"],                             "friday": ["Computer"], "tg": "27859948"},
+        "Andy":    {"sunday": ["Computer", "Camera 1", "Camera 2"],     "friday": ["Computer", "Camera"], "tg": "321688481"},
+        "Marvin":  {"sunday": ["Computer", "Camera 1", "Camera 2"],     "friday": ["Computer", "Camera"], "tg": "1450399472"},
+        "Patric":  {"sunday": ["Computer", "Camera 1", "Camera 2"],     "friday": ["Computer", "Camera"], "tg": "1026052892"},
+        "Rene":    {"sunday": ["Computer", "Camera 1", "Camera 2"],     "friday": ["Computer", "Camera"], "tg": "740672775"},
+        "Stefan":  {"sunday": ["Computer", "Camera 1", "Camera 2"],     "friday": ["Computer", "Camera"], "tg": "5693703380"},
+        "Viktor":  {"sunday": ["Camera 2"],                             "friday": ["Camera"], "tg": "963201448"},
     }
 
     for name, config in roster.items():
@@ -27,27 +31,168 @@ def _seed_team_members():
         m.sunday_roles = config["sunday"]
         m.friday_roles = config["friday"]
         m.active = True
+        m.telegram_user_id = config.get("tg")
         db.session.add(m)
 
     db.session.commit()
     print(f"[v2] Seeded {len(roster)} team members")
 
 
+def sync_telegram_ids():
+    """Idempotent: make sure known TG IDs exist on existing TeamMember rows.
+
+    This runs on every startup so when you paste Viktor's / Stefan's IDs
+    into KNOWN_TG_IDS they'll be attached without needing a wipe-and-reseed.
+    """
+    from .models import TeamMember
+
+    KNOWN_TG_IDS = {
+        "Florian": "27859948",
+        "Andy":    "321688481",
+        "Marvin":  "1450399472",
+        "Patric":  "1026052892",
+        "Rene":    "740672775",
+        "Stefan":  "5693703380",
+        "Viktor":  "963201448",
+    }
+
+    changed = False
+    for name, tg_id in KNOWN_TG_IDS.items():
+        if not tg_id:
+            continue
+        m = TeamMember.query.filter_by(name=name).first()
+        if m and not m.telegram_user_id:
+            m.telegram_user_id = tg_id
+            print(f"[v2] Linked Telegram ID for {name}: {tg_id}")
+            changed = True
+
+    if changed:
+        db.session.commit()
+
+
+def sync_team_scheduling_defaults():
+    from .models import TeamMember
+    from .scheduler_v2 import _default_friday_roles, _default_role_preferences
+
+    changed = False
+    for member in TeamMember.query.all():
+        new_friday_roles = _default_friday_roles(member.name, member.friday_roles)
+        if new_friday_roles != member.friday_roles:
+            member.friday_roles = new_friday_roles
+            changed = True
+
+        new_preferences = _default_role_preferences(member.name, member.role_preferences)
+        if new_preferences != member.role_preferences:
+            member.role_preferences = new_preferences
+            changed = True
+
+    if changed:
+        db.session.commit()
+
+
+def ensure_schedule_horizon(months_ahead=3, top_up_threshold_days=31):
+    """Keep the schedule filled about 3 months forward.
+
+    - On fresh DB: generates the full rolling horizon month-by-month.
+    - On existing DB: only generates new months if the last scheduled event
+      is less than `top_up_threshold_days` in the future.
+    """
+    from .models import Event
+    from .scheduler_v2 import generate_month_v2
+    from .utils import vancouver_today
+
+    today = vancouver_today()
+    target_end = today + datetime.timedelta(days=31 * months_ahead)
+
+    last_event = Event.query.order_by(Event.date.desc()).first()
+    last_date = last_event.date if last_event else today
+
+    # Only top up if we have less than `top_up_threshold_days` of schedule ahead
+    days_remaining = (last_date - today).days
+    if days_remaining >= top_up_threshold_days and last_event is not None:
+        print(f"[Horizon] Schedule extends {days_remaining} days ahead — no top-up needed")
+        return
+
+    print(f"[Horizon] Generating schedule up to {target_end.isoformat()} "
+          f"(currently {days_remaining} days ahead)")
+
+    # Walk month-by-month from (last month we have) to target_end
+    cursor_year = last_date.year
+    cursor_month = last_date.month
+    end_year, end_month = target_end.year, target_end.month
+    total_created = 0
+
+    while (cursor_year, cursor_month) <= (end_year, end_month):
+        try:
+            created = generate_month_v2(cursor_year, cursor_month)
+            total_created += created
+            if created:
+                print(f"[Horizon]   {cursor_year}-{cursor_month:02d}: +{created} events")
+        except Exception as e:
+            print(f"[Horizon]   {cursor_year}-{cursor_month:02d} failed: {e}")
+            db.session.rollback()
+        cursor_month += 1
+        if cursor_month > 12:
+            cursor_month = 1
+            cursor_year += 1
+
+    print(f"[Horizon] Done — created {total_created} events across horizon")
+
+
 def apply_data_hotfixes():
     """Apply idempotent production data fixes."""
     from .models import Event, Assignment
 
+    changed = False
+    for event in Event.query.filter_by(day_type="Friday").all():
+        leader = Assignment.query.filter_by(event_id=event.id, role="Leader").order_by(Assignment.id).first()
+        if leader:
+            leader.role = "Computer"
+            changed = True
+
+        helper = Assignment.query.filter_by(event_id=event.id, role="Helper").order_by(Assignment.id).first()
+        if helper:
+            helper.role = "Camera"
+            changed = True
+
+        computers = Assignment.query.filter_by(event_id=event.id, role="Computer").order_by(Assignment.id).all()
+        if computers:
+            for extra in computers[1:]:
+                db.session.delete(extra)
+                changed = True
+        else:
+            db.session.add(Assignment(event_id=event.id, role="Computer", person="Select Helper", status="pending"))
+            changed = True
+
+        cameras = Assignment.query.filter_by(event_id=event.id, role="Camera").order_by(Assignment.id).all()
+        if cameras:
+            for extra in cameras[1:]:
+                db.session.delete(extra)
+                changed = True
+        else:
+            db.session.add(Assignment(event_id=event.id, role="Camera", person="Select Helper", status="pending"))
+            changed = True
+
+        for assignment in Assignment.query.filter_by(event_id=event.id).all():
+            if assignment.role not in ("Computer", "Camera"):
+                db.session.delete(assignment)
+                changed = True
+
     target_date = datetime.date(2026, 2, 20)
     event = Event.query.filter_by(date=target_date).first()
     if not event:
+        if changed:
+            db.session.commit()
         return
 
     event.day_type = "Friday"
+    changed = True
 
     # Remove Sunday camera roles from this Bible study date.
     for assignment in list(event.assignments):
         if assignment.role in ("Camera 1", "Camera 2"):
             db.session.delete(assignment)
+            changed = True
 
     # Ensure a single Computer assignment exists and is not Marvin.
     computers = Assignment.query.filter_by(event_id=event.id, role="Computer").order_by(Assignment.id).all()
@@ -55,34 +200,48 @@ def apply_data_hotfixes():
         computer = computers[0]
         for extra in computers[1:]:
             db.session.delete(extra)
+            changed = True
     else:
         leader = Assignment.query.filter_by(event_id=event.id, role="Leader").order_by(Assignment.id).first()
         if leader:
             leader.role = "Computer"
             computer = leader
+            changed = True
         else:
             computer = Assignment(event_id=event.id, role="Computer", person="Rene", status="pending")
             db.session.add(computer)
+            changed = True
 
     if computer.person in ("Marvin", "Stefan", "TBD", "Select Helper", None, ""):
         computer.person = "Rene"
+        changed = True
     if not computer.status:
         computer.status = "pending"
+        changed = True
 
-    # Ensure exactly one Helper assignment exists.
-    helpers = Assignment.query.filter_by(event_id=event.id, role="Helper").order_by(Assignment.id).all()
-    if helpers:
-        for extra in helpers[1:]:
+    # Ensure exactly one Camera assignment exists.
+    cameras = Assignment.query.filter_by(event_id=event.id, role="Camera").order_by(Assignment.id).all()
+    if cameras:
+        for extra in cameras[1:]:
             db.session.delete(extra)
+            changed = True
     else:
-        db.session.add(Assignment(event_id=event.id, role="Helper", person="Select Helper", status="pending"))
+        helper = Assignment.query.filter_by(event_id=event.id, role="Helper").order_by(Assignment.id).first()
+        if helper:
+            helper.role = "Camera"
+            changed = True
+        else:
+            db.session.add(Assignment(event_id=event.id, role="Camera", person="Select Helper", status="pending"))
+            changed = True
 
     # Remove any leftover unexpected roles for this date.
     for assignment in Assignment.query.filter_by(event_id=event.id).all():
-        if assignment.role not in ("Computer", "Helper"):
+        if assignment.role not in ("Computer", "Camera"):
             db.session.delete(assignment)
+            changed = True
 
-    db.session.commit()
+    if changed:
+        db.session.commit()
 
 def create_app(config_class='config.Config'):
     app = Flask(__name__)
@@ -113,7 +272,7 @@ def create_app(config_class='config.Config'):
         return "v2 frontend not built yet. Run: cd scheduler-site && npm install && npm run build", 404
 
     with app.app_context():
-        # Create tables if they don't exist
+        # Create tables if they don't exist (covers new models like SwapRequest)
         db.create_all()
 
         # Auto-migrate: add columns that db.create_all() won't add to existing tables
@@ -122,6 +281,11 @@ def create_app(config_class='config.Config'):
         cols = [c['name'] for c in insp.get_columns('assignment')]
         if 'telegram_message_id' not in cols:
             db.session.execute(text('ALTER TABLE assignment ADD COLUMN telegram_message_id INTEGER'))
+            db.session.commit()
+
+        team_member_cols = [c['name'] for c in insp.get_columns('team_member')]
+        if '_role_preferences_json' not in team_member_cols:
+            db.session.execute(text("ALTER TABLE team_member ADD COLUMN _role_preferences_json TEXT DEFAULT '{}'"))
             db.session.commit()
 
         event_cols = [c['name'] for c in insp.get_columns('event')]
@@ -138,8 +302,141 @@ def create_app(config_class='config.Config'):
         from .models import TeamMember
         if TeamMember.query.count() == 0:
             _seed_team_members()
+        else:
+            # Top up known Telegram IDs on existing rows (idempotent)
+            sync_telegram_ids()
+        sync_team_scheduling_defaults()
 
         # Apply one-time corrective fixes on existing deployments.
         apply_data_hotfixes()
 
+        # Keep a rolling 3-month schedule ahead; top up when less than 1 month remains.
+        ensure_schedule_horizon()
+
+    # ── Start the daily-reminder scheduler (8 AM Vancouver time) ──
+    _start_daily_scheduler(app)
+
     return app
+
+
+def _start_daily_scheduler(app):
+    """Start an APScheduler that fires send_daily_reminders_v2() at 8 AM Vancouver.
+
+    Uses a pid-lock file so that only ONE gunicorn worker owns the scheduler
+    (otherwise every worker would fire the job and we'd send duplicate messages).
+    """
+    # Allow disabling via env var (useful for local dev)
+    if os.environ.get("DISABLE_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        print("[Scheduler] Disabled via DISABLE_SCHEDULER env var")
+        return
+
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+    except ImportError:
+        print("[Scheduler] APScheduler not installed — skipping automatic reminders")
+        return
+
+    # Single-worker lock: only the first process to grab this lock starts the scheduler.
+    # This avoids duplicate reminders when running with multiple gunicorn workers.
+    lock_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".scheduler.lock")
+    try:
+        # O_CREAT | O_EXCL so exactly one process can create it
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(lock_fd, str(os.getpid()).encode())
+        os.close(lock_fd)
+    except FileExistsError:
+        # Another worker already owns the scheduler. Check if that pid is still alive;
+        # if not, steal the lock.
+        try:
+            with open(lock_path) as f:
+                other_pid = int(f.read().strip() or 0)
+            if other_pid and _pid_alive(other_pid):
+                print(f"[Scheduler] Another worker (pid {other_pid}) owns the scheduler — skipping")
+                return
+            # Stale lock — overwrite
+            with open(lock_path, "w") as f:
+                f.write(str(os.getpid()))
+        except Exception as e:
+            print(f"[Scheduler] Could not resolve lock file: {e}")
+            return
+
+    # Clean up lock file on exit
+    def _cleanup_lock():
+        try:
+            with open(lock_path) as f:
+                if int(f.read().strip() or 0) == os.getpid():
+                    os.remove(lock_path)
+        except Exception:
+            pass
+    atexit.register(_cleanup_lock)
+
+    def _fire_daily_reminders():
+        """Run send_daily_reminders_v2() inside app context at 8 AM Vancouver."""
+        with app.app_context():
+            try:
+                from .telegram_v2 import send_daily_reminders_v2
+                sent = send_daily_reminders_v2()
+                print(f"[Scheduler] 8AM reminder fired — sent {sent} message(s)")
+            except Exception as e:
+                print(f"[Scheduler] Reminder job failed: {e}")
+
+    def _fire_deadline_sweep():
+        """Run sweep_expired_swaps() every hour — auto-reschedule past-deadline shifts."""
+        with app.app_context():
+            try:
+                from .telegram_v2 import sweep_expired_swaps
+                sweep_expired_swaps()
+            except Exception as e:
+                print(f"[Scheduler] Deadline sweep failed: {e}")
+
+    def _fire_horizon_topup():
+        """Daily check: if schedule runs out in less than 1 month, generate more."""
+        with app.app_context():
+            try:
+                ensure_schedule_horizon()
+            except Exception as e:
+                print(f"[Scheduler] Horizon top-up failed: {e}")
+
+    scheduler = BackgroundScheduler(timezone="America/Vancouver", daemon=True)
+    scheduler.add_job(
+        _fire_daily_reminders,
+        trigger=CronTrigger(hour=8, minute=0, timezone="America/Vancouver"),
+        id="daily_reminder_v2",
+        replace_existing=True,
+        misfire_grace_time=3600,  # If server was down, still fire if within an hour
+    )
+    scheduler.add_job(
+        _fire_deadline_sweep,
+        trigger=CronTrigger(minute=5, timezone="America/Vancouver"),  # hourly at :05
+        id="deadline_sweep",
+        replace_existing=True,
+        misfire_grace_time=1800,
+    )
+    scheduler.add_job(
+        _fire_horizon_topup,
+        trigger=CronTrigger(hour=2, minute=0, timezone="America/Vancouver"),
+        id="horizon_topup",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    scheduler.start()
+    atexit.register(lambda: scheduler.shutdown(wait=False))
+    print(f"[Scheduler] Started (pid {os.getpid()}) — daily reminders at 8:00 AM America/Vancouver")
+
+
+def _pid_alive(pid):
+    """Return True if a process with this pid is currently running."""
+    try:
+        if os.name == "nt":
+            # Windows: use tasklist
+            import subprocess
+            out = subprocess.check_output(["tasklist", "/FI", f"PID eq {pid}"],
+                                          stderr=subprocess.DEVNULL).decode(errors="ignore")
+            return str(pid) in out
+        else:
+            # POSIX: signal 0 raises if the pid is gone
+            os.kill(pid, 0)
+            return True
+    except Exception:
+        return False

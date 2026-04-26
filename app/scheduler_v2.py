@@ -20,24 +20,80 @@ from .utils import vancouver_today, is_available
 # ── Caps & constraints ──────────────────────────────────────────────
 SUNDAY_CAP_PER_MONTH = 2          # Max Sunday assignments per person per month
 FRIDAY_LEADER_CAP_PER_MONTH = 2   # Max Friday leader assignments per month
-MONTH_TOTAL_CAP = 3               # Max total assignments per person per month
+MONTH_TOTAL_CAP = 4               # Max total assignments per person per month
+FLORIAN_MONTH_TOTAL_CAP = 2
 SUNDAY_MIN_GAP_DAYS = 8           # Min days between consecutive Sundays
+SERVICE_MIN_GAP_DAYS = 3
+FRIDAY_MIN_GAP_DAYS = 8
 
 
 # ── Team configuration (default, used when TeamMember table is empty) ────
 DEFAULT_ROSTER = {
-    "Florian": {"sunday_roles": ["Computer"], "friday_roles": ["Leader"]},
-    "Andy":    {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Leader"]},
-    "Marvin":  {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Leader"]},
-    "Patric":  {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Leader"]},
-    "Rene":    {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Leader"]},
-    "Stefan":  {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Leader"]},
-    "Viktor":  {"sunday_roles": ["Camera 2"], "friday_roles": ["Leader"]},
+    "Florian": {"sunday_roles": ["Computer"], "friday_roles": ["Computer"]},
+    "Andy":    {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Computer", "Camera"]},
+    "Marvin":  {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Computer", "Camera"]},
+    "Patric":  {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Computer", "Camera"]},
+    "Rene":    {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Computer", "Camera"]},
+    "Stefan":  {"sunday_roles": ["Computer", "Camera 1", "Camera 2"], "friday_roles": ["Computer", "Camera"]},
+    "Viktor":  {"sunday_roles": ["Camera 2"], "friday_roles": ["Camera"]},
 }
 
 # Florian-specific caps
 FLORIAN_SUNDAY_CAP = 1
-FLORIAN_FRIDAY_CAP = 2
+FLORIAN_FRIDAY_CAP = 1   # Max 2 Fridays/month with a gap between assignments
+
+ROLE_PREFERENCE_WEIGHTS = {
+    "less": 1.0,
+    "normal": 1.5,
+    "more": 2.0,
+}
+
+DEFAULT_ROLE_PREFERENCES = {
+    "Florian": {"Sunday:Computer": "more", "Friday:Computer": "more"},
+    "Andy": {"Sunday:Computer": "less", "Sunday:Camera 1": "more", "Sunday:Camera 2": "normal"},
+    "Marvin": {"Sunday:Computer": "more", "Sunday:Camera 1": "less", "Sunday:Camera 2": "less", "Friday:Computer": "more"},
+    "Patric": {"Sunday:Computer": "less", "Sunday:Camera 1": "more", "Sunday:Camera 2": "normal"},
+    "Rene": {"Sunday:Computer": "more", "Sunday:Camera 1": "less", "Sunday:Camera 2": "less", "Friday:Computer": "more"},
+    "Stefan": {"Sunday:Computer": "more", "Sunday:Camera 1": "less", "Sunday:Camera 2": "less", "Friday:Computer": "more"},
+    "Viktor": {"Sunday:Camera 2": "more", "Friday:Camera": "normal"},
+}
+
+
+def _default_friday_roles(name, roles):
+    if "Computer" in roles or "Camera" in roles:
+        return roles
+    if "Leader" not in roles and "Helper" not in roles:
+        return roles
+    if name == "Florian":
+        return ["Computer"]
+    if name == "Viktor":
+        return ["Camera"]
+    return ["Computer", "Camera"]
+
+
+def _default_role_preferences(name, preferences):
+    merged = dict(DEFAULT_ROLE_PREFERENCES.get(name, {}))
+    merged.update(preferences or {})
+    return merged
+
+
+def _tracking_role(day_type, role):
+    if day_type == "Friday":
+        if role in ("Leader", "Computer"):
+            return "Friday:Computer"
+        if role in ("Helper", "Camera"):
+            return "Friday:Camera"
+    return f"{day_type}:{role}"
+
+
+def _week_of_month(date_obj):
+    return (date_obj.day - 1) // 7 + 1
+
+
+def _role_weight(name, day_type, role, roster):
+    preferences = roster.get(name, {}).get("role_preferences", {})
+    level = preferences.get(_tracking_role(day_type, role), preferences.get(role, "normal"))
+    return ROLE_PREFERENCE_WEIGHTS.get(level, ROLE_PREFERENCE_WEIGHTS["normal"])
 
 
 def get_roster():
@@ -48,20 +104,31 @@ def get_roster():
         for m in members:
             roster[m.name] = {
                 "sunday_roles": m.sunday_roles,
-                "friday_roles": m.friday_roles,
+                "friday_roles": _default_friday_roles(m.name, m.friday_roles),
+                "role_preferences": _default_role_preferences(m.name, m.role_preferences),
                 "active_from": m.active_from,
             }
         return roster
-    return DEFAULT_ROSTER
+    return {
+        name: {
+            **config,
+            "role_preferences": _default_role_preferences(name, config.get("role_preferences", {})),
+        }
+        for name, config in DEFAULT_ROSTER.items()
+    }
 
 
-def _get_role_pool(roster, role):
+def _get_role_pool(roster, role, day_type=None):
     """Get list of people eligible for a specific role."""
     pool = []
     for name, config in roster.items():
         sunday_roles = config.get("sunday_roles", [])
         friday_roles = config.get("friday_roles", [])
-        if role in sunday_roles or role in friday_roles:
+        if day_type == "Sunday" and role in sunday_roles:
+            pool.append(name)
+        elif day_type == "Friday" and role in friday_roles:
+            pool.append(name)
+        elif day_type is None and (role in sunday_roles or role in friday_roles):
             pool.append(name)
     return pool
 
@@ -89,9 +156,16 @@ def _build_history(roster):
 
     # Per-role tracking
     role_tracking = {}
-    for role in ["Computer", "Camera 1", "Camera 2", "Leader"]:
-        pool = _get_role_pool(roster, role)
-        role_tracking[role] = {
+    for day_type, role in [
+        ("Sunday", "Computer"),
+        ("Sunday", "Camera 1"),
+        ("Sunday", "Camera 2"),
+        ("Friday", "Computer"),
+        ("Friday", "Camera"),
+    ]:
+        tracking_key = _tracking_role(day_type, role)
+        pool = _get_role_pool(roster, role, day_type=day_type)
+        role_tracking[tracking_key] = {
             name: {"assigned": 0, "expected": 0.0} for name in pool
         }
 
@@ -103,6 +177,8 @@ def _build_history(roster):
             "lifetime": 0,
             "month_counts": {},
             "last_sun_date": None,
+            "last_fri_date": None,
+            "last_service_date": None,
         }
         for name in all_names
     }
@@ -122,15 +198,15 @@ def _build_history(roster):
 
         # Update per-role expected for all eligible available people
         for role in roles_in_event:
-            if role == "Helper":
-                continue  # Helper is manually assigned
-            if role not in role_tracking:
+            event_day_type = "Friday" if is_friday else "Sunday" if is_sunday else event.day_type
+            tracking_key = _tracking_role(event_day_type, role)
+            if tracking_key not in role_tracking:
                 continue
-            pool = [n for n in role_tracking[role] if is_available(n, d) and _person_is_active(n, d, roster)]
+            pool = [n for n in role_tracking[tracking_key] if is_available(n, d) and _person_is_active(n, d, roster)]
             if pool:
                 fair_share = 1.0 / len(pool)
                 for n in pool:
-                    role_tracking[role][n]["expected"] += fair_share
+                    role_tracking[tracking_key][n]["expected"] += fair_share
 
         # Update per-role assigned and overall for actual assignments
         for a in event.assignments:
@@ -139,14 +215,17 @@ def _build_history(roster):
                 continue
 
             # Per-role assigned
-            if a.role in role_tracking and worker in role_tracking[a.role]:
-                role_tracking[a.role][worker]["assigned"] += 1
+            event_day_type = "Friday" if is_friday else "Sunday" if is_sunday else event.day_type
+            tracking_key = _tracking_role(event_day_type, a.role)
+            if tracking_key in role_tracking and worker in role_tracking[tracking_key]:
+                role_tracking[tracking_key][worker]["assigned"] += 1
 
             # Overall
             if worker in overall:
                 overall[worker]["total"] += 1
                 overall[worker]["lifetime"] += 1
                 overall[worker]["last_date"] = d
+                overall[worker]["last_service_date"] = d
 
                 if is_sunday:
                     overall[worker]["last_sun_date"] = d
@@ -158,11 +237,12 @@ def _build_history(roster):
                     overall[worker]["month_counts"][month_key]["sun"] += 1
                 if is_friday:
                     overall[worker]["month_counts"][month_key]["fri"] += 1
+                    overall[worker]["last_fri_date"] = d
 
     return role_tracking, overall
 
 
-def _schedule_priority(name, role, role_tracking, overall, date_obj):
+def _schedule_priority(name, role, day_type, role_tracking, overall, roster, date_obj):
     """
     Calculate scheduling priority for a person.
     LOWER score = HIGHER priority (gets assigned first).
@@ -172,10 +252,29 @@ def _schedule_priority(name, role, role_tracking, overall, date_obj):
     Tier 3: Lifetime count (fewer = higher priority)
     Tier 4: Overall total this scheduling period (fewer = higher priority)
     """
-    rt = role_tracking.get(role, {}).get(name, {"assigned": 0, "expected": 0.0})
+    tracking_key = _tracking_role(day_type, role)
+    rt = role_tracking.get(tracking_key, {}).get(name, {"assigned": 0, "expected": 0.0})
     ov = overall.get(name, {"total": 0, "last_date": None, "lifetime": 0})
 
-    deficit = round(rt["assigned"] - rt["expected"], 8)
+    weight = _role_weight(name, day_type, role, roster)
+    deficit = round(rt["assigned"] - (rt["expected"] * weight), 8)
+
+    if name == "Florian" and day_type in ("Sunday", "Friday") and role == "Computer":
+        deficit -= 8.0
+
+    preserve_upcoming_sunday = 0
+    if day_type == "Friday":
+        upcoming_sunday = date_obj + datetime.timedelta(days=2)
+        sunday_roles = roster.get(name, {}).get("sunday_roles", [])
+        if (
+            upcoming_sunday.weekday() == 6
+            and sunday_roles
+            and is_available(name, upcoming_sunday)
+            and _person_is_active(name, upcoming_sunday, roster)
+            and _check_sunday_gap(name, upcoming_sunday, overall)
+            and _check_strict_person_caps(name, upcoming_sunday, "Sunday", overall)
+        ):
+            preserve_upcoming_sunday = 1
 
     last_date = ov.get("last_date")
     if last_date:
@@ -184,8 +283,10 @@ def _schedule_priority(name, role, role_tracking, overall, date_obj):
         days_since = 9999  # Never worked = highest priority
 
     return (
+        preserve_upcoming_sunday,      # Prefer Friday workers who are not needed for upcoming Sunday
         deficit,                    # Primary: fairness deficit
         -days_since,                # Secondary: prefer longer gap (negative = lower)
+        _week_of_month(date_obj),   # Tertiary: rotate season/week placement over years
         ov.get("lifetime", 0),      # Tertiary: fewer lifetime assignments
         ov.get("total", 0),         # Quaternary: fewer total assignments
     )
@@ -203,7 +304,8 @@ def _check_caps(name, date_obj, day_type, overall):
     mc = _month_counts(name, date_obj.year, date_obj.month, overall)
 
     # Total cap
-    if mc["total"] >= MONTH_TOTAL_CAP:
+    total_cap = FLORIAN_MONTH_TOTAL_CAP if name == "Florian" else MONTH_TOTAL_CAP
+    if mc["total"] >= total_cap:
         return False
 
     # Sunday cap
@@ -230,6 +332,35 @@ def _check_sunday_gap(name, date_obj, overall):
     return True
 
 
+def _check_friday_gap(name, date_obj, overall):
+    ov = overall.get(name, {})
+    last_fri = ov.get("last_fri_date")
+    if last_fri and (date_obj - last_fri).days < FRIDAY_MIN_GAP_DAYS:
+        return False
+    return True
+
+
+def _check_service_gap(name, date_obj, overall):
+    ov = overall.get(name, {})
+    last_service = ov.get("last_service_date") or ov.get("last_date")
+    if last_service and (date_obj - last_service).days < SERVICE_MIN_GAP_DAYS:
+        return False
+    return True
+
+
+def _check_strict_person_caps(name, date_obj, day_type, overall):
+    if name != "Florian":
+        return True
+    mc = _month_counts(name, date_obj.year, date_obj.month, overall)
+    if mc["total"] >= FLORIAN_MONTH_TOTAL_CAP:
+        return False
+    if day_type == "Sunday" and mc["sun"] >= FLORIAN_SUNDAY_CAP:
+        return False
+    if day_type == "Friday" and mc["fri"] >= FLORIAN_FRIDAY_CAP:
+        return False
+    return True
+
+
 def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster, exclude):
     """
     Select the best candidate from a pool using the fairness-deficit algorithm.
@@ -245,6 +376,9 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
         if p not in exclude
         and is_available(p, date_obj)
         and _person_is_active(p, date_obj, roster)
+        and _check_service_gap(p, date_obj, overall)
+        and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
+        and (day_type != "Friday" or _check_friday_gap(p, date_obj, overall))
     ]
 
     if not valid:
@@ -254,22 +388,32 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
     constrained = [
         p for p in valid
         if _check_caps(p, date_obj, day_type, overall)
-        and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
     ]
 
     # Step 3: Relax gap rule if nobody passes
     if not constrained and day_type == "Sunday":
         constrained = [
             p for p in valid
-            if _check_caps(p, date_obj, day_type, overall)
+            if _check_strict_person_caps(p, date_obj, day_type, overall)
         ]
 
     # Step 4: If still nobody, relax all caps
     if not constrained:
-        constrained = valid
+        constrained = [
+            p for p in pool
+            if p not in exclude
+            and is_available(p, date_obj)
+            and _person_is_active(p, date_obj, roster)
+            and _check_service_gap(p, date_obj, overall)
+            and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
+            and (day_type != "Friday" or _check_friday_gap(p, date_obj, overall))
+            and _check_strict_person_caps(p, date_obj, day_type, overall)
+        ]
+    if not constrained:
+        return "TBD"
 
     # Step 5: Sort by priority and pick best
-    constrained.sort(key=lambda p: _schedule_priority(p, role, role_tracking, overall, date_obj))
+    constrained.sort(key=lambda p: _schedule_priority(p, role, day_type, role_tracking, overall, roster, date_obj))
 
     return constrained[0]
 
@@ -277,14 +421,16 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
 def _record_assignment(name, role, date_obj, day_type, role_tracking, overall):
     """Record an assignment in the tracking data structures."""
     # Per-role assigned
-    if role in role_tracking and name in role_tracking[role]:
-        role_tracking[role][name]["assigned"] += 1
+    tracking_key = _tracking_role(day_type, role)
+    if tracking_key in role_tracking and name in role_tracking[tracking_key]:
+        role_tracking[tracking_key][name]["assigned"] += 1
 
     # Overall
     if name in overall:
         overall[name]["total"] += 1
         overall[name]["lifetime"] += 1
         overall[name]["last_date"] = date_obj
+        overall[name]["last_service_date"] = date_obj
 
         month_key = (date_obj.year, date_obj.month)
         if month_key not in overall[name]["month_counts"]:
@@ -296,10 +442,14 @@ def _record_assignment(name, role, date_obj, day_type, role_tracking, overall):
             overall[name]["last_sun_date"] = date_obj
         if day_type == "Friday":
             overall[name]["month_counts"][month_key]["fri"] += 1
+            overall[name]["last_fri_date"] = date_obj
 
 
-def _increment_expected(pool, role, date_obj, role_tracking, roster, exclude):
-    """Increment the expected count for all eligible available people in a pool."""
+def _increment_expected(pool, role, date_obj, role_tracking, roster, exclude, day_type="Sunday"):
+    """Increment the expected count for all eligible available people in a pool.
+
+    Each eligible person accrues an equal share (1/N) of the slot.
+    """
     available = [
         p for p in pool
         if p not in exclude
@@ -309,9 +459,10 @@ def _increment_expected(pool, role, date_obj, role_tracking, roster, exclude):
     if not available:
         return
     fair_share = 1.0 / len(available)
+    tracking_key = _tracking_role(day_type, role)
     for p in available:
-        if role in role_tracking and p in role_tracking[role]:
-            role_tracking[role][p]["expected"] += fair_share
+        if tracking_key in role_tracking and p in role_tracking[tracking_key]:
+            role_tracking[tracking_key][p]["expected"] += fair_share
 
 
 def generate_month_v2(year, month):
@@ -326,10 +477,11 @@ def generate_month_v2(year, month):
     role_tracking, overall = _build_history(roster)
 
     # Build role pools
-    pc_pool = _get_role_pool(roster, "Computer")
-    cam1_pool = _get_role_pool(roster, "Camera 1")
-    cam2_pool = _get_role_pool(roster, "Camera 2")
-    leader_pool = _get_role_pool(roster, "Leader")
+    pc_pool = _get_role_pool(roster, "Computer", day_type="Sunday")
+    cam1_pool = _get_role_pool(roster, "Camera 1", day_type="Sunday")
+    cam2_pool = _get_role_pool(roster, "Camera 2", day_type="Sunday")
+    friday_pc_pool = _get_role_pool(roster, "Computer", day_type="Friday")
+    friday_camera_pool = _get_role_pool(roster, "Camera", day_type="Friday")
 
     # Determine dates for the month
     num_days = calendar.monthrange(year, month)[1]
@@ -340,6 +492,7 @@ def generate_month_v2(year, month):
             dates.append((d, "Friday"))
         elif d.weekday() == 6:  # Sunday
             dates.append((d, "Sunday"))
+    dates.sort(key=lambda item: (item[0] + datetime.timedelta(days=2), 1) if item[1] == "Friday" else (item[0], 0))
 
     created_events = 0
 
@@ -387,22 +540,165 @@ def generate_month_v2(year, month):
             ])
 
         elif day_type == "Friday":
-            # ── Leader ───────────────────────────────────────
-            _increment_expected(leader_pool, "Leader", date_obj, role_tracking, roster, exclude=[])
-            leader = _select_best(leader_pool, "Leader", date_obj, "Friday",
-                                  role_tracking, overall, roster, exclude=[])
-            if leader != "TBD":
-                _record_assignment(leader, "Leader", date_obj, "Friday", role_tracking, overall)
+            # ── Computer ─────────────────────────────────────
+            _increment_expected(friday_pc_pool, "Computer", date_obj, role_tracking, roster, exclude=[], day_type="Friday")
+            computer = _select_best(friday_pc_pool, "Computer", date_obj, "Friday",
+                                    role_tracking, overall, roster, exclude=[])
+            assigned_today.append(computer)
+            if computer != "TBD":
+                _record_assignment(computer, "Computer", date_obj, "Friday", role_tracking, overall)
+
+            # ── Camera ───────────────────────────────────────
+            _increment_expected(friday_camera_pool, "Camera", date_obj, role_tracking, roster, exclude=assigned_today, day_type="Friday")
+            camera = _select_best(friday_camera_pool, "Camera", date_obj, "Friday",
+                                  role_tracking, overall, roster, exclude=assigned_today)
+            if camera != "TBD":
+                _record_assignment(camera, "Camera", date_obj, "Friday", role_tracking, overall)
 
             db.session.add_all([
-                Assignment(event_id=new_event.id, role="Leader", person=leader, status="pending"),
-                Assignment(event_id=new_event.id, role="Helper", person="Select Helper", status="pending"),
+                Assignment(event_id=new_event.id, role="Computer", person=computer, status="pending"),
+                Assignment(event_id=new_event.id, role="Camera", person=camera, status="pending"),
             ])
 
         db.session.commit()
         created_events += 1
 
     return created_events
+
+
+def reschedule_declined(requestor, original_event_date, role, max_lookahead_months=6):
+    """Perform a two-way swap for someone who declined and wasn't picked up.
+
+    Matches the Young Couples pattern:
+      1. Find the next event of the same weekday/day_type where the requestor is
+         eligible, does not already appear, and the same-role slot is held by
+         someone else. Skip months where the requestor can't fit.
+      2. Displace that person: put the requestor into that role in that event.
+      3. Push the displaced person into the requestor's *next* future assignment
+         (if any) so fairness is preserved by a true swap.
+      4. If no swap partner or no displaceable slot is found within
+         max_lookahead_months, return a dict with status='failed' so the caller
+         can alert the admin.
+
+    Returns:
+      {
+        'status': 'ok' | 'failed',
+        'new_event_date': date | None,
+        'displaced': str | None,         # who got pushed
+        'displaced_moved_to': date | None,
+        'notes': str,
+      }
+    """
+    roster = get_roster()
+    same_role_pool = _get_role_pool(roster, role)
+    if requestor not in same_role_pool:
+        return {"status": "failed", "new_event_date": None, "displaced": None,
+                "displaced_moved_to": None,
+                "notes": f"{requestor} is not eligible for role {role}"}
+
+    # Find the original event's day_type to match (Sunday vs Friday)
+    original_event = Event.query.filter_by(date=original_event_date).first()
+    day_type = original_event.day_type if original_event else "Sunday"
+
+    # Walk forward month by month looking for a suitable next-month same-role slot
+    cursor = original_event_date
+    for month_offset in range(1, max_lookahead_months + 1):
+        # First day of (original_date + month_offset months)
+        target_month = cursor.month + month_offset
+        target_year = cursor.year + (target_month - 1) // 12
+        target_month = ((target_month - 1) % 12) + 1
+        month_start = datetime.date(target_year, target_month, 1)
+        month_end_day = calendar.monthrange(target_year, target_month)[1]
+        month_end = datetime.date(target_year, target_month, month_end_day)
+
+        # Candidate events in this month of matching day_type
+        candidates = Event.query.filter(
+            Event.date >= month_start,
+            Event.date <= month_end,
+            Event.day_type == day_type,
+        ).order_by(Event.date).all()
+
+        for candidate_event in candidates:
+            # The requestor must not already be in this event
+            people_here = {a.cover or a.person for a in candidate_event.assignments}
+            if requestor in people_here:
+                continue
+
+            # Find the same-role slot in this event
+            target_slot = next(
+                (a for a in candidate_event.assignments if a.role == role),
+                None,
+            )
+            if not target_slot:
+                continue
+
+            displaced_person = target_slot.cover or target_slot.person
+            if displaced_person == requestor or displaced_person in ("TBD", "Select Helper", None, ""):
+                # Empty slot — just drop requestor in, no swap needed
+                target_slot.person = requestor
+                target_slot.cover = None
+                target_slot.status = "pending"
+                db.session.commit()
+                return {
+                    "status": "ok",
+                    "new_event_date": candidate_event.date,
+                    "displaced": None,
+                    "displaced_moved_to": None,
+                    "notes": f"{requestor} placed into empty {role} slot on {candidate_event.date}",
+                }
+
+            # Two-way swap: find the displaced person's NEXT future assignment
+            # (after the candidate event's date) to push them into requestor's slot.
+            requestors_next = (
+                Assignment.query.join(Event)
+                .filter(
+                    Event.date > candidate_event.date,
+                    Assignment.person == requestor,
+                )
+                .order_by(Event.date)
+                .first()
+            )
+            if not requestors_next:
+                # No future slot to swap into — just overwrite without a reciprocal move
+                target_slot.person = requestor
+                target_slot.cover = None
+                target_slot.status = "pending"
+                db.session.commit()
+                return {
+                    "status": "ok",
+                    "new_event_date": candidate_event.date,
+                    "displaced": displaced_person,
+                    "displaced_moved_to": None,
+                    "notes": f"Displaced {displaced_person} without reciprocal swap (no future slot found for {requestor})",
+                }
+
+            # Perform the swap
+            displaced_moved_to_date = requestors_next.event.date
+            target_slot.person = requestor
+            target_slot.cover = None
+            target_slot.status = "pending"
+            requestors_next.person = displaced_person
+            requestors_next.cover = None
+            requestors_next.status = "pending"
+            db.session.commit()
+            return {
+                "status": "ok",
+                "new_event_date": candidate_event.date,
+                "displaced": displaced_person,
+                "displaced_moved_to": displaced_moved_to_date,
+                "notes": (
+                    f"Swapped {requestor} into {role} on {candidate_event.date} "
+                    f"(displaced {displaced_person}, who moved to {displaced_moved_to_date})"
+                ),
+            }
+
+    return {
+        "status": "failed",
+        "new_event_date": None,
+        "displaced": None,
+        "displaced_moved_to": None,
+        "notes": f"No eligible swap partner found within {max_lookahead_months} months",
+    }
 
 
 def get_fairness_report(roster=None):

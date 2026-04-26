@@ -6,6 +6,7 @@ const ROLE_ICONS = {
   Computer: '\uD83D\uDDA5\uFE0F',
   'Camera 1': '\uD83D\uDCF9',
   'Camera 2': '\uD83C\uDFA5',
+  Camera: '\uD83D\uDCF9',
   Leader: '\uD83D\uDCD6',
   Helper: '\uD83E\uDD1D',
 }
@@ -625,10 +626,16 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [newSundayRoles, setNewSundayRoles] = useState(['Computer', 'Camera 1', 'Camera 2'])
-  const [newFridayRoles, setNewFridayRoles] = useState(['Leader'])
+  const [newFridayRoles, setNewFridayRoles] = useState(['Computer', 'Camera'])
+  const [newRolePreferences, setNewRolePreferences] = useState({})
 
   const ALL_SUNDAY_ROLES = ['Computer', 'Camera 1', 'Camera 2']
-  const ALL_FRIDAY_ROLES = ['Leader']
+  const ALL_FRIDAY_ROLES = ['Computer', 'Camera']
+  const preferenceOptions = [
+    { value: 'less', label: 'Less' },
+    { value: 'normal', label: 'Medium' },
+    { value: 'more', label: 'More' },
+  ]
 
   const toggleRole = (role, list, setter) => {
     if (list.includes(role)) {
@@ -636,6 +643,15 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
     } else {
       setter([...list, role])
     }
+  }
+
+  const preferenceKey = (dayType, role) => `${dayType}:${role}`
+
+  const setPreference = (dayType, role, value) => {
+    setNewRolePreferences(prev => ({
+      ...prev,
+      [preferenceKey(dayType, role)]: value,
+    }))
   }
 
   const handleAdd = async () => {
@@ -647,10 +663,14 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
           name: newName.trim(),
           sunday_roles: newSundayRoles,
           friday_roles: newFridayRoles,
+          role_preferences: newRolePreferences,
         }),
       })
       showFlash(`${newName} added to team!`)
       setNewName('')
+      setNewSundayRoles(['Computer', 'Camera 1', 'Camera 2'])
+      setNewFridayRoles(['Computer', 'Camera'])
+      setNewRolePreferences({})
       setShowAdd(false)
       loadTeam()
     } catch (e) {
@@ -706,27 +726,53 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
           <div className="role-toggles">
             <label className="role-group-label">Sunday Roles:</label>
             {ALL_SUNDAY_ROLES.map(role => (
-              <label key={role} className="role-toggle">
-                <input
-                  type="checkbox"
-                  checked={newSundayRoles.includes(role)}
-                  onChange={() => toggleRole(role, newSundayRoles, setNewSundayRoles)}
-                />
-                {ROLE_ICONS[role]} {role}
-              </label>
+              <div key={role} className="role-toggle">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={newSundayRoles.includes(role)}
+                    onChange={() => toggleRole(role, newSundayRoles, setNewSundayRoles)}
+                  />
+                  {ROLE_ICONS[role]} {role}
+                </label>
+                {newSundayRoles.includes(role) && (
+                  <select
+                    value={newRolePreferences[preferenceKey('Sunday', role)] || 'normal'}
+                    onChange={e => setPreference('Sunday', role, e.target.value)}
+                    className="assign-select"
+                  >
+                    {preferenceOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             ))}
           </div>
           <div className="role-toggles">
             <label className="role-group-label">Friday Roles:</label>
             {ALL_FRIDAY_ROLES.map(role => (
-              <label key={role} className="role-toggle">
-                <input
-                  type="checkbox"
-                  checked={newFridayRoles.includes(role)}
-                  onChange={() => toggleRole(role, newFridayRoles, setNewFridayRoles)}
-                />
-                {ROLE_ICONS[role]} {role}
-              </label>
+              <div key={role} className="role-toggle">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={newFridayRoles.includes(role)}
+                    onChange={() => toggleRole(role, newFridayRoles, setNewFridayRoles)}
+                  />
+                  {ROLE_ICONS[role]} {role}
+                </label>
+                {newFridayRoles.includes(role) && (
+                  <select
+                    value={newRolePreferences[preferenceKey('Friday', role)] || 'normal'}
+                    onChange={e => setPreference('Friday', role, e.target.value)}
+                    className="assign-select"
+                  >
+                    {preferenceOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             ))}
           </div>
           <button className="btn btn-primary" onClick={handleAdd}>Add to Team</button>

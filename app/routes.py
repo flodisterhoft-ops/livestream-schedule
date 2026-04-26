@@ -267,9 +267,9 @@ def generate_specific_route():
     
     ym_str = request.form.get("gen_month") # YYYY-MM
     if ym_str:
-        from .scheduler import generate_month
+        from .scheduler_v2 import generate_month_v2
         y, m = map(int, ym_str.split("-"))
-        generate_month(y, m)
+        generate_month_v2(y, m)
         flash(f"Generated events for {ym_str}", "CONFETTI")
     return redirect(url_for("main.home"))
 
@@ -373,8 +373,8 @@ def add_event():
                 ]
             elif e_type == "Friday":
                 assigns = [
-                    Assignment(event_id=e.id, role="Leader", person="Select Helper"),
-                    Assignment(event_id=e.id, role="Helper", person="Select Helper"),
+                    Assignment(event_id=e.id, role="Computer", person="Select Helper"),
+                    Assignment(event_id=e.id, role="Camera", person="Select Helper"),
                 ]
             
             db.session.add_all(assigns)
@@ -974,6 +974,7 @@ def generate_year_2026():
         return redirect(url_for("main.home"))
     
     try:
+        from .scheduler_v2 import generate_month_v2
         generated_months = []
         skipped_months = []
         
@@ -994,7 +995,7 @@ def generate_year_2026():
                 continue
             
             # Generate the month
-            generate_month(2026, month)
+            generate_month_v2(2026, month)
             generated_months.append(calendar.month_name[month])
         
         # Build success message
@@ -1041,9 +1042,9 @@ def regenerate_future():
         
         # Regenerate Mar-Dec
         generated = []
-        from .scheduler import generate_month
+        from .scheduler_v2 import generate_month_v2
         for month in range(3, 13):
-            generate_month(2026, month)
+            generate_month_v2(2026, month)
             generated.append(calendar.month_name[month])
             
         flash(f"Refreshed schedule for {len(generated)} months (Fairness Fix Applied!)", "CONFETTI")
@@ -1075,12 +1076,20 @@ def cron_daily_reminder():
     if cron_secret and provided_secret != cron_secret:
         return {"error": "Unauthorized"}, 401
     
-    # Send reminders for today's events
+    # Send v1 reminders (legacy) + v2 reminders (current system with inline buttons)
     sent_count = send_daily_reminders()
-    
+
+    v2_sent = 0
+    try:
+        from .telegram_v2 import send_daily_reminders_v2
+        v2_sent = send_daily_reminders_v2()
+    except Exception as e:
+        print(f"[cron] v2 reminder failed: {e}")
+
     return {
         "success": True,
         "reminders_sent": sent_count,
-        "message": f"Sent {sent_count} reminder(s)"
+        "reminders_sent_v2": v2_sent,
+        "message": f"Sent {sent_count} v1 + {v2_sent} v2 reminder(s)"
     }
 

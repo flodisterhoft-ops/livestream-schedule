@@ -10,6 +10,7 @@ class TeamMember(db.Model):
     telegram_user_id = db.Column(db.String(20))
     _sunday_roles_json = db.Column(db.Text, default='[]')
     _friday_roles_json = db.Column(db.Text, default='[]')
+    _role_preferences_json = db.Column(db.Text, default='{}')
     active = db.Column(db.Boolean, default=True)
     active_from = db.Column(db.Date)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -36,6 +37,17 @@ class TeamMember(db.Model):
     def friday_roles(self, value):
         self._friday_roles_json = json.dumps(value)
 
+    @property
+    def role_preferences(self):
+        try:
+            return json.loads(self._role_preferences_json or '{}')
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    @role_preferences.setter
+    def role_preferences(self, value):
+        self._role_preferences_json = json.dumps(value or {})
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -43,6 +55,7 @@ class TeamMember(db.Model):
             "telegram_user_id": self.telegram_user_id,
             "sunday_roles": self.sunday_roles,
             "friday_roles": self.friday_roles,
+            "role_preferences": self.role_preferences,
             "active": self.active,
             "active_from": self.active_from.isoformat() if self.active_from else None,
         }
@@ -149,3 +162,43 @@ class InteractionLog(db.Model):
     event_date = db.Column(db.Date)
     role = db.Column(db.String(50))
     details = db.Column(db.Text)            # Extra context
+
+
+class SwapRequest(db.Model):
+    """An open shift-swap created when someone declines an assignment.
+
+    Lifecycle:
+        active    — open for anyone eligible to pick up
+        accepted  — someone covered; original person is off the hook
+        expired   — deadline passed with no taker → triggers auto-reschedule
+        cancelled — original person tapped "Undo" before deadline
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.id'), nullable=False, index=True)
+    requestor = db.Column(db.String(50), nullable=False)   # Person who declined
+    event_date = db.Column(db.Date, nullable=False, index=True)
+    role = db.Column(db.String(50), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    status = db.Column(db.String(20), default="active", index=True)
+    accepted_by = db.Column(db.String(50))                 # Who picked it up, if any
+    accepted_at = db.Column(db.DateTime)
+    telegram_message_id = db.Column(db.Integer)            # Broadcast msg for edits
+    telegram_chat_id = db.Column(db.String(30))
+    reschedule_event_date = db.Column(db.Date)             # Where requestor got rebooked
+    reschedule_notes = db.Column(db.Text)                  # "Displaced Rene from 2026-05-17"
+
+    assignment = db.relationship('Assignment', backref=db.backref('swap_requests', cascade='all, delete-orphan'))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "assignment_id": self.assignment_id,
+            "requestor": self.requestor,
+            "event_date": self.event_date.isoformat() if self.event_date else None,
+            "role": self.role,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "status": self.status,
+            "accepted_by": self.accepted_by,
+            "reschedule_event_date": self.reschedule_event_date.isoformat() if self.reschedule_event_date else None,
+        }

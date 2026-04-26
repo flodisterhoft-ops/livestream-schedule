@@ -19,6 +19,7 @@ MONTH_TOTAL_CAP_DEFAULT = 3  # Everyone gets 3 assignments/month
 MONTH_TOTAL_CAP_PREFERRED = 3  # Same as default now
 
 SUNDAY_MIN_GAP_DAYS = 8
+FRIDAY_MIN_GAP_DAYS = 14
 
 def get_fatigue_penalty(person, date_obj, last_worked_map):
     if person not in last_worked_map or not last_worked_map[person]:
@@ -46,7 +47,7 @@ def get_next_pc():
     return -1
 
 def month_counts_from_existing(year, month):
-    counts = {n: {"sun": 0, "fri_leader": 0, "total": 0, "last_sun_date": None} for n in ALL_NAMES}
+    counts = {n: {"sun": 0, "fri_leader": 0, "total": 0, "last_sun_date": None, "last_fri_date": None} for n in ALL_NAMES}
 
     # Query all events in this month
     start_date = datetime.date(year, month, 1)
@@ -77,6 +78,9 @@ def month_counts_from_existing(year, month):
             
             if is_fri and a.role == "Leader":
                 counts[p]["fri_leader"] += 1
+                prev = counts[p]["last_fri_date"]
+                if prev is None or d_obj > prev:
+                    counts[p]["last_fri_date"] = d_obj
                 
     return counts
 
@@ -95,6 +99,27 @@ def _too_close_to_last_sunday(person: str, date_obj: datetime.date, local_month_
     if not last_d:
         return False
     return (date_obj - last_d).days < SUNDAY_MIN_GAP_DAYS
+
+def _too_close_to_last_friday(person: str, date_obj: datetime.date, local_month_stats: dict) -> bool:
+    if person != "Florian":
+        return False
+    last_d = local_month_stats.get(person, {}).get("last_fri_date")
+    last_assignment = (
+        Assignment.query.join(Event)
+        .filter(
+            Assignment.person == person,
+            Assignment.role == "Leader",
+            Event.day_type == "Friday",
+            Event.date < date_obj,
+        )
+        .order_by(Event.date.desc())
+        .first()
+    )
+    if last_assignment and (last_d is None or last_assignment.event.date > last_d):
+        last_d = last_assignment.event.date
+    if not last_d:
+        return False
+    return (date_obj - last_d).days < FRIDAY_MIN_GAP_DAYS
 
 def generate_month(year, month):
     check_and_init()
@@ -183,18 +208,25 @@ def generate_month(year, month):
         )
 
     def pick_best(cands, role, date_obj, day_type, exclude):
-        valid = [p for p in cands if is_available(p, date_obj) and p not in exclude]
+        valid = [
+            p for p in cands
+            if is_available(p, date_obj)
+            and p not in exclude
+            and (day_type != "Friday" or not _too_close_to_last_friday(p, date_obj, local_month_stats))
+        ]
 
         def under_caps(p: str) -> bool:
             if local_month_stats[p]["total"] >= _month_total_cap_dynamic(p):
                 return False
             if day_type == "Sunday":
-                if local_month_stats[p]["sun"] >= SUNDAY_CAP_PER_MONTH:
+                cap = FLORIAN_SUNDAY_CAP if p == "Florian" else SUNDAY_CAP_PER_MONTH
+                if local_month_stats[p]["sun"] >= cap:
                     return False
                 if _too_close_to_last_sunday(p, date_obj, local_month_stats):
                     return False
             if day_type == "Friday":
-                if local_month_stats[p]["fri_leader"] >= FRIDAY_LEADER_CAP_PER_MONTH:
+                cap = FLORIAN_FRIDAY_CAP if p == "Florian" else FRIDAY_LEADER_CAP_PER_MONTH
+                if local_month_stats[p]["fri_leader"] >= cap:
                     return False
             return True
 
@@ -203,7 +235,8 @@ def generate_month(year, month):
             def under_caps_relax_gap(p: str) -> bool:
                 if local_month_stats[p]["total"] >= _month_total_cap_dynamic(p):
                     return False
-                if local_month_stats[p]["sun"] >= SUNDAY_CAP_PER_MONTH:
+                cap = FLORIAN_SUNDAY_CAP if p == "Florian" else SUNDAY_CAP_PER_MONTH
+                if local_month_stats[p]["sun"] >= cap:
                     return False
                 return True
             pool = [p for p in valid if under_caps_relax_gap(p)]
@@ -237,6 +270,7 @@ def generate_month(year, month):
                 stats[leader]["friday"] += 1
                 local_month_stats[leader]["fri_leader"] += 1
                 local_month_stats[leader]["total"] += 1
+                local_month_stats[leader]["last_fri_date"] = date_obj
                 last_worked[leader].append(date_obj)
 
         elif day_type == "Sunday":
@@ -249,7 +283,8 @@ def generate_month(year, month):
                 
                 if not is_available(cand, date_obj): continue
                 if local_month_stats[cand]["total"] >= _month_total_cap_dynamic(cand): continue
-                if local_month_stats[cand]["sun"] >= SUNDAY_CAP_PER_MONTH: continue
+                cap = FLORIAN_SUNDAY_CAP if cand == "Florian" else SUNDAY_CAP_PER_MONTH
+                if local_month_stats[cand]["sun"] >= cap: continue
                 if _too_close_to_last_sunday(cand, date_obj, local_month_stats): continue
                 if get_fatigue_penalty(cand, date_obj, last_worked) >= 1500: continue
                 
@@ -265,7 +300,8 @@ def generate_month(year, month):
                     tries += 1
                     if not is_available(cand, date_obj): continue
                     if local_month_stats[cand]["total"] >= _month_total_cap_dynamic(cand): continue
-                    if local_month_stats[cand]["sun"] >= SUNDAY_CAP_PER_MONTH: continue
+                    cap = FLORIAN_SUNDAY_CAP if cand == "Florian" else SUNDAY_CAP_PER_MONTH
+                    if local_month_stats[cand]["sun"] >= cap: continue
                     pc_person = cand
                     break
             

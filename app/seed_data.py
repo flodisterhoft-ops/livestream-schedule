@@ -59,8 +59,8 @@ def seed_database():
     db.session.add(e)
     db.session.flush()
     db.session.add_all([
-        Assignment(event_id=e.id, role="Leader", person="Select Helper", status="swap_needed"),
-        Assignment(event_id=e.id, role="Helper", person="Select Helper", status="swap_needed"),
+        Assignment(event_id=e.id, role="Computer", person="Select Helper", status="swap_needed"),
+        Assignment(event_id=e.id, role="Camera", person="Select Helper", status="swap_needed"),
     ])
     
     # Jan 18 - Sunday Service
@@ -78,8 +78,8 @@ def seed_database():
     db.session.add(e)
     db.session.flush()
     db.session.add_all([
-        Assignment(event_id=e.id, role="Leader", person="Marvin", status="confirmed"),
-        Assignment(event_id=e.id, role="Helper", person="Viktor", status="pending"),
+        Assignment(event_id=e.id, role="Computer", person="Marvin", status="confirmed"),
+        Assignment(event_id=e.id, role="Camera", person="Viktor", status="pending"),
     ])
     
     # Jan 25 - Sunday Service (with swaps)
@@ -100,8 +100,8 @@ def seed_database():
     db.session.add(e)
     db.session.flush()
     db.session.add_all([
-        Assignment(event_id=e.id, role="Leader", person="Stefan", status="pending"),
-        Assignment(event_id=e.id, role="Helper", person="Viktor", status="confirmed"),
+        Assignment(event_id=e.id, role="Computer", person="Stefan", status="pending"),
+        Assignment(event_id=e.id, role="Camera", person="Viktor", status="confirmed"),
     ])
     
     # ============================================
@@ -124,8 +124,8 @@ def seed_database():
     db.session.add(e)
     db.session.flush()
     db.session.add_all([
-        Assignment(event_id=e.id, role="Leader", person="Stefan", status="pending"),
-        Assignment(event_id=e.id, role="Helper", person="Select Helper", status="swap_needed"),
+        Assignment(event_id=e.id, role="Computer", person="Stefan", status="pending"),
+        Assignment(event_id=e.id, role="Camera", person="Select Helper", status="swap_needed"),
     ])
     
     # Feb 8 - Sunday Service
@@ -144,8 +144,8 @@ def seed_database():
     db.session.add(e)
     db.session.flush()
     db.session.add_all([
-        Assignment(event_id=e.id, role="Leader", person="Florian", status="confirmed"),
-        Assignment(event_id=e.id, role="Helper", person="Select Helper", status="swap_needed"),
+        Assignment(event_id=e.id, role="Computer", person="Florian", status="confirmed"),
+        Assignment(event_id=e.id, role="Camera", person="Select Helper", status="swap_needed"),
     ])
     
     # Feb 15 - Sunday Service
@@ -183,8 +183,8 @@ def seed_database():
     db.session.add(e)
     db.session.flush()
     db.session.add_all([
-        Assignment(event_id=e.id, role="Leader", person="Marvin", status="pending"),
-        Assignment(event_id=e.id, role="Helper", person="Select Helper", status="swap_needed"),
+        Assignment(event_id=e.id, role="Computer", person="Marvin", status="pending"),
+        Assignment(event_id=e.id, role="Camera", person="Select Helper", status="swap_needed"),
     ])
     
     db.session.commit()

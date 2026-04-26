@@ -323,6 +323,37 @@ def generate_year():
     return jsonify(results)
 
 
+@api_v2.route("/generate/range", methods=["POST"])
+def generate_range():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    data = request.json or {}
+    start_year = int(data.get("start_year", vancouver_today().year))
+    start_month = int(data.get("start_month", vancouver_today().month))
+    years = int(data.get("years", 10))
+
+    if years < 1 or years > 20:
+        return jsonify({"error": "years must be between 1 and 20"}), 400
+    if start_month < 1 or start_month > 12:
+        return jsonify({"error": "start_month must be between 1 and 12"}), 400
+
+    from .scheduler_v2 import generate_month_v2
+
+    results = {}
+    year = start_year
+    month = start_month
+    for _ in range(years * 12):
+        count = generate_month_v2(year, month)
+        results[f"{year}-{month:02d}"] = count
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+
+    return jsonify({"months": results, "created": sum(results.values())})
+
+
 @api_v2.route("/wipe", methods=["POST"])
 def wipe_month():
     """Wipe all events for a month."""
@@ -382,8 +413,8 @@ def add_event():
         for role in ["Computer", "Camera 1", "Camera 2"]:
             db.session.add(Assignment(event_id=event.id, role=role, person="Select Helper", status="pending"))
     elif day_type == "Friday":
-        db.session.add(Assignment(event_id=event.id, role="Leader", person="Select Helper", status="pending"))
-        db.session.add(Assignment(event_id=event.id, role="Helper", person="Select Helper", status="pending"))
+        db.session.add(Assignment(event_id=event.id, role="Computer", person="Select Helper", status="pending"))
+        db.session.add(Assignment(event_id=event.id, role="Camera", person="Select Helper", status="pending"))
 
     db.session.commit()
     return jsonify(_event_to_dict(event)), 201
@@ -479,7 +510,8 @@ def get_team():
         result.append({
             "name": name,
             "sunday_roles": config.get("sunday_roles", []),
-            "friday_roles": ["Leader"] if config.get("friday") else [],
+            "friday_roles": ["Computer", "Camera"] if config.get("friday") else [],
+            "role_preferences": {},
             "active": True,
             "active_from": None,
             "telegram_user_id": None,
@@ -503,7 +535,8 @@ def add_team_member():
 
     member = TeamMember(name=name)
     member.sunday_roles = data.get("sunday_roles", ["Computer", "Camera 1", "Camera 2"])
-    member.friday_roles = data.get("friday_roles", ["Leader"])
+    member.friday_roles = data.get("friday_roles", ["Computer", "Camera"])
+    member.role_preferences = data.get("role_preferences", {})
     member.telegram_user_id = data.get("telegram_user_id")
     member.active = data.get("active", True)
 
@@ -537,6 +570,8 @@ def update_team_member(member_id):
         member.sunday_roles = data["sunday_roles"]
     if "friday_roles" in data:
         member.friday_roles = data["friday_roles"]
+    if "role_preferences" in data:
+        member.role_preferences = data["role_preferences"]
     if "telegram_user_id" in data:
         member.telegram_user_id = data["telegram_user_id"]
     if "active" in data:

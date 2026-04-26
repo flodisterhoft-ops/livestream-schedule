@@ -2,11 +2,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 venv/
+.venv/
 .env
 instance/
 .idea/
 .vscode/
 *.db
+*.db.backup-*
+.scheduler.lock
 brain/
 node_modules/
 _ul
