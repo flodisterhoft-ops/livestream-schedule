@@ -6,10 +6,10 @@ All endpoints are prefixed with /api/v2/.
 """
 import datetime
 import calendar
-import uuid
 import os
+from itsdangerous import BadSignature, URLSafeSerializer
 from flask import Blueprint, request, jsonify, session, current_app
-from .models import Event, Assignment, TeamMember, Availability, PickupToken
+from .models import Event, Assignment, TeamMember, Availability, PickupToken, SwapRequest, TempChat
 from .extensions import db
 from .utils import (
     ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats,
@@ -18,6 +18,10 @@ from .utils import (
 from . import telegram_v2 as tg
 
 api_v2 = Blueprint('api_v2', __name__, url_prefix='/api/v2')
+
+
+def _auth_serializer():
+    return URLSafeSerializer(current_app.secret_key, salt="v2-auth")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -41,8 +45,35 @@ def login():
         return jsonify({"error": "Unknown team member"}), 400
 
     session["user_name"] = name
+    if name == "Florian":
+        session["manager"] = True
     session.permanent = True
-    return jsonify({"name": name, "is_admin": name == "Florian"})
+    return jsonify({"name": name, "is_admin": name == "Florian", "is_manager": bool(session.get("manager"))})
+
+
+@api_v2.route("/auth/token-login", methods=["POST"])
+def token_login():
+    data = request.json or {}
+    token = data.get("token", "")
+    if not token:
+        return jsonify({"error": "Missing token"}), 400
+    try:
+        payload = _auth_serializer().loads(token)
+    except BadSignature:
+        return jsonify({"error": "Invalid token"}), 401
+
+    name = payload.get("name")
+    if not name:
+        return jsonify({"error": "Invalid token"}), 401
+
+    team = _get_team_names()
+    if name not in team and name not in ALL_NAMES:
+        return jsonify({"error": "Unknown team member"}), 400
+
+    session["user_name"] = name
+    session["manager"] = bool(payload.get("manager")) and name == "Florian"
+    session.permanent = True
+    return jsonify({"name": name, "is_admin": name == "Florian", "is_manager": bool(session.get("manager"))})
 
 
 @api_v2.route("/auth/logout", methods=["POST"])
@@ -190,18 +221,33 @@ def do_action():
             return jsonify({"error": "Unauthorized"}), 403
         assignment.status = "swap_needed"
         push_history()
+
+        swap = None
+        if event.date >= vancouver_today():
+            deadline_local = tg._swap_deadline(event)
+            deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            swap = SwapRequest.query.filter_by(
+                assignment_id=assignment.id, status="active"
+            ).first()
+            if not swap:
+                swap = SwapRequest(
+                    assignment_id=assignment.id,
+                    requestor=assignment.person,
+                    event_date=event.date,
+                    role=assignment.role,
+                    expires_at=deadline_utc,
+                    status="active",
+                )
+                db.session.add(swap)
+
         db.session.commit()
 
-        # Send Telegram notification for future events
         if event.date >= vancouver_today():
             try:
-                token_str = str(uuid.uuid4())
-                pt = PickupToken(token=token_str, assignment_id=assignment.id, person="")
-                db.session.add(pt)
-                db.session.commit()
-                base_url = current_app.config.get('BASE_URL', '').rstrip('/')
-                pickup_url = f"{base_url}/pickup/{token_str}" if base_url else None
-                tg.send_swap_needed(event, assignment, pickup_url=pickup_url)
+                tg._notify_admin_text(f"❌ {assignment.person} can't make it\n{tg._event_title(event)} · {assignment.role}")
+                tg.refresh_event_telegram(event)
+                if swap:
+                    tg.send_swap_request_temp_groups(assignment, swap)
             except Exception as e:
                 print(f"Telegram error: {e}")
 
@@ -232,6 +278,18 @@ def do_action():
             assignment.status = "swap_needed"
         elif assignment.status == "swap_needed":
             assignment.status = "confirmed"
+            active_swap = SwapRequest.query.filter_by(
+                assignment_id=assignment.id, status="active"
+            ).first()
+            if active_swap:
+                active_swap.status = "cancelled"
+                for temp_chat in TempChat.query.filter_by(
+                    swap_request_id=active_swap.id, status="active"
+                ).all():
+                    try:
+                        tg._delete_temp_chat(temp_chat)
+                    except Exception as e:
+                        print(f"Temp chat cleanup error: {e}")
             if assignment.telegram_message_id:
                 try:
                     tg.delete_message(None, assignment.telegram_message_id)
@@ -456,7 +514,8 @@ def update_event(date_str):
         event.notes = data["notes"]
     if "new_date" in data:
         new_d = datetime.date.fromisoformat(data["new_date"])
-        if Event.query.filter_by(date=new_d).first():
+        existing = Event.query.filter_by(date=new_d).first()
+        if existing and existing.id != event.id:
             return jsonify({"error": "Event already exists on new date"}), 409
         event.date = new_d
 

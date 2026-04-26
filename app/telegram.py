@@ -23,8 +23,9 @@ STATUS_EMOJI = {
 
 ROLE_EMOJI = {
     "Computer": "🖥️",
-    "Camera 1": "📹",
-    "Camera 2": "📹",
+    "Camera 1": "🎦",
+    "Camera 2": "🎦",
+    "Camera": "🎦",
     "Leader": "📖",
     "Helper": "🤝",
 }

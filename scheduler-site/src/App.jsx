@@ -1,26 +1,35 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 const API = '/api/v2'
+const AUTH_TOKEN_KEY = 'livestreamV2AuthToken'
 
 const ROLE_ICONS = {
   Computer: '\uD83D\uDDA5\uFE0F',
-  'Camera 1': '\uD83D\uDCF9',
+  'Camera 1': '\uD83C\uDFA5',
   'Camera 2': '\uD83C\uDFA5',
-  Camera: '\uD83D\uDCF9',
+  Camera: '\uD83C\uDFA5',
   Leader: '\uD83D\uDCD6',
   Helper: '\uD83E\uDD1D',
-}
-
-const STATUS_COLORS = {
-  confirmed: '#10b981',
-  pending: '#f59e0b',
-  swap_needed: '#ef4444',
 }
 
 const STATUS_LABELS = {
   confirmed: 'Confirmed',
   pending: 'Pending',
   swap_needed: 'Needs Coverage',
+}
+
+const toDateKey = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const toMonthKey = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -49,15 +58,55 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [flash, setFlash] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState(null)
+  const [hasSavedAuth, setHasSavedAuth] = useState(false)
+  const [headerStuck, setHeaderStuck] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setHeaderStuck(window.scrollY > 4)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   // ── Init ──────────────────────────────────────────────────
   useEffect(() => {
-    api('/auth/me').then(d => {
-      if (d.name) {
-        setUser(d.name)
-        setIsManager(d.is_manager)
+    const params = new URLSearchParams(window.location.search)
+    const urlToken = params.get('auth')
+    const storedToken = localStorage.getItem(AUTH_TOKEN_KEY)
+    const token = urlToken || storedToken
+    const finish = (d) => {
+      setUser(d.name || null)
+      setIsManager(Boolean(d.is_manager))
+    }
+    const clearAuthParam = () => {
+      params.delete('auth')
+      const query = params.toString()
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
+    }
+    if (urlToken) {
+      localStorage.setItem(AUTH_TOKEN_KEY, urlToken)
+      setHasSavedAuth(true)
+    } else {
+      setHasSavedAuth(Boolean(storedToken))
+    }
+
+    const request = token
+      ? api('/auth/token-login', {
+          method: 'POST',
+          body: JSON.stringify({ token }),
+        }).then(d => {
+          if (urlToken) clearAuthParam()
+          return d
+        })
+      : api('/auth/me')
+
+    request.then(finish).catch(() => {
+      if (token) {
+        localStorage.removeItem(AUTH_TOKEN_KEY)
+        setHasSavedAuth(false)
       }
-    }).catch(() => {}).finally(() => setLoading(false))
+    }).finally(() => setLoading(false))
   }, [])
 
   const loadSchedule = useCallback(() => {
@@ -69,35 +118,42 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (user) {
+    if (!loading) {
       loadSchedule()
       loadTeam()
     }
-  }, [user, loadSchedule, loadTeam])
+  }, [loading, loadSchedule, loadTeam])
 
   const showFlash = (msg, type = 'success') => {
     setFlash({ msg, type })
     setTimeout(() => setFlash(null), 3000)
   }
 
-  // ── Login ─────────────────────────────────────────────────
-  const handleLogin = async (name, password) => {
-    try {
-      const d = await api('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ name, password }),
-      })
-      setUser(d.name)
-      setIsManager(false)
-    } catch (e) {
-      showFlash(e.message, 'error')
-    }
-  }
-
   const handleLogout = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => {})
     setUser(null)
     setIsManager(false)
+  }
+
+  const restoreSavedLogin = async () => {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY)
+    if (!token) {
+      setHasSavedAuth(false)
+      return
+    }
+    try {
+      const d = await api('/auth/token-login', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      })
+      setUser(d.name || null)
+      setIsManager(Boolean(d.is_manager))
+      setHasSavedAuth(true)
+    } catch (e) {
+      localStorage.removeItem(AUTH_TOKEN_KEY)
+      setHasSavedAuth(false)
+      showFlash(e.message, 'error')
+    }
   }
 
   const toggleManager = async () => {
@@ -107,7 +163,6 @@ export default function App() {
         body: JSON.stringify({ pin: '2026' }),
       })
       setIsManager(d.is_manager)
-      showFlash(d.is_manager ? 'Manager mode enabled' : 'Manager mode disabled')
     } catch (e) {
       showFlash(e.message, 'error')
     }
@@ -132,34 +187,71 @@ export default function App() {
   }
 
   // ── Render ────────────────────────────────────────────────
-  if (loading) return <div className="app-loading">Loading...</div>
-
-  if (!user) return <LoginScreen team={team} onLogin={handleLogin} loadTeam={loadTeam} />
+  if (loading) {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1 className="app-title">Livestream Schedule</h1>
+        </header>
+        <div className="skeleton-list" aria-hidden="true">
+          <div className="skeleton-card" />
+          <div className="skeleton-card" />
+          <div className="skeleton-card" />
+        </div>
+      </div>
+    )
+  }
 
   // Calculate months for navigation
-  const months = [...new Set(schedule.map(e => e.date.slice(0, 7)))].sort()
-  const currentMonth = new Date().toISOString().slice(0, 7)
-  const activeMonth = selectedMonth || (months.includes(currentMonth) ? currentMonth : months[months.length - 1])
+  const now = new Date()
+  const today = toDateKey(now)
+  const currentYear = now.getFullYear()
+  const currentMonth = toMonthKey(now)
+  const maxVisibleMonth = toMonthKey(new Date(now.getFullYear(), now.getMonth() + 3, 1))
+  const currentYearStart = `${currentYear}-01`
+  const months = [...new Set(schedule.map(e => e.date.slice(0, 7)))]
+    .filter(m => {
+      const year = Number(m.slice(0, 4))
+      if (year < currentYear) return true
+      return m >= currentYearStart && m <= maxVisibleMonth
+    })
+    .sort()
+  const activeMonth = selectedMonth && months.includes(selectedMonth)
+    ? selectedMonth
+    : (months.includes(currentMonth) ? currentMonth : months[0])
 
-  const today = new Date().toISOString().slice(0, 10)
   const filtered = activeMonth
     ? schedule.filter(e => e.date.startsWith(activeMonth))
     : schedule
   const visibleSchedule = activeMonth === currentMonth
-    ? filtered.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date))
+    ? [
+        ...filtered.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date)),
+        ...filtered.filter(e => e.date < today).sort((a, b) => b.date.localeCompare(a.date)),
+      ]
     : filtered.sort((a, b) => a.date.localeCompare(b.date))
 
   return (
     <div className="app">
       {/* Flash message */}
       {flash && (
-        <div className={`flash flash-${flash.type}`}>{flash.msg}</div>
+        <div className={`flash flash-${flash.type}`} role="status" aria-live="polite">{flash.msg}</div>
       )}
 
       {/* Header */}
-      <header className="app-header">
+      <header className={`app-header ${headerStuck ? 'is-stuck' : ''}`}>
         <h1 className="app-title">Livestream Schedule</h1>
         <div className="header-actions">
+          {isManager && <span className="manager-chip">Manager</span>}
+          {isManager && (
+            <button
+              className="icon-btn primary"
+              onClick={() => setShowCreate(true)}
+              title="New event"
+              aria-label="Create event"
+            >
+              {'+'}
+            </button>
+          )}
           {user === 'Florian' && (
             <button
               className={`icon-btn ${isManager ? 'active' : ''}`}
@@ -169,9 +261,16 @@ export default function App() {
               {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD12'}
             </button>
           )}
-          <button className="icon-btn" onClick={handleLogout} title="Logout">
-            {'\uD83D\uDEAA'}
-          </button>
+          {!user && hasSavedAuth && (
+            <button className="icon-btn" onClick={restoreSavedLogin} title="Restore Admin">
+              {'\uD83D\uDD12'}
+            </button>
+          )}
+          {user && (
+            <button className="icon-btn" onClick={handleLogout} title="Logout">
+              {'\uD83D\uDEAA'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -187,79 +286,19 @@ export default function App() {
         loadSchedule={loadSchedule}
         team={team}
       />
-    </div>
-  )
-}
 
-// ═══════════════════════════════════════════════════════════════
-//  Login Screen
-// ═══════════════════════════════════════════════════════════════
-
-function LoginScreen({ team, onLogin, loadTeam }) {
-  const [showPassword, setShowPassword] = useState(false)
-  const [password, setPassword] = useState('')
-
-  useEffect(() => { loadTeam() }, [loadTeam])
-
-  const names = team.length > 0
-    ? team.map(m => m.name).sort()
-    : ['Andy', 'Florian', 'Marvin', 'Patric', 'Rene', 'Stefan', 'Viktor']
-
-  const handleClick = (name) => {
-    if (name === 'Florian') {
-      setShowPassword(true)
-    } else {
-      onLogin(name)
-    }
-  }
-
-  if (showPassword) {
-    return (
-      <div className="login-screen">
-        <div className="login-card">
-          <h2>Florian</h2>
-          <p className="login-subtitle">Enter password</p>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && onLogin('Florian', password)}
-            placeholder="Password"
-            autoFocus
-            className="login-input"
-          />
-          <div className="login-actions">
-            <button className="btn btn-primary" onClick={() => onLogin('Florian', password)}>
-              Login
-            </button>
-            <button className="btn btn-ghost" onClick={() => { setShowPassword(false); setPassword('') }}>
-              Back
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="login-screen">
-      <div className="login-header">
-        <h1>Livestream Schedule</h1>
-        <p>Who are you?</p>
-      </div>
-      <div className="login-grid">
-        {names.map(name => (
-          <button
-            key={name}
-            className={`login-name-btn ${name === 'Florian' ? 'admin' : ''}`}
-            onClick={() => handleClick(name)}
-          >
-            <span className="login-avatar">{name[0]}</span>
-            <span className="login-name">{name}</span>
-            {name === 'Florian' && <span className="login-badge">Admin</span>}
-          </button>
-        ))}
-      </div>
+      {showCreate && (
+        <CreateEventModal
+          team={team}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false)
+            loadSchedule()
+            showFlash('Event created')
+          }}
+          showFlash={showFlash}
+        />
+      )}
     </div>
   )
 }
@@ -269,40 +308,7 @@ function LoginScreen({ team, onLogin, loadTeam }) {
 // ═══════════════════════════════════════════════════════════════
 
 function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isManager, doAction, showFlash, loadSchedule, team }) {
-  const [showGenerate, setShowGenerate] = useState(false)
-  const [genMonth, setGenMonth] = useState('')
-
-  const handleGenerate = async () => {
-    if (!genMonth) return
-    const [y, m] = genMonth.split('-').map(Number)
-    try {
-      const d = await api('/generate', {
-        method: 'POST',
-        body: JSON.stringify({ year: y, month: m }),
-      })
-      showFlash(`Generated ${d.created} events!`)
-      loadSchedule()
-      setShowGenerate(false)
-    } catch (e) {
-      showFlash(e.message, 'error')
-    }
-  }
-
-  const handleWipe = async () => {
-    if (!genMonth) return
-    if (!confirm(`Wipe all events for ${genMonth}?`)) return
-    const [y, m] = genMonth.split('-').map(Number)
-    try {
-      const d = await api('/wipe', {
-        method: 'POST',
-        body: JSON.stringify({ year: y, month: m }),
-      })
-      showFlash(`Wiped ${d.deleted} events`)
-      loadSchedule()
-    } catch (e) {
-      showFlash(e.message, 'error')
-    }
-  }
+  const [expandedYears, setExpandedYears] = useState({})
 
   const handleNotify = async (date) => {
     try {
@@ -311,18 +317,6 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
         body: JSON.stringify({ date }),
       })
       showFlash('Telegram notification sent!')
-    } catch (e) {
-      showFlash(e.message, 'error')
-    }
-  }
-
-  const handleTestTelegram = async (type) => {
-    try {
-      await api('/telegram/test', {
-        method: 'POST',
-        body: JSON.stringify({ type }),
-      })
-      showFlash('Test message sent to your personal chat!')
     } catch (e) {
       showFlash(e.message, 'error')
     }
@@ -340,55 +334,73 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
     }
   }
 
+  const handleEventUpdate = async (event, updates) => {
+    try {
+      await api(`/event/${event.date}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      })
+      loadSchedule()
+      showFlash('Event updated')
+    } catch (e) {
+      showFlash(e.message, 'error')
+    }
+  }
+
   const teamNames = team.length > 0
     ? team.map(m => m.name).sort()
     : ['Andy', 'Florian', 'Marvin', 'Patric', 'Rene', 'Stefan', 'Viktor', 'TBD']
 
+  const currentYear = new Date().getFullYear()
+  const monthGroups = months.reduce((groups, month) => {
+    const year = month.slice(0, 4)
+    groups[year] = groups[year] || []
+    groups[year].push(month)
+    return groups
+  }, {})
+  const pastYears = Object.keys(monthGroups).filter(year => Number(year) < currentYear).sort()
+  const currentAndFutureMonths = months.filter(month => Number(month.slice(0, 4)) >= currentYear)
+  const toggleYear = (year) => {
+    setExpandedYears(prev => ({ ...prev, [year]: !prev[year] }))
+  }
+  const renderMonthPill = (month) => {
+    const label = new Date(month + '-15').toLocaleString('en', { month: 'short' })
+    const isPast = month < new Date().toISOString().slice(0, 7)
+    return (
+      <button
+        key={month}
+        className={`month-pill ${month === activeMonth ? 'active' : ''} ${isPast ? 'past' : ''}`}
+        onClick={() => onMonthChange(month)}
+      >
+        {label}
+      </button>
+    )
+  }
+
   return (
     <div className="schedule-tab">
-      {/* Manager controls */}
-      {isManager && (
-        <div className="manager-panel">
-          <div className="manager-row">
-            <input
-              type="month"
-              value={genMonth}
-              onChange={e => setGenMonth(e.target.value)}
-              className="input-month"
-            />
-            <button className="btn btn-primary btn-sm" onClick={handleGenerate}>
-              Generate
-            </button>
-            <button className="btn btn-danger btn-sm" onClick={handleWipe}>
-              Wipe
-            </button>
-          </div>
-          <div className="manager-row">
-            <button className="btn btn-sm btn-outline" onClick={() => handleTestTelegram('reminder')}>
-              Test Reminder
-            </button>
-            <button className="btn btn-sm btn-outline" onClick={() => handleTestTelegram('monthly')}>
-              Test Monthly
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Month navigation */}
       <div className="month-nav">
-        {months.map(m => {
-          const label = new Date(m + '-15').toLocaleString('en', { month: 'short' })
-          const isPast = m < new Date().toISOString().slice(0, 7)
+        {pastYears.map(year => {
+          const yearMonths = monthGroups[year]
+          const hasActiveMonth = yearMonths.includes(activeMonth)
           return (
-            <button
-              key={m}
-              className={`month-pill ${m === activeMonth ? 'active' : ''} ${isPast ? 'past' : ''}`}
-              onClick={() => onMonthChange(m)}
-            >
-              {label}
-            </button>
+            <div key={year} className="year-group">
+              <button
+                className={`month-pill year-pill ${hasActiveMonth ? 'active' : ''}`}
+                onClick={() => toggleYear(year)}
+              >
+                {year}
+              </button>
+              {expandedYears[year] && (
+                <div className="year-months">
+                  {yearMonths.map(renderMonthPill)}
+                </div>
+              )}
+            </div>
           )
         })}
+        {currentAndFutureMonths.map(renderMonthPill)}
       </div>
 
       {/* Events */}
@@ -396,7 +408,7 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
         {schedule.length === 0 && (
           <div className="empty-state">
             <p>No events for this month.</p>
-            {isManager && <p>Use the controls above to generate a schedule.</p>}
+            {isManager && <p>Generate one or use Telegram to add an event.</p>}
           </div>
         )}
         {schedule.map(event => (
@@ -408,6 +420,7 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
             doAction={doAction}
             onNotify={() => handleNotify(event.date)}
             onAssign={handleAssign}
+            onEventUpdate={handleEventUpdate}
             teamNames={teamNames}
           />
         ))}
@@ -420,28 +433,120 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isMan
 //  Event Card
 // ═══════════════════════════════════════════════════════════════
 
-function EventCard({ event, user, isManager, doAction, onNotify, onAssign, teamNames }) {
+function EventCard({ event, user, isManager, doAction, onNotify, onAssign, onEventUpdate, teamNames }) {
+  const [editingEvent, setEditingEvent] = useState(false)
+  const [editType, setEditType] = useState(event.day_type === 'Sunday' ? 'Sunday' : event.day_type === 'Friday' ? 'Bible Study' : 'Other')
+  const [editTitle, setEditTitle] = useState(event.custom_title || event.title || '')
+  const [editDate, setEditDate] = useState(event.date)
+  const editorRef = useRef(null)
   const d = new Date(event.date + 'T12:00:00')
   const dayNum = d.getDate()
   const dayName = d.toLocaleString('en', { weekday: 'short' })
   const monthName = d.toLocaleString('en', { month: 'short' })
+  const saveEvent = () => {
+    const updates = {
+      new_date: editDate,
+      day_type: editType === 'Sunday' ? 'Sunday' : editType === 'Bible Study' ? 'Friday' : 'Custom',
+      custom_title: editType === 'Other' ? editTitle : null,
+    }
+    onEventUpdate(event, updates)
+    setEditingEvent(false)
+  }
 
+  useEffect(() => {
+    if (!editingEvent) return
+    const handlePointer = (e) => {
+      if (editorRef.current?.contains(e.target)) return
+      const card = editorRef.current?.closest('.event-card')
+      if (card?.contains(e.target)) return
+      setEditingEvent(false)
+    }
+    const handleKey = (e) => { if (e.key === 'Escape') setEditingEvent(false) }
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('touchstart', handlePointer)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('touchstart', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [editingEvent])
+
+  const canEdit = isManager && !event.is_past
+  const DateTag = canEdit ? 'button' : 'div'
+  const TitleTag = canEdit ? 'button' : 'span'
+  const editProps = canEdit
+    ? { type: 'button', onClick: () => setEditingEvent(true), 'aria-label': 'Edit event' }
+    : {}
+  const todayKey = (() => {
+    const n = new Date()
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+  })()
+  const isToday = event.date === todayKey
+  const hasSwap = event.assignments.some(a => a.status === 'swap_needed')
+  const cardClasses = [
+    'event-card',
+    event.is_past ? 'past' : '',
+    isToday ? 'today' : '',
+    hasSwap && !event.is_past ? 'swap-needed' : '',
+  ].filter(Boolean).join(' ')
   return (
-    <div className={`event-card ${event.is_past ? 'past' : ''}`}>
-      <div className="event-date-col">
+    <div className={cardClasses}>
+      <DateTag
+        className={`event-date-col ${canEdit ? 'editable' : ''}`}
+        {...editProps}
+      >
         <span className="event-day-name">{dayName}</span>
         <span className="event-day-num">{dayNum}</span>
         <span className="event-month">{monthName}</span>
-      </div>
+      </DateTag>
       <div className="event-info">
         <div className="event-header">
-          <span className="event-title">{event.title}</span>
+          <TitleTag
+            className={`event-title ${canEdit ? 'editable' : ''}`}
+            {...editProps}
+          >
+            {event.title}
+            {isToday && <span className="today-pill">TODAY</span>}
+          </TitleTag>
           {isManager && !event.is_past && (
             <button className="icon-btn-sm" onClick={onNotify} title="Send Telegram">
               {'\uD83D\uDCE8'}
             </button>
           )}
         </div>
+        {editingEvent && (
+          <div className="event-editor" ref={editorRef}>
+            <input
+              type="date"
+              value={editDate}
+              onChange={e => setEditDate(e.target.value)}
+              className="event-edit-input"
+            />
+            <select
+              value={editType}
+              onChange={e => setEditType(e.target.value)}
+              className="event-edit-input"
+            >
+              <option value="Sunday">Sunday Service</option>
+              <option value="Bible Study">Bible Study</option>
+              <option value="Other">Other</option>
+            </select>
+            {editType === 'Other' && (
+              <input
+                type="text"
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                placeholder="Event title"
+                className="event-edit-input"
+              />
+            )}
+            <div className="event-editor-actions">
+              <button className="action-btn confirm" onClick={saveEvent}>Save</button>
+              <button className="action-btn undo" onClick={() => setEditingEvent(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
         <div className="assignments">
           {event.assignments.map(a => (
             <AssignmentRow
@@ -466,26 +571,104 @@ function EventCard({ event, user, isManager, doAction, onNotify, onAssign, teamN
 // ═══════════════════════════════════════════════════════════════
 
 function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, teamNames, isPast }) {
-  const icon = ROLE_ICONS[a.role] || '\uD83D\uDC64'
+  const [showNames, setShowNames] = useState(false)
+  const [menuPos, setMenuPos] = useState(null)
+  const triggerRef = useRef(null)
+  const menuRef = useRef(null)
+  const baseRole = a.role.replace(/\s+\d+$/, '')
+  const icon = ROLE_ICONS[a.role] || ROLE_ICONS[baseRole] || '\uD83D\uDC64'
   const worker = a.cover || a.person
   const isMe = a.person === user || a.cover === user
   const isUnassigned = a.person === 'Select Helper' || a.person === 'TBD'
+  const nameOptions = [...new Set([...(isUnassigned ? [] : [a.person]), ...teamNames].filter(Boolean))]
+  const chooseName = (name) => {
+    onAssign(a.id, name)
+    setShowNames(false)
+  }
 
+  const computePos = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const menuWidth = Math.min(220, window.innerWidth - 24)
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - menuWidth - 12))
+    setMenuPos({ top: rect.bottom + 4, left, width: menuWidth })
+  }, [])
+
+  const openMenu = () => {
+    if (showNames) {
+      setShowNames(false)
+      return
+    }
+    computePos()
+    setShowNames(true)
+  }
+
+  useEffect(() => {
+    if (!showNames) return
+    const handlePointer = (e) => {
+      if (triggerRef.current?.contains(e.target)) return
+      if (menuRef.current?.contains(e.target)) return
+      setShowNames(false)
+    }
+    const handleKey = (e) => { if (e.key === 'Escape') setShowNames(false) }
+    const handleScrollOrResize = () => computePos()
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('touchstart', handlePointer)
+    document.addEventListener('keydown', handleKey)
+    window.addEventListener('resize', handleScrollOrResize)
+    window.addEventListener('scroll', handleScrollOrResize, true)
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('touchstart', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+      window.removeEventListener('resize', handleScrollOrResize)
+      window.removeEventListener('scroll', handleScrollOrResize, true)
+    }
+  }, [showNames, computePos])
+
+  const roleClass = `role-${baseRole.replace(/\s+/g, '-')}`
   return (
     <div className={`assignment-row ${a.status === 'swap_needed' ? 'swap-needed' : ''} ${isMe ? 'is-me' : ''}`}>
       <div className="assignment-left">
-        <span className="role-icon">{icon}</span>
+        <span className={`role-icon ${roleClass}`} aria-hidden="true">{icon}</span>
         {isManager && !isPast ? (
-          <select
-            value={a.person}
-            onChange={e => onAssign(a.id, e.target.value)}
-            className="assign-select"
-          >
-            {isUnassigned && <option value="Select Helper">Unassigned</option>}
-            {teamNames.map(n => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+          <div className="name-picker">
+            <button
+              ref={triggerRef}
+              type="button"
+              className={`person-name-btn ${isUnassigned ? 'unassigned' : ''}`}
+              onClick={openMenu}
+              aria-label={`Change ${a.role} assignee (currently ${isUnassigned ? 'unassigned' : worker})`}
+              aria-expanded={showNames}
+              aria-haspopup="listbox"
+            >
+              {isUnassigned ? 'Unassigned' : worker}
+              {a.cover && <span className="cover-tag"> (covering)</span>}
+              {a.swapped_with && <span className="swap-tag"> (swapped with {a.swapped_with})</span>}
+            </button>
+            {showNames && menuPos && createPortal(
+              <div
+                ref={menuRef}
+                className="name-menu"
+                style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+              >
+                {isUnassigned && (
+                  <button type="button" onClick={() => chooseName('Select Helper')}>Unassigned</button>
+                )}
+                {nameOptions.map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={n === a.person ? 'active' : ''}
+                    onClick={() => chooseName(n)}
+                  >
+                    {n === 'Select Helper' || n === 'TBD' ? 'Unassigned' : n}
+                  </button>
+                ))}
+              </div>,
+              document.body
+            )}
+          </div>
         ) : (
           <span className={`person-name ${isUnassigned ? 'unassigned' : ''}`}>
             {isUnassigned ? 'Unassigned' : worker}
@@ -497,7 +680,7 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
       <div className="assignment-right">
         {!isPast && (
           <>
-            {isUnassigned && !isManager && (
+            {user && isUnassigned && !isManager && (
               <button className="action-btn volunteer" onClick={() => doAction('volunteer', a.id)}>
                 Volunteer
               </button>
@@ -518,7 +701,7 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
               <div className="status-badge confirmed">{'\u2713'}</div>
             )}
 
-            {a.status === 'swap_needed' && !isMe && !isUnassigned && (
+            {user && a.status === 'swap_needed' && !isMe && !isUnassigned && (
               <button className="action-btn pickup" onClick={() => doAction('pickup', a.id)}>
                 Pick Up
               </button>
@@ -787,6 +970,228 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
             )}
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Create Event Modal
+// ═══════════════════════════════════════════════════════════════
+
+const PRESET_TYPES = [
+  { value: 'Sunday', label: 'Sunday Service', defaultRoles: ['Computer', 'Camera 1', 'Camera 2'] },
+  { value: 'Friday', label: 'Bible Study', defaultRoles: ['Computer', 'Camera'] },
+  { value: 'Custom', label: 'Custom', defaultRoles: ['Computer', 'Camera'] },
+]
+
+function CreateEventModal({ team, onClose, onCreated, showFlash }) {
+  const today = new Date()
+  const [date, setDate] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`)
+  const [type, setType] = useState('Sunday')
+  const [customTitle, setCustomTitle] = useState('')
+  const preset = PRESET_TYPES.find(p => p.value === type) || PRESET_TYPES[0]
+  const [computerCount, setComputerCount] = useState(preset.defaultRoles.filter(r => r === 'Computer').length || 1)
+  const [cameraCount, setCameraCount] = useState(preset.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
+  const [helperCount, setHelperCount] = useState(0)
+  const [leaderCount, setLeaderCount] = useState(type === 'Friday' ? 1 : 0)
+  const [people, setPeople] = useState({})
+  const [submitting, setSubmitting] = useState(false)
+  const overlayRef = useRef(null)
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const teamNames = team.length > 0 ? team.map(m => m.name).sort() : []
+
+  // Build the role list from counts
+  const roles = []
+  for (let i = 0; i < computerCount; i++) roles.push(computerCount > 1 ? `Computer ${i + 1}` : 'Computer')
+  if (cameraCount === 1) roles.push('Camera')
+  else for (let i = 0; i < cameraCount; i++) roles.push(`Camera ${i + 1}`)
+  for (let i = 0; i < leaderCount; i++) roles.push(leaderCount > 1 ? `Leader ${i + 1}` : 'Leader')
+  for (let i = 0; i < helperCount; i++) roles.push(helperCount > 1 ? `Helper ${i + 1}` : 'Helper')
+
+  const applyTypeDefaults = (newType) => {
+    setType(newType)
+    if (newType === 'Sunday') {
+      setComputerCount(1)
+      setCameraCount(2)
+      setLeaderCount(0)
+      setHelperCount(0)
+    } else if (newType === 'Friday') {
+      setComputerCount(1)
+      setCameraCount(1)
+      setLeaderCount(1)
+      setHelperCount(0)
+    } else {
+      setComputerCount(1)
+      setCameraCount(1)
+      setLeaderCount(0)
+      setHelperCount(0)
+    }
+  }
+
+  const submit = async () => {
+    if (!date) { showFlash('Pick a date', 'error'); return }
+    if (type === 'Custom' && !customTitle.trim()) { showFlash('Enter a title', 'error'); return }
+    if (roles.length === 0) { showFlash('Add at least one role', 'error'); return }
+
+    setSubmitting(true)
+    try {
+      const created = await api('/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          date,
+          day_type: type,
+          custom_title: type === 'Custom' ? customTitle.trim() : null,
+          roles,
+        }),
+      })
+      // Assign people if selected
+      const assignments = created.assignments || []
+      await Promise.all(
+        assignments.map(a => {
+          const chosen = people[a.role]
+          if (!chosen) return Promise.resolve()
+          return api(`/assignment/${a.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ person: chosen }),
+          }).catch(() => {})
+        })
+      )
+      onCreated()
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create event"
+    >
+      <div className="modal-card">
+        <div className="modal-header">
+          <h2>New Event</h2>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
+        </div>
+
+        <div className="modal-body">
+          <label className="modal-field">
+            <span className="modal-label">Date</span>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="modal-input"
+            />
+          </label>
+
+          <div className="modal-field">
+            <span className="modal-label">Type</span>
+            <div className="segmented">
+              {PRESET_TYPES.map(p => (
+                <button
+                  key={p.value}
+                  type="button"
+                  className={`segment ${type === p.value ? 'active' : ''}`}
+                  onClick={() => applyTypeDefaults(p.value)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {type === 'Custom' && (
+            <label className="modal-field">
+              <span className="modal-label">Title</span>
+              <input
+                type="text"
+                value={customTitle}
+                onChange={e => setCustomTitle(e.target.value)}
+                placeholder="Event title"
+                className="modal-input"
+                autoFocus
+              />
+            </label>
+          )}
+
+          <div className="modal-field">
+            <span className="modal-label">Roles</span>
+            <div className="counter-grid">
+              <Counter label="Computer" value={computerCount} onChange={setComputerCount} max={3} />
+              <Counter label="Camera" value={cameraCount} onChange={setCameraCount} max={4} />
+              <Counter label="Leader" value={leaderCount} onChange={setLeaderCount} max={2} />
+              <Counter label="Helper" value={helperCount} onChange={setHelperCount} max={4} />
+            </div>
+          </div>
+
+          {roles.length > 0 && (
+            <div className="modal-field">
+              <span className="modal-label">Assign people (optional)</span>
+              <div className="assign-grid">
+                {roles.map(role => (
+                  <div key={role} className="assign-row">
+                    <span className="assign-role">{role}</span>
+                    <select
+                      value={people[role] || ''}
+                      onChange={e => setPeople({ ...people, [role]: e.target.value })}
+                      className="modal-input"
+                    >
+                      <option value="">Unassigned</option>
+                      {teamNames.map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={submitting}>
+            {submitting ? 'Creating…' : 'Create event'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Counter({ label, value, onChange, max = 5 }) {
+  return (
+    <div className="counter">
+      <span className="counter-label">{label}</span>
+      <div className="counter-controls">
+        <button
+          type="button"
+          className="counter-btn"
+          onClick={() => onChange(Math.max(0, value - 1))}
+          disabled={value <= 0}
+          aria-label={`Decrease ${label}`}
+        >−</button>
+        <span className="counter-value">{value}</span>
+        <button
+          type="button"
+          className="counter-btn"
+          onClick={() => onChange(Math.min(max, value + 1))}
+          disabled={value >= max}
+          aria-label={`Increase ${label}`}
+        >+</button>
       </div>
     </div>
   )

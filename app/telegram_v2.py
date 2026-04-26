@@ -18,6 +18,7 @@ import hashlib
 import threading
 import time
 import requests
+from itsdangerous import URLSafeSerializer
 from flask import current_app
 from .models import Event, Assignment, PickupToken, TeamMember, InteractionLog, SwapRequest, TempChat
 from .extensions import db
@@ -35,8 +36,8 @@ BASE_API = "https://api.telegram.org/bot"
 # ── Emoji maps ───────────────────────────────────────────────────────
 ROLE_EMOJI = {
     "Computer": "🖥️",
-    "Camera 1": "🎦1️⃣",
-    "Camera 2": "🎦2️⃣",
+    "Camera 1": "🎦",
+    "Camera 2": "🎦",
     "Camera": "🎦",
     "Leader": "🎤",
     "Helper": "🙌",
@@ -204,8 +205,22 @@ def _site_url():
         return "https://livestream.disterhoft.com"
 
 
-def _schedule_button(label="📅 View Schedule"):
-    return {"text": label, "url": _site_url()}
+def _schedule_url(person=None):
+    url = _site_url().rstrip("/") + "/v2"
+    if person:
+        try:
+            token = URLSafeSerializer(current_app.secret_key, salt="v2-auth").dumps({
+                "name": person,
+                "manager": person == "Florian",
+            })
+            url += f"?auth={token}"
+        except RuntimeError:
+            pass
+    return url
+
+
+def _schedule_button(label="📅 View Schedule", person=None):
+    return {"text": label, "url": _schedule_url(person)}
 
 
 def _event_title(event):
@@ -396,16 +411,8 @@ def _build_event_buttons(event, assignments=None, expanded_id=None):
             {"text": label, "callback_data": f"expand:{a.id}"},
         ])
 
-    # "Show Schedule" button at the bottom (always present)
-    from flask import current_app
-    site_url = "https://livestream.disterhoft.com"
-    try:
-        if current_app:
-            site_url = current_app.config.get('BASE_URL', site_url)
-    except RuntimeError:
-        pass
     rows.append([
-        {"text": "📅 Show Schedule", "url": site_url}
+        _schedule_button("📅 Show Schedule")
     ])
 
     return _make_inline_keyboard(rows) if rows else None
@@ -512,7 +519,7 @@ def _personal_question_buttons(assignment):
     return [
         [{"text": "✅ Yes, I'll be there", "callback_data": f"personal_confirm:{assignment.id}"}],
         [{"text": "❌ I can't make it", "callback_data": f"personal_decline:{assignment.id}"}],
-        [_schedule_button("📅 Open Schedule")],
+        [_schedule_button("📅 Open Schedule", person=assignment.person)],
     ]
 
 
@@ -764,7 +771,7 @@ def _swap_buttons(swap_request, future_assignment):
     return [
         [{"text": f"✅ Yes, swap with {swap_request.requestor}", "callback_data": f"swap_accept:{swap_request.id}:{future_assignment.id}"}],
         [{"text": "❌ No, I'm good", "callback_data": f"swap_decline:{swap_request.id}"}],
-        [_schedule_button("📅 Open Schedule")],
+        [_schedule_button("📅 Open Schedule", person=future_assignment.person)],
     ]
 
 
