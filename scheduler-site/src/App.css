@@ -168,6 +168,40 @@ body {
 .icon-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
 .icon-btn.active { background: var(--accent-light); border-color: var(--accent); }
 
+.manager-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 1.05rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.manager-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.manager-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  animation: managerBtnPulse 2.2s ease-out infinite;
+}
+
+@keyframes managerBtnPulse {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
 .manager-toggle {
   min-height: 40px;
   padding: 0 12px;
@@ -738,7 +772,16 @@ body {
 
 .assignment-row:hover { background: var(--bg-hover); }
 .assignment-row.swap-needed { background: var(--danger-light); }
-.assignment-row.is-me { background: var(--accent-light); }
+.assignment-row.is-me {
+  background: var(--accent-light);
+  animation: rowPulse 2.4s ease-out infinite;
+}
+
+@keyframes rowPulse {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.35); }
+  70% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
 .assignment-row.confirmed {
   background: var(--success-light);
 }

@@ -267,7 +267,6 @@ export default function App() {
         <h1 className="app-title">Livestream Schedule</h1>
         <div className="header-actions">
           {user && <span className="user-chip">{user}</span>}
-          {isManager && <span className="manager-chip">Manager On</span>}
           {isManager && (
             <button
               className="icon-btn primary"
@@ -280,23 +279,18 @@ export default function App() {
           )}
           {isAdmin && (
             <button
-              className={`manager-toggle ${isManager ? 'active' : ''}`}
+              className={`manager-btn ${isManager ? 'active' : ''}`}
               onClick={toggleManager}
-              title={isManager ? 'Exit Manager' : 'Manager Mode'}
+              title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
               aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+              aria-pressed={isManager}
             >
-              <span>{isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD12'}</span>
-              <span>{isManager ? 'Manager' : 'Admin'}</span>
+              {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
             </button>
           )}
           {!user && hasSavedAuth && (
             <button className="icon-btn" onClick={restoreSavedLogin} title="Restore Admin">
               {'\uD83D\uDD12'}
-            </button>
-          )}
-          {user && (
-            <button className="icon-btn" onClick={handleLogout} title="Logout">
-              {'\uD83D\uDEAA'}
             </button>
           )}
         </div>
