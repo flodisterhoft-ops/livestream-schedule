@@ -799,7 +799,7 @@ def _swap_buttons(swap_request, recipient, future_assignment):
     ]
     if future_assignment:
         buttons.append([{
-            "text": f"🔄 Swap with my {future_assignment.role} - {_short_date(future_assignment.event.date)} shift",
+            "text": f"🔄 Swap with my ({future_assignment.role} - {_short_date(future_assignment.event.date)}) shift",
             "callback_data": f"swap_accept:{swap_request.id}:{future_assignment.id}",
         }])
     buttons.extend([
