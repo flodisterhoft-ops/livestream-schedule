@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 import threading
 
 _client = None
@@ -32,9 +33,20 @@ def _run_sync(coro):
 def _session_path():
     configured = os.environ.get("TELETHON_SESSION_PATH", "")
     if configured:
-        return configured[:-8] if configured.endswith(".session") else configured
-    root = os.path.dirname(os.path.dirname(__file__))
-    return os.path.join(root, "telethon_session")
+        canonical = configured[:-8] if configured.endswith(".session") else configured
+    else:
+        root = os.path.dirname(os.path.dirname(__file__))
+        canonical = os.path.join(root, "telethon_session")
+    runtime = os.path.join("/tmp", f"livestream_telethon_{os.getpid()}")
+    canonical_file = f"{canonical}.session"
+    runtime_file = f"{runtime}.session"
+    if os.path.exists(canonical_file) and not os.path.exists(runtime_file):
+        try:
+            shutil.copy2(canonical_file, runtime_file)
+        except OSError as e:
+            print(f"[TempGroup] Session copy failed: {e}")
+            return canonical
+    return runtime
 
 
 def get_client():
