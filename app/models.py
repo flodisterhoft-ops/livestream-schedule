@@ -202,3 +202,18 @@ class SwapRequest(db.Model):
             "accepted_by": self.accepted_by,
             "reschedule_event_date": self.reschedule_event_date.isoformat() if self.reschedule_event_date else None,
         }
+
+
+class TempChat(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.String(40), nullable=False, index=True)
+    message_id = db.Column(db.Integer)
+    kind = db.Column(db.String(30), nullable=False, index=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.id'), index=True)
+    swap_request_id = db.Column(db.Integer, db.ForeignKey('swap_request.id'), index=True)
+    future_assignment_id = db.Column(db.Integer)
+    person = db.Column(db.String(50))
+    recipient = db.Column(db.String(50))
+    status = db.Column(db.String(20), default="active", index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, index=True)

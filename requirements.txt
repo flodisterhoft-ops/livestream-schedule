@@ -14,5 +14,6 @@ gunicorn>=21.0.0
 # PostgreSQL driver
 psycopg2-binary>=2.9.0
 
-# Background scheduler for daily Telegram reminders at 8 AM Vancouver time
+# Background scheduler for daily Telegram reminders
 APScheduler>=3.10.0
+telethon==1.37.0

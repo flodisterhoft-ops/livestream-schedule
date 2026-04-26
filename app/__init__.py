@@ -313,14 +313,14 @@ def create_app(config_class='config.Config'):
         # Keep a rolling 3-month schedule ahead; top up when less than 1 month remains.
         ensure_schedule_horizon()
 
-    # ── Start the daily-reminder scheduler (8 AM Vancouver time) ──
+    # ── Start the daily-reminder scheduler (9 AM Vancouver time) ──
     _start_daily_scheduler(app)
 
     return app
 
 
 def _start_daily_scheduler(app):
-    """Start an APScheduler that fires send_daily_reminders_v2() at 8 AM Vancouver.
+    """Start an APScheduler that fires send_daily_reminders_v2() at 9 AM Vancouver.
 
     Uses a pid-lock file so that only ONE gunicorn worker owns the scheduler
     (otherwise every worker would fire the job and we'd send duplicate messages).
@@ -372,17 +372,27 @@ def _start_daily_scheduler(app):
     atexit.register(_cleanup_lock)
 
     def _fire_daily_reminders():
-        """Run send_daily_reminders_v2() inside app context at 8 AM Vancouver."""
+        """Run send_daily_reminders_v2() inside app context at 9 AM Vancouver."""
         with app.app_context():
             try:
                 from .telegram_v2 import send_daily_reminders_v2
                 sent = send_daily_reminders_v2()
-                print(f"[Scheduler] 8AM reminder fired — sent {sent} message(s)")
+                print(f"[Scheduler] 9AM reminder fired — sent {sent} message(s)")
             except Exception as e:
                 print(f"[Scheduler] Reminder job failed: {e}")
 
+    def _fire_weekday_5pm_reminders():
+        """Run weekday 5 PM reminders inside app context."""
+        with app.app_context():
+            try:
+                from .telegram_v2 import send_weekday_5pm_reminders_v2
+                sent = send_weekday_5pm_reminders_v2()
+                print(f"[Scheduler] 5PM weekday reminder fired — sent {sent} message(s)")
+            except Exception as e:
+                print(f"[Scheduler] 5PM reminder job failed: {e}")
+
     def _fire_deadline_sweep():
-        """Run sweep_expired_swaps() every hour — auto-reschedule past-deadline shifts."""
+        """Run sweep_expired_swaps() every hour — clean up unresolved shifts."""
         with app.app_context():
             try:
                 from .telegram_v2 import sweep_expired_swaps
@@ -401,10 +411,17 @@ def _start_daily_scheduler(app):
     scheduler = BackgroundScheduler(timezone="America/Vancouver", daemon=True)
     scheduler.add_job(
         _fire_daily_reminders,
-        trigger=CronTrigger(hour=8, minute=0, timezone="America/Vancouver"),
+        trigger=CronTrigger(hour=9, minute=0, timezone="America/Vancouver"),
         id="daily_reminder_v2",
         replace_existing=True,
         misfire_grace_time=3600,  # If server was down, still fire if within an hour
+    )
+    scheduler.add_job(
+        _fire_weekday_5pm_reminders,
+        trigger=CronTrigger(hour=17, minute=0, timezone="America/Vancouver"),
+        id="weekday_5pm_reminder_v2",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
     scheduler.add_job(
         _fire_deadline_sweep,
@@ -422,7 +439,7 @@ def _start_daily_scheduler(app):
     )
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown(wait=False))
-    print(f"[Scheduler] Started (pid {os.getpid()}) — daily reminders at 8:00 AM America/Vancouver")
+    print(f"[Scheduler] Started (pid {os.getpid()}) — daily reminders at 9:00 AM America/Vancouver")
 
 
 def _pid_alive(pid):

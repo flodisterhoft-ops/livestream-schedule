@@ -15,10 +15,14 @@ import os
 import uuid
 import datetime
 import hashlib
+import threading
+import time
 import requests
-from .models import Event, Assignment, PickupToken, TeamMember, InteractionLog, SwapRequest
+from flask import current_app
+from .models import Event, Assignment, PickupToken, TeamMember, InteractionLog, SwapRequest, TempChat
 from .extensions import db
-from .utils import vancouver_today, vancouver_now, VANCOUVER_TZ
+from .utils import is_available, vancouver_today, vancouver_now, VANCOUVER_TZ
+from . import telegram_temp_groups
 
 # ── Configuration ────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -61,6 +65,9 @@ STATUS_EMOJI = {
 ACTION_LABELS = {
     "confirm": "✅ Confirmed",
     "decline": "🔴 Can't make it",
+    "ack": "👍 Reminder acknowledged",
+    "swap_accept": "🔄 Swap accepted",
+    "swap_decline": "👍 Swap declined",
     "undo": "↩️ Undo",
     "pickup": "👀 Picking up…",
     "pickup_as": "✅ Picked up shift",
@@ -190,6 +197,123 @@ def delete_message(chat_id, message_id):
     return _api_call("deleteMessage", payload) is not None
 
 
+def _site_url():
+    try:
+        return current_app.config.get("BASE_URL", "https://livestream.disterhoft.com")
+    except RuntimeError:
+        return "https://livestream.disterhoft.com"
+
+
+def _schedule_button(label="📅 View Schedule"):
+    return {"text": label, "url": _site_url()}
+
+
+def _event_title(event):
+    if event.custom_title:
+        return event.custom_title
+    if event.day_type == "Friday":
+        return "Bible Study"
+    if event.day_type == "Sunday":
+        return "Sunday Service"
+    return event.day_type or "Event"
+
+
+def _event_time(event):
+    if event.day_type == "Sunday" or event.date.weekday() >= 5:
+        return "2:00 PM"
+    return "7:00 PM"
+
+
+def _date_line(date_obj):
+    return date_obj.strftime("%A, %B %d, %Y").replace(" 0", " ")
+
+
+def _short_date(date_obj):
+    return date_obj.strftime("%B %d").replace(" 0", " ")
+
+
+def _event_start_dt(event):
+    hour = 14 if event.day_type == "Sunday" or event.date.weekday() >= 5 else 19
+    return datetime.datetime.combine(event.date, datetime.time(hour=hour), tzinfo=VANCOUVER_TZ)
+
+
+def _swap_deadline(event):
+    return _event_start_dt(event) + datetime.timedelta(hours=2)
+
+
+def _role_icon(assignment, index=0):
+    if assignment.event and assignment.event.day_type == "Friday":
+        return FRIDAY_ICONS[index] if index < len(FRIDAY_ICONS) else ROLE_EMOJI.get(assignment.role, "👤")
+    return ROLE_EMOJI.get(assignment.role, "👤")
+
+
+def _worker_name(assignment):
+    return assignment.cover or assignment.person
+
+
+def _notify_admin_text(text):
+    if not PERSONAL_CHAT_ID:
+        return
+    try:
+        send_message(text, chat_id=PERSONAL_CHAT_ID)
+    except Exception as e:
+        print(f"[Telegram] Admin notification failed: {e}")
+
+
+def _delete_temp_group_later(chat_id, delay=10):
+    def _delete():
+        time.sleep(delay)
+        telegram_temp_groups.delete_group(chat_id)
+    threading.Thread(target=_delete, daemon=True).start()
+
+
+def _delete_temp_chat(temp_chat, delay=0):
+    if not temp_chat or not temp_chat.chat_id:
+        return
+    temp_chat.status = "deleted"
+    db.session.commit()
+    if delay:
+        _delete_temp_group_later(temp_chat.chat_id, delay=delay)
+    else:
+        telegram_temp_groups.delete_group(temp_chat.chat_id)
+
+
+def _send_temp_group(kind, person, text, buttons, assignment=None, swap_request=None,
+                     future_assignment=None, expires_at=None, title=None):
+    member = TeamMember.query.filter_by(name=person).first()
+    if not member or not member.telegram_user_id:
+        _notify_admin_text(f"⚠️ No Telegram ID for {person}")
+        return None
+    if not telegram_temp_groups.is_available():
+        _notify_admin_text(f"⚠️ Temp groups unavailable for {person}")
+        return None
+    group_title = title or f"🎬 Livestream {person}"
+    chat_id = telegram_temp_groups.create_temp_group(
+        group_title,
+        [member.telegram_user_id],
+        bot_token=TELEGRAM_BOT_TOKEN,
+        bot_username=os.environ.get("TELEGRAM_BOT_USERNAME", ""),
+    )
+    if not chat_id:
+        _notify_admin_text(f"⚠️ Could not create temp chat for {person}")
+        return None
+    message_id = send_message(text, chat_id=str(chat_id), reply_markup=_make_inline_keyboard(buttons))
+    temp_chat = TempChat(
+        chat_id=str(chat_id),
+        message_id=message_id,
+        kind=kind,
+        assignment_id=assignment.id if assignment else None,
+        swap_request_id=swap_request.id if swap_request else None,
+        future_assignment_id=future_assignment.id if future_assignment else None,
+        person=assignment.person if assignment else None,
+        recipient=person,
+        expires_at=expires_at,
+    )
+    db.session.add(temp_chat)
+    db.session.commit()
+    return temp_chat
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Inline Keyboard Builders
 # ═══════════════════════════════════════════════════════════════════
@@ -307,7 +431,7 @@ def _build_pickup_buttons(assignment):
 # ═══════════════════════════════════════════════════════════════════
 
 def format_event_message(event, header=None):
-    """Format a short header for the 8 AM reminder.
+    """Format a short header for the reminder.
 
     Example:
         🙏 Today is your turn on the livestream team!
@@ -332,6 +456,68 @@ def format_event_message(event, header=None):
         "<i>Tap your name to confirm or let us know if you can't make it.</i>",
     ]
     return "\n".join(lines)
+
+
+def format_today_group_post(event):
+    title = _event_title(event)
+    lines = [
+        f"📅 <b>{title}</b>",
+        f"🗓 {_date_line(event.date)}",
+        f"🕖 {_event_time(event)}",
+        "",
+    ]
+    for i, assignment in enumerate(event.assignments):
+        icon = _role_icon(assignment, i)
+        worker = _worker_name(assignment)
+        if assignment.status == "swap_needed":
+            lines.append(f"{icon} {assignment.role} — 🔴 <s>{assignment.person}</s> needs coverage")
+        elif assignment.cover:
+            lines.append(f"{icon} {assignment.role} — <s>{assignment.person}</s> → now swapped with {assignment.cover}")
+        else:
+            prefix = "✅ " if assignment.status == "confirmed" else ""
+            lines.append(f"{icon} {assignment.role} — {prefix}{worker}")
+    if any(a.cover for a in event.assignments):
+        helper = next((a.cover for a in event.assignments if a.cover), None)
+        lines.extend(["", f"Thank you {helper} for helping cover. 🙏"])
+    return "\n".join(lines)
+
+
+def format_personal_question(assignment):
+    event = assignment.event
+    title = _event_title(event)
+    icon = ROLE_EMOJI.get(assignment.role, "👤")
+    return (
+        f"👋 Hi {assignment.person},\n\n"
+        f"You are scheduled for livestream today.\n\n"
+        f"📅 <b>{title}</b>\n"
+        f"🗓 {_date_line(event.date)}\n"
+        f"🕖 {_event_time(event)}\n\n"
+        f"{icon} <b>Role:</b> {assignment.role}\n\n"
+        f"Can you make it?"
+    )
+
+
+def format_weekday_ack_reminder(event, assignment):
+    pending = assignment.status == "pending"
+    lines = ["🔔 <b>Just a quick reminder</b>", ""]
+    if pending:
+        lines.extend(["We didn't get a response from you yet.", "", "You are scheduled tonight:", ""])
+    for i, a in enumerate(event.assignments):
+        lines.append(f"{_role_icon(a, i)} {a.role} — {_worker_name(a)}")
+    lines.extend(["", "See you tonight!"])
+    return "\n".join(lines)
+
+
+def _personal_question_buttons(assignment):
+    return [
+        [{"text": "✅ Yes, I'll be there", "callback_data": f"personal_confirm:{assignment.id}"}],
+        [{"text": "❌ I can't make it", "callback_data": f"personal_decline:{assignment.id}"}],
+        [_schedule_button("📅 Open Schedule")],
+    ]
+
+
+def _ack_buttons(assignment):
+    return [[{"text": "👍 Sounds good", "callback_data": f"weekday_ack:{assignment.id}"}]]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -408,21 +594,43 @@ def format_monthly_schedule(year, month):
 # ═══════════════════════════════════════════════════════════════════
 
 def send_event_reminder(event, chat_id=None):
-    """Send an event reminder with inline confirmation buttons."""
-    text = format_event_message(event, header="📋 Reminder!")
-    buttons = _build_event_buttons(event)
+    """Send the public 9 AM event post to the group chat."""
+    text = format_today_group_post(event)
+    buttons = _make_inline_keyboard([[_schedule_button("📅 View Schedule")]])
     target = chat_id or TELEGRAM_CHAT_ID
     msg_id = send_message(text, chat_id=target, reply_markup=buttons)
 
-    # Store message ID on event and assignments for later editing
     if msg_id:
         event.telegram_message_id = msg_id
         event.telegram_chat_id = str(target)
-        for a in event.assignments:
-            a.telegram_message_id = msg_id
         db.session.commit()
 
     return msg_id
+
+
+def send_personal_question_temp_group(assignment):
+    return _send_temp_group(
+        "question",
+        assignment.person,
+        format_personal_question(assignment),
+        _personal_question_buttons(assignment),
+        assignment=assignment,
+        expires_at=_swap_deadline(assignment.event),
+        title=f"🎬 Livestream {assignment.person}",
+    )
+
+
+def send_weekday_ack_temp_group(assignment):
+    worker = assignment.cover or assignment.person
+    return _send_temp_group(
+        "weekday_ack",
+        worker,
+        format_weekday_ack_reminder(assignment.event, assignment),
+        _ack_buttons(assignment),
+        assignment=assignment,
+        expires_at=_swap_deadline(assignment.event),
+        title=f"🎬 Reminder {worker}",
+    )
 
 
 def send_monthly_schedule(year=None, month=None, chat_id=None):
@@ -492,6 +700,95 @@ def send_shift_covered(event, assignment, helper_name, original_msg_id=None, cha
     return send_message(text, chat_id=target)
 
 
+def _find_future_swap_assignment(person, role, day_type, after_date):
+    return (
+        Assignment.query.join(Event)
+        .filter(
+            Event.date > after_date,
+            Event.day_type == day_type,
+            Assignment.person == person,
+            Assignment.role == role,
+            Assignment.status.in_(["pending", "confirmed"]),
+            Assignment.cover.is_(None),
+        )
+        .order_by(Event.date)
+        .first()
+    )
+
+
+def _eligible_swap_members(assignment):
+    event = assignment.event
+    day_type = event.day_type
+    members = TeamMember.query.filter_by(active=True).all()
+    eligible = []
+    for member in members:
+        if member.name == assignment.person or not member.telegram_user_id:
+            continue
+        roles = member.friday_roles if day_type == "Friday" else member.sunday_roles
+        if assignment.role not in roles:
+            continue
+        if not is_available(member.name, event.date):
+            continue
+        if any((a.cover or a.person) == member.name for a in event.assignments):
+            continue
+        future = _find_future_swap_assignment(member.name, assignment.role, day_type, event.date)
+        if future:
+            eligible.append((member.name, future))
+    return eligible
+
+
+def _format_swap_request(assignment, recipient, future_assignment):
+    event = assignment.event
+    future_event = future_assignment.event
+    title = _event_title(event)
+    future_title = _event_title(future_event)
+    icon = ROLE_EMOJI.get(assignment.role, "👤")
+    return (
+        f"🔄 <b>Swap request</b>\n\n"
+        f"{assignment.person} can't make their livestream shift today.\n\n"
+        f"📅 <b>Needs coverage:</b>\n"
+        f"{title} — {_date_line(event.date)}\n"
+        f"{icon} Role: {assignment.role}\n\n"
+        f"Your next matching future shift is:\n\n"
+        f"📅 <b>Your shift:</b>\n"
+        f"{future_title} — {_date_line(future_event.date)}\n"
+        f"{icon} Role: {future_assignment.role}\n\n"
+        f"Would you like to swap?\n\n"
+        f"If you accept:\n"
+        f"- You serve today instead of {assignment.person}.\n"
+        f"- {assignment.person} takes your future shift on {_short_date(future_event.date)}."
+    )
+
+
+def _swap_buttons(swap_request, future_assignment):
+    return [
+        [{"text": f"✅ Yes, swap with {swap_request.requestor}", "callback_data": f"swap_accept:{swap_request.id}:{future_assignment.id}"}],
+        [{"text": "❌ No, I'm good", "callback_data": f"swap_decline:{swap_request.id}"}],
+        [_schedule_button("📅 Open Schedule")],
+    ]
+
+
+def send_swap_request_temp_groups(assignment, swap_request):
+    sent = 0
+    for recipient, future_assignment in _eligible_swap_members(assignment):
+        temp = _send_temp_group(
+            "swap_request",
+            recipient,
+            _format_swap_request(assignment, recipient, future_assignment),
+            _swap_buttons(swap_request, future_assignment),
+            assignment=assignment,
+            swap_request=swap_request,
+            future_assignment=future_assignment,
+            expires_at=swap_request.expires_at,
+            title=f"🎬 Swap Request {recipient}",
+        )
+        if temp:
+            sent += 1
+    if sent == 0:
+        _notify_admin_text(f"⚠️ No eligible swap recipients\n{assignment.person} · {_event_title(assignment.event)} · {assignment.role}")
+    return sent
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Callback Query Handler
 # ═══════════════════════════════════════════════════════════════════
@@ -529,6 +826,163 @@ def handle_callback_query(data):
         _log_interaction(telegram_user_id, first_name, "noop", first_name)
         db.session.commit()
         answer_callback(callback_id, "ℹ️ Tap the buttons below to confirm or decline.")
+        return
+
+    if action in ("personal_confirm", "personal_decline", "weekday_ack"):
+        assignment_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+        assignment = Assignment.query.get(assignment_id) if assignment_id else None
+        if not assignment:
+            answer_callback(callback_id, "❌ Assignment not found", show_alert=True)
+            return
+        event = assignment.event
+        person_name = _resolve_person(telegram_user_id, first_name)
+        temp_chat = TempChat.query.filter_by(chat_id=str(chat_id), assignment_id=assignment.id, status="active").first()
+        if action == "personal_confirm":
+            assignment.status = "confirmed"
+            h = assignment.history
+            h.append({"action": "confirm", "by": person_name, "via": "temp_group", "ts": str(vancouver_now())})
+            assignment.history = h
+            _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
+            db.session.commit()
+            _notify_admin_text(f"✅ {assignment.person} confirmed\n{_event_title(event)} · {assignment.role}")
+            answer_callback(callback_id, "Thanks for confirming! 😊", show_alert=True)
+            edit_message(chat_id, message_id, (
+                f"✅ <b>Confirmed</b>\n\n"
+                f"Thanks {assignment.person} — you're marked as coming for {_event_title(event)} today.\n\n"
+                f"<i>This chat will auto-destruct in 10 seconds.</i>"
+            ))
+            refresh_event_telegram(event)
+            _delete_temp_chat(temp_chat, delay=10)
+            return
+        if action == "weekday_ack":
+            if assignment.status == "pending":
+                assignment.status = "confirmed"
+            h = assignment.history
+            h.append({"action": "ack", "by": person_name, "via": "temp_group", "ts": str(vancouver_now())})
+            assignment.history = h
+            _log_interaction(telegram_user_id, first_name, "ack", person_name, assignment, event)
+            db.session.commit()
+            _notify_admin_text(f"👍 {assignment.person} acknowledged\n{_event_title(event)} · {assignment.role}")
+            answer_callback(callback_id, "Thanks for confirming! 😊", show_alert=True)
+            edit_message(chat_id, message_id, "👍 <b>Sounds good</b>\n\nSee you tonight!\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
+            refresh_event_telegram(event)
+            _delete_temp_chat(temp_chat, delay=10)
+            return
+        assignment.status = "swap_needed"
+        h = assignment.history
+        h.append({"action": "decline", "by": person_name, "via": "temp_group", "ts": str(vancouver_now())})
+        assignment.history = h
+        deadline_local = _swap_deadline(event)
+        deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        swap = SwapRequest.query.filter_by(assignment_id=assignment.id, status="active").first()
+        if not swap:
+            swap = SwapRequest(
+                assignment_id=assignment.id,
+                requestor=assignment.person,
+                event_date=event.date,
+                role=assignment.role,
+                expires_at=deadline_utc,
+                status="active",
+            )
+            db.session.add(swap)
+        _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event)
+        db.session.commit()
+        _notify_admin_text(f"❌ {assignment.person} can't make it\n{_event_title(event)} · {assignment.role}")
+        answer_callback(callback_id, "Got it — we'll ask the team if someone can swap with you.", show_alert=True)
+        edit_message(chat_id, message_id, (
+            "Thanks for letting us know.\n\n"
+            "We'll ask the team if someone can swap into your shift today.\n\n"
+            "<i>This chat will auto-destruct in 10 seconds.</i>"
+        ))
+        refresh_event_telegram(event)
+        send_swap_request_temp_groups(assignment, swap)
+        _delete_temp_chat(temp_chat, delay=10)
+        return
+
+    if action in ("swap_accept", "swap_decline"):
+        swap_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+        swap = SwapRequest.query.get(swap_id) if swap_id else None
+        if not swap or swap.status != "active":
+            answer_callback(callback_id, "This shift has already been covered. Thanks!", show_alert=True)
+            temp_chat = TempChat.query.filter_by(chat_id=str(chat_id), status="active").first()
+            if temp_chat:
+                edit_message(chat_id, message_id, "✅ <b>Already covered</b>\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
+                _delete_temp_chat(temp_chat, delay=10)
+            return
+        assignment = Assignment.query.get(swap.assignment_id)
+        if not assignment:
+            answer_callback(callback_id, "❌ Assignment not found", show_alert=True)
+            return
+        event = assignment.event
+        temp_chat = TempChat.query.filter_by(chat_id=str(chat_id), swap_request_id=swap.id, status="active").first()
+        person_name = temp_chat.recipient if temp_chat and temp_chat.recipient else _resolve_person(telegram_user_id, first_name)
+        if action == "swap_decline":
+            _log_interaction(telegram_user_id, first_name, "swap_decline", person_name, assignment, event)
+            db.session.commit()
+            _notify_admin_text(f"👍 {person_name} declined swap\n{_event_title(event)} · {assignment.role}")
+            answer_callback(callback_id, "No problem — thanks for responding.", show_alert=True)
+            edit_message(chat_id, message_id, "👍 <b>No problem</b>\n\nThanks for letting us know.\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
+            _delete_temp_chat(temp_chat, delay=10)
+            return
+        future_assignment_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
+        future_assignment = Assignment.query.get(future_assignment_id) if future_assignment_id else None
+        if not future_assignment:
+            answer_callback(callback_id, "❌ Future shift not found", show_alert=True)
+            return
+        original_person = assignment.person
+        future_event = future_assignment.event
+        assignment.cover = person_name
+        assignment.status = "confirmed"
+        future_assignment.person = original_person
+        future_assignment.cover = None
+        future_assignment.status = "pending"
+        swap.status = "accepted"
+        swap.accepted_by = person_name
+        swap.accepted_at = datetime.datetime.utcnow()
+        swap.reschedule_event_date = future_event.date
+        swap.reschedule_notes = f"{person_name} covered {event.date}; {original_person} moved to {future_event.date}"
+        _log_interaction(telegram_user_id, first_name, "swap_accept", person_name, assignment, event)
+        db.session.commit()
+        _notify_admin_text(f"🔄 {person_name} swapped with {original_person}\n{_event_title(event)} · {assignment.role}")
+        answer_callback(callback_id, f"Thanks {person_name} — swap completed. ✅", show_alert=True)
+        edit_message(chat_id, message_id, (
+            f"✅ <b>Swap confirmed</b>\n\n"
+            f"Thanks {person_name}!\n\n"
+            f"You are now covering:\n\n"
+            f"📅 <b>{_event_title(event)}</b>\n"
+            f"🗓 {_date_line(event.date)}\n"
+            f"{ROLE_EMOJI.get(assignment.role, '👤')} Role: {assignment.role}\n\n"
+            f"{original_person} will take your future shift:\n\n"
+            f"📅 <b>{_event_title(future_event)}</b>\n"
+            f"🗓 {_date_line(future_event.date)}\n"
+            f"{ROLE_EMOJI.get(future_assignment.role, '👤')} Role: {future_assignment.role}\n\n"
+            f"<i>This chat will auto-destruct in 10 seconds.</i>"
+        ))
+        refresh_event_telegram(event)
+        for other in TempChat.query.filter(
+            TempChat.swap_request_id == swap.id,
+            TempChat.status == "active",
+            TempChat.chat_id != str(chat_id),
+        ).all():
+            _delete_temp_chat(other)
+        _send_temp_group(
+            "swap_notice",
+            original_person,
+            (
+                f"👍 <b>Sounds good</b>\n\n"
+                f"Thanks {original_person}.\n\n"
+                f"{person_name} swapped with you and will cover your shift today.\n\n"
+                f"<i>This message will auto-delete in 10 seconds.</i>"
+            ),
+            [[{"text": "👍 Sounds good", "callback_data": "noop"}]],
+            assignment=assignment,
+            expires_at=_swap_deadline(event),
+            title=f"🎬 Swap Covered {original_person}",
+        )
+        notice = TempChat.query.filter_by(kind="swap_notice", assignment_id=assignment.id, recipient=original_person, status="active").order_by(TempChat.id.desc()).first()
+        if notice:
+            _delete_temp_chat(notice, delay=10)
+        _delete_temp_chat(temp_chat, delay=10)
         return
 
     # ── Resolve the assignment ──────────────────────────────────
@@ -727,8 +1181,8 @@ def _resolve_person(telegram_user_id, fallback_name):
 
 def _refresh_event_message(event, chat_id, message_id):
     """Re-render the event message with current statuses and buttons."""
-    text = format_event_message(event, header="📋 Reminder!")
-    buttons = _build_event_buttons(event)
+    text = format_today_group_post(event)
+    buttons = _make_inline_keyboard([[_schedule_button("📅 View Schedule")]])
     edit_message(chat_id, message_id, text, reply_markup=buttons)
 
 
@@ -753,31 +1207,26 @@ def refresh_event_telegram(event):
 # ═══════════════════════════════════════════════════════════════════
 
 def send_daily_reminders_v2(chat_id=None):
-    """Send reminders for today's events with inline buttons."""
+    """Send 9 AM group posts and temp-group personal questions."""
     today = vancouver_today()
     events = Event.query.filter_by(date=today).all()
     sent = 0
     for event in events:
         if send_event_reminder(event, chat_id=chat_id):
             sent += 1
+        for assignment in event.assignments:
+            worker = assignment.cover or assignment.person
+            if worker in ("TBD", "Select Helper") or assignment.status == "swap_needed":
+                continue
+            if assignment.cover:
+                continue
+            if send_personal_question_temp_group(assignment):
+                sent += 1
     return sent
 
 
 def sweep_expired_swaps(chat_id=None):
-    """Expire any SwapRequests past their deadline and auto-reschedule.
-
-    Called hourly by APScheduler. For each SwapRequest that:
-      - is still 'active'
-      - has expires_at <= now (UTC)
-    we:
-      1. Mark it 'expired'
-      2. Run reschedule_declined() for the requestor
-      3. DM the admin with the outcome
-      4. Notify the requestor on their original Telegram message
-    Returns the number of expired swaps processed.
-    """
-    from .scheduler_v2 import reschedule_declined
-
+    """Expire unresolved swaps after event+2h without auto-swapping."""
     now_utc = datetime.datetime.utcnow()
     expired = SwapRequest.query.filter(
         SwapRequest.status == "active",
@@ -788,43 +1237,13 @@ def sweep_expired_swaps(chat_id=None):
     for swap in expired:
         swap.status = "expired"
         try:
-            result = reschedule_declined(
-                requestor=swap.requestor,
-                original_event_date=swap.event_date,
-                role=swap.role,
-            )
-            swap.reschedule_event_date = result.get("new_event_date")
-            swap.reschedule_notes = result.get("notes")
+            assignment = Assignment.query.get(swap.assignment_id)
+            event = assignment.event if assignment else None
+            for temp_chat in TempChat.query.filter_by(swap_request_id=swap.id, status="active").all():
+                _delete_temp_chat(temp_chat)
             db.session.commit()
-
-            # Admin DM
-            if result["status"] == "ok":
-                admin_text = (
-                    f"⏰ <b>Shift deadline passed — auto-rescheduled</b>\n\n"
-                    f"👤 <b>{swap.requestor}</b> — {swap.role}\n"
-                    f"🚫 Original: {swap.event_date.strftime('%a %b %d, %Y')}\n"
-                    f"📆 Moved to: {result['new_event_date'].strftime('%a %b %d, %Y')}\n"
-                )
-                if result["displaced"]:
-                    admin_text += (
-                        f"🔄 Displaced {result['displaced']} → "
-                        f"{result['displaced_moved_to'].strftime('%a %b %d, %Y') if result['displaced_moved_to'] else 'no move'}\n"
-                    )
-                admin_text += f"\n<i>{result['notes']}</i>"
-            else:
-                admin_text = (
-                    f"⚠️ <b>Auto-reschedule FAILED</b>\n\n"
-                    f"👤 <b>{swap.requestor}</b> — {swap.role}\n"
-                    f"🚫 Original: {swap.event_date.strftime('%a %b %d, %Y')}\n\n"
-                    f"<i>{result['notes']}</i>\n\n"
-                    f"Please handle manually."
-                )
-            if PERSONAL_CHAT_ID:
-                _api_call("sendMessage", {
-                    "chat_id": PERSONAL_CHAT_ID,
-                    "text": admin_text,
-                    "parse_mode": "HTML",
-                })
+            title = _event_title(event) if event else "Livestream"
+            _notify_admin_text(f"⚠️ No swap accepted\n{swap.requestor} · {title} · {swap.role}")
         except Exception as e:
             print(f"[sweep] Failed to process swap {swap.id}: {e}")
             db.session.rollback()
@@ -833,6 +1252,20 @@ def sweep_expired_swaps(chat_id=None):
     if processed:
         print(f"[sweep] Processed {processed} expired swap(s)")
     return processed
+
+
+def send_weekday_5pm_reminders_v2(chat_id=None):
+    today = vancouver_today()
+    events = Event.query.filter(Event.date == today, Event.day_type != "Sunday").all()
+    sent = 0
+    for event in events:
+        for assignment in event.assignments:
+            worker = assignment.cover or assignment.person
+            if worker in ("TBD", "Select Helper") or assignment.status == "swap_needed":
+                continue
+            if send_weekday_ack_temp_group(assignment):
+                sent += 1
+    return sent
 
 
 def send_day_before_reminders_v2(chat_id=None):

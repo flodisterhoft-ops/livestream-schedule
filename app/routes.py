@@ -1061,7 +1061,7 @@ def regenerate_future():
 def cron_daily_reminder():
     """
     Webhook endpoint for external cron service to trigger daily reminders.
-    Called at 8AM on event days to send Telegram notifications.
+    Called on event days to send Telegram notifications.
     
     Security: Uses a simple secret key check to prevent abuse.
     Set CRON_SECRET in the live environment that serves the Oracle-hosted app.
@@ -1076,9 +1076,6 @@ def cron_daily_reminder():
     if cron_secret and provided_secret != cron_secret:
         return {"error": "Unauthorized"}, 401
     
-    # Send v1 reminders (legacy) + v2 reminders (current system with inline buttons)
-    sent_count = send_daily_reminders()
-
     v2_sent = 0
     try:
         from .telegram_v2 import send_daily_reminders_v2
@@ -1088,8 +1085,8 @@ def cron_daily_reminder():
 
     return {
         "success": True,
-        "reminders_sent": sent_count,
+        "reminders_sent": v2_sent,
         "reminders_sent_v2": v2_sent,
-        "message": f"Sent {sent_count} v1 + {v2_sent} v2 reminder(s)"
+        "message": f"Sent {v2_sent} v2 reminder(s)"
     }
 

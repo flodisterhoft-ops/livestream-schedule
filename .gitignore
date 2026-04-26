@@ -10,6 +10,7 @@ instance/
 *.db
 *.db.backup-*
 .scheduler.lock
+telethon_session*
 brain/
 node_modules/
 _ul
