@@ -558,6 +558,16 @@ body {
   filter: grayscale(0.6);
 }
 
+.app.manager .event-card.past {
+  filter: grayscale(0.35);
+  opacity: 0.85;
+}
+
+.app.manager .event-card.past:hover {
+  filter: grayscale(0.15);
+  opacity: 1;
+}
+
 .event-card.today {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12), var(--shadow-md);
@@ -729,6 +739,16 @@ body {
 .assignment-row:hover { background: var(--bg-hover); }
 .assignment-row.swap-needed { background: var(--danger-light); }
 .assignment-row.is-me { background: var(--accent-light); }
+.assignment-row.confirmed {
+  background: var(--success-light);
+}
+.assignment-row.confirmed.is-me {
+  background: linear-gradient(0deg, var(--success-light), var(--success-light)),
+              linear-gradient(0deg, var(--accent-light), var(--accent-light));
+}
+.assignment-row.confirmed:hover {
+  background: color-mix(in srgb, var(--success-light) 80%, var(--success) 20%);
+}
 
 .assignment-left {
   display: flex;

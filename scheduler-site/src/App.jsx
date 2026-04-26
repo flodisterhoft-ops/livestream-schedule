@@ -256,7 +256,7 @@ export default function App() {
     : filtered.sort((a, b) => a.date.localeCompare(b.date))
 
   return (
-    <div className="app">
+    <div className={`app ${isManager ? 'manager' : ''}`}>
       {/* Flash message */}
       {flash && (
         <div className={`flash flash-${flash.type}`} role="status" aria-live="polite">{flash.msg}</div>
@@ -500,7 +500,7 @@ function EventCard({ event, user, isManager, doAction, onNotify, onAssign, onEve
     }
   }, [editingEvent])
 
-  const canEdit = isManager && !event.is_past
+  const canEdit = isManager
   const DateTag = canEdit ? 'button' : 'div'
   const TitleTag = canEdit ? 'button' : 'span'
   const editProps = canEdit
@@ -668,10 +668,10 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
     <span className={isConfirmed ? 'person-confirmed' : ''}>{worker}</span>
   )
   return (
-    <div className={`assignment-row ${a.status === 'swap_needed' ? 'swap-needed' : ''} ${isMe ? 'is-me' : ''}`}>
+    <div className={`assignment-row ${a.status === 'swap_needed' ? 'swap-needed' : ''} ${isConfirmed ? 'confirmed' : ''} ${isMe ? 'is-me' : ''}`}>
       <div className="assignment-left">
         <span className={`role-icon ${roleClass}`} aria-hidden="true">{icon}</span>
-        {isManager && !isPast ? (
+        {isManager ? (
           <div className="name-picker">
             <button
               ref={triggerRef}
