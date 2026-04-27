@@ -241,9 +241,15 @@ export default function App() {
       return m >= currentYearStart && m <= maxVisibleMonth
     })
     .sort()
+  const nextEventMonth = schedule
+    .filter(e => e.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))[0]?.date.slice(0, 7)
+  const defaultMonth = nextEventMonth && months.includes(nextEventMonth)
+    ? nextEventMonth
+    : (months.includes(currentMonth) ? currentMonth : months[0])
   const activeMonth = selectedMonth && months.includes(selectedMonth)
     ? selectedMonth
-    : (months.includes(currentMonth) ? currentMonth : months[0])
+    : defaultMonth
 
   const filtered = activeMonth
     ? schedule.filter(e => e.date.startsWith(activeMonth))

@@ -29,9 +29,9 @@ def _auth_serializer():
 
 def _auth_response(name):
     session["user_name"] = name
-    session["manager"] = name == "Florian"
+    session["manager"] = False
     session.permanent = True
-    token = _auth_serializer().dumps({"name": name, "manager": name == "Florian"})
+    token = _auth_serializer().dumps({"name": name, "manager": False})
     return jsonify({
         "name": name,
         "is_admin": name == "Florian",
@@ -143,8 +143,6 @@ def logout():
 @api_v2.route("/auth/me")
 def me():
     name = session.get("user_name")
-    if name == "Florian" and not session.get("manager"):
-        session["manager"] = True
     is_manager = bool(session.get("manager"))
     return jsonify({
         "name": name,
