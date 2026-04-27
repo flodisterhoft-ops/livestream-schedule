@@ -204,6 +204,36 @@ class SwapRequest(db.Model):
         }
 
 
+class EventSuggestion(db.Model):
+    """A user-submitted suggestion for a new event awaiting manager review."""
+    id = db.Column(db.Integer, primary_key=True)
+    suggester_name = db.Column(db.String(100), nullable=False)
+    event_type = db.Column(db.String(60), nullable=False)
+    custom_title = db.Column(db.String(120))
+    date = db.Column(db.Date, nullable=False, index=True)
+    time = db.Column(db.String(8))
+    notes = db.Column(db.Text)
+    status = db.Column(db.String(20), default="pending", index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    telegram_message_id = db.Column(db.Integer)
+    telegram_chat_id = db.Column(db.String(30))
+    accepted_event_date = db.Column(db.Date)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "suggester_name": self.suggester_name,
+            "event_type": self.event_type,
+            "custom_title": self.custom_title,
+            "date": self.date.isoformat() if self.date else None,
+            "time": self.time,
+            "notes": self.notes,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "accepted_event_date": self.accepted_event_date.isoformat() if self.accepted_event_date else None,
+        }
+
+
 class TempChat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     chat_id = db.Column(db.String(40), nullable=False, index=True)

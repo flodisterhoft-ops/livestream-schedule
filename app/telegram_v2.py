@@ -292,6 +292,45 @@ def _notify_admin_text(text):
         print(f"[Telegram] Admin notification failed: {e}")
 
 
+def _suggestion_url(suggestion_id):
+    base = _site_url().rstrip("/") + "/v2"
+    return f"{base}?suggest={suggestion_id}"
+
+
+def send_suggestion_alert(suggestion):
+    """DM the admin about a new event suggestion with an Open Request button."""
+    if not PERSONAL_CHAT_ID:
+        return None
+    title = suggestion.custom_title or suggestion.event_type
+    date_str = suggestion.date.strftime("%a, %b %d, %Y") if suggestion.date else "—"
+    parts = [
+        "💡 <b>New event suggestion</b>",
+        f"From: <b>{suggestion.suggester_name}</b>",
+        f"Type: {suggestion.event_type}",
+    ]
+    if suggestion.custom_title and suggestion.event_type == "Other":
+        parts.append(f"Title: {suggestion.custom_title}")
+    parts.append(f"📆 {date_str}")
+    if suggestion.time:
+        parts.append(f"🕒 {suggestion.time}")
+    if suggestion.notes:
+        parts.append(f"📝 {suggestion.notes}")
+
+    text = "\n".join(parts)
+    buttons = _make_inline_keyboard([
+        [{"text": "🛠 Open Request", "url": _suggestion_url(suggestion.id)}],
+    ])
+    msg_id = send_message(text, chat_id=PERSONAL_CHAT_ID, reply_markup=buttons)
+    if msg_id:
+        suggestion.telegram_message_id = msg_id
+        suggestion.telegram_chat_id = str(PERSONAL_CHAT_ID)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    return msg_id
+
+
 def _delete_temp_group_later(temp_chat_id, chat_id, delay=10, app=None):
     def _delete():
         time.sleep(delay)

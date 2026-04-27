@@ -12,7 +12,7 @@ import hmac
 import time
 from itsdangerous import BadSignature, URLSafeSerializer
 from flask import Blueprint, request, jsonify, session, current_app
-from .models import Event, Assignment, TeamMember, Availability, PickupToken, SwapRequest, TempChat
+from .models import Event, Assignment, TeamMember, Availability, PickupToken, SwapRequest, TempChat, EventSuggestion
 from .extensions import db
 from .utils import (
     ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats,
@@ -509,6 +509,7 @@ def add_event():
     day_type = data.get("day_type", "Sunday")
     custom_title = data.get("custom_title")
     roles = data.get("roles")  # Optional: list of roles to create
+    suggestion_id = data.get("suggestion_id")
 
     if not date_str:
         return jsonify({"error": "Missing date"}), 400
@@ -532,6 +533,17 @@ def add_event():
         db.session.add(Assignment(event_id=event.id, role="Camera", person="Select Helper", status="pending"))
 
     db.session.commit()
+
+    if suggestion_id:
+        try:
+            suggestion = EventSuggestion.query.get(int(suggestion_id))
+            if suggestion and suggestion.status == "pending":
+                suggestion.status = "accepted"
+                suggestion.accepted_event_date = event.date
+                db.session.commit()
+        except Exception as e:
+            print(f"[suggestions] mark-accepted failed: {e}")
+
     return jsonify(_event_to_dict(event)), 201
 
 
@@ -882,6 +894,82 @@ def setup_webhook():
 def telegram_status():
     """Check Telegram bot connection status."""
     return jsonify(tg.test_connection())
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Event Suggestions (public)
+# ═══════════════════════════════════════════════════════════════════
+
+SUGGESTION_TYPES = {"Baptism", "Thanksgiving", "Samaritan Aid Mission Conference", "Other"}
+
+
+@api_v2.route("/suggestions", methods=["POST"])
+def create_suggestion():
+    """Anyone can submit a suggestion for a new event."""
+    data = request.json or {}
+    name = (data.get("suggester_name") or "").strip()
+    event_type = (data.get("event_type") or "").strip()
+    custom_title = (data.get("custom_title") or "").strip() or None
+    date_str = (data.get("date") or "").strip()
+    time_str = (data.get("time") or "").strip() or None
+    notes = (data.get("notes") or "").strip() or None
+
+    if not name:
+        return jsonify({"error": "Please enter your name"}), 400
+    if event_type not in SUGGESTION_TYPES:
+        return jsonify({"error": "Invalid event type"}), 400
+    if event_type == "Other" and not custom_title:
+        return jsonify({"error": "Please enter a title"}), 400
+    if not date_str:
+        return jsonify({"error": "Please pick a date"}), 400
+    try:
+        d = datetime.date.fromisoformat(date_str)
+    except ValueError:
+        return jsonify({"error": "Invalid date"}), 400
+    if d < vancouver_today():
+        return jsonify({"error": "Date must be in the future"}), 400
+
+    suggestion = EventSuggestion(
+        suggester_name=name[:100],
+        event_type=event_type,
+        custom_title=custom_title[:120] if custom_title else None,
+        date=d,
+        time=time_str[:8] if time_str else None,
+        notes=notes,
+        status="pending",
+    )
+    db.session.add(suggestion)
+    db.session.commit()
+
+    try:
+        tg.send_suggestion_alert(suggestion)
+    except Exception as e:
+        print(f"[Telegram] suggestion alert error: {e}")
+
+    return jsonify(suggestion.to_dict()), 201
+
+
+@api_v2.route("/suggestions/<int:suggestion_id>")
+def get_suggestion(suggestion_id):
+    """Manager fetches a suggestion to prefill the create-event form."""
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+    suggestion = EventSuggestion.query.get(suggestion_id)
+    if not suggestion:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(suggestion.to_dict())
+
+
+@api_v2.route("/suggestions/<int:suggestion_id>/dismiss", methods=["POST"])
+def dismiss_suggestion(suggestion_id):
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+    suggestion = EventSuggestion.query.get(suggestion_id)
+    if not suggestion:
+        return jsonify({"error": "Not found"}), 404
+    suggestion.status = "dismissed"
+    db.session.commit()
+    return jsonify(suggestion.to_dict())
 
 
 # ═══════════════════════════════════════════════════════════════════

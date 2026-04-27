@@ -88,6 +88,9 @@ export default function App() {
   const [hasSavedAuth, setHasSavedAuth] = useState(false)
   const [headerStuck, setHeaderStuck] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
+  const [showSuggest, setShowSuggest] = useState(false)
+  const [createPrefill, setCreatePrefill] = useState(null)
+  const [pendingSuggestId, setPendingSuggestId] = useState(null)
 
   useEffect(() => {
     const onScroll = () => setHeaderStuck(window.scrollY > 4)
@@ -101,6 +104,13 @@ export default function App() {
     const params = new URLSearchParams(window.location.search)
     const urlToken = params.get('auth')
     const telegramHash = params.get('hash')
+    const suggestParam = params.get('suggest')
+    if (suggestParam) {
+      setPendingSuggestId(suggestParam)
+      params.delete('suggest')
+      const nextQuery = params.toString()
+      window.history.replaceState({}, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`)
+    }
     const storedToken = localStorage.getItem(AUTH_TOKEN_KEY)
     const token = urlToken || storedToken
     const finish = (d) => {
@@ -213,10 +223,43 @@ export default function App() {
         body: JSON.stringify({ pin: '2026' }),
       })
       setIsManager(d.is_manager)
+      return d.is_manager
     } catch (e) {
       showFlash(e.message, 'error')
+      return false
     }
   }
+
+  // When opened from a Telegram suggestion link, fetch & prefill once auth resolved.
+  useEffect(() => {
+    if (loading || !pendingSuggestId) return
+    if (!isAdmin) {
+      showFlash('Only the admin can open suggestion requests.', 'error')
+      setPendingSuggestId(null)
+      return
+    }
+    let cancelled = false
+    const run = async () => {
+      try {
+        if (!isManager) {
+          const ok = await toggleManager()
+          if (!ok) return
+        }
+        const s = await api(`/suggestions/${pendingSuggestId}`)
+        if (cancelled) return
+        setCreatePrefill(s)
+        setShowCreate(true)
+        setPendingSuggestId(null)
+      } catch (e) {
+        if (!cancelled) {
+          showFlash(e.message || 'Could not load suggestion', 'error')
+          setPendingSuggestId(null)
+        }
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [loading, isAdmin, isManager, pendingSuggestId])
 
   // ── Actions ───────────────────────────────────────────────
   const doAction = async (action, assignmentId, extra = {}) => {
@@ -308,18 +351,21 @@ export default function App() {
           )}
         </div>
         <div className="header-actions">
-          {isAdmin && (
-            <button
-              className={`icon-btn primary manager-only ${isManager ? 'visible' : ''}`}
-              onClick={() => setShowCreate(true)}
-              title="New event"
-              aria-label="Create event"
-              tabIndex={isManager ? 0 : -1}
-              aria-hidden={!isManager}
-            >
-              {'+'}
-            </button>
-          )}
+          <button
+            className="icon-btn primary"
+            onClick={() => {
+              if (isManager) {
+                setCreatePrefill(null)
+                setShowCreate(true)
+              } else {
+                setShowSuggest(true)
+              }
+            }}
+            title={isManager ? 'New event' : 'Suggest a date'}
+            aria-label={isManager ? 'Create event' : 'Suggest a date'}
+          >
+            {'+'}
+          </button>
           {isAdmin && (
             <button
               className={`manager-btn ${isManager ? 'active' : ''}`}
@@ -359,11 +405,24 @@ export default function App() {
       {showCreate && (
         <CreateEventModal
           team={team}
-          onClose={() => setShowCreate(false)}
+          prefill={createPrefill}
+          onClose={() => { setShowCreate(false); setCreatePrefill(null) }}
           onCreated={() => {
             setShowCreate(false)
+            setCreatePrefill(null)
             loadSchedule()
             showFlash('Event created')
+          }}
+          showFlash={showFlash}
+        />
+      )}
+      {showSuggest && (
+        <SuggestModal
+          defaultName={user || ''}
+          onClose={() => setShowSuggest(false)}
+          onSubmitted={() => {
+            setShowSuggest(false)
+            showFlash("Thanks! Your suggestion was sent.")
           }}
           showFlash={showFlash}
         />
@@ -1095,11 +1154,21 @@ const PRESET_TYPES = [
   { value: 'Custom', label: 'Custom', defaultRoles: ['Computer', 'Camera'] },
 ]
 
-function CreateEventModal({ team, onClose, onCreated, showFlash }) {
+function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
   const today = new Date()
-  const [date, setDate] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`)
-  const [type, setType] = useState('Sunday')
-  const [customTitle, setCustomTitle] = useState('')
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const initialDate = prefill?.date || todayKey
+  const initialType = 'Custom'
+  const suggestionTitle = (() => {
+    if (!prefill) return ''
+    if (prefill.event_type === 'Other') return prefill.custom_title || ''
+    const parts = [prefill.event_type]
+    if (prefill.time) parts.push(`at ${prefill.time}`)
+    return parts.join(' ')
+  })()
+  const [date, setDate] = useState(initialDate)
+  const [type, setType] = useState(prefill ? initialType : 'Sunday')
+  const [customTitle, setCustomTitle] = useState(prefill ? suggestionTitle : '')
   const preset = PRESET_TYPES.find(p => p.value === type) || PRESET_TYPES[0]
   const [computerCount, setComputerCount] = useState(preset.defaultRoles.filter(r => r === 'Computer').length || 1)
   const [cameraCount, setCameraCount] = useState(preset.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
@@ -1159,6 +1228,7 @@ function CreateEventModal({ team, onClose, onCreated, showFlash }) {
           day_type: type,
           custom_title: type === 'Custom' ? customTitle.trim() : null,
           roles,
+          suggestion_id: prefill?.id,
         }),
       })
       // Assign people if selected
@@ -1192,11 +1262,23 @@ function CreateEventModal({ team, onClose, onCreated, showFlash }) {
     >
       <div className="modal-card">
         <div className="modal-header">
-          <h2>New Event</h2>
+          <h2>{prefill ? 'Review Suggestion' : 'New Event'}</h2>
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
         </div>
 
         <div className="modal-body">
+          {prefill && (
+            <div className="suggestion-banner">
+              <div><strong>{prefill.suggester_name}</strong> suggested:</div>
+              <div className="suggestion-banner-line">
+                {prefill.event_type === 'Other'
+                  ? (prefill.custom_title || 'Custom event')
+                  : prefill.event_type}
+                {prefill.time ? ` · ${prefill.time}` : ''}
+              </div>
+              {prefill.notes && <div className="suggestion-banner-notes">{prefill.notes}</div>}
+            </div>
+          )}
           <label className="modal-field">
             <span className="modal-label">Date</span>
             <input
@@ -1275,6 +1357,166 @@ function CreateEventModal({ team, onClose, onCreated, showFlash }) {
           <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
           <button className="btn btn-primary" onClick={submit} disabled={submitting}>
             {submitting ? 'Creating…' : 'Create event'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Suggest Event Modal (open to everyone)
+// ═══════════════════════════════════════════════════════════════
+
+const SUGGEST_TYPES = [
+  'Baptism',
+  'Thanksgiving',
+  'Samaritan Aid Mission Conference',
+  'Other',
+]
+
+function SuggestModal({ defaultName, onClose, onSubmitted, showFlash }) {
+  const today = new Date()
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const [name, setName] = useState(defaultName || '')
+  const [eventType, setEventType] = useState(SUGGEST_TYPES[0])
+  const [customTitle, setCustomTitle] = useState('')
+  const [date, setDate] = useState(todayKey)
+  const [time, setTime] = useState('')
+  const [notes, setNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const overlayRef = useRef(null)
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const submit = async () => {
+    if (!name.trim()) { showFlash('Please enter your name', 'error'); return }
+    if (eventType === 'Other' && !customTitle.trim()) { showFlash('Please enter a title', 'error'); return }
+    if (!date) { showFlash('Please pick a date', 'error'); return }
+    setSubmitting(true)
+    try {
+      await api('/suggestions', {
+        method: 'POST',
+        body: JSON.stringify({
+          suggester_name: name.trim(),
+          event_type: eventType,
+          custom_title: eventType === 'Other' ? customTitle.trim() : null,
+          date,
+          time: time || null,
+          notes: notes.trim() || null,
+        }),
+      })
+      onSubmitted()
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Suggest a date"
+    >
+      <div className="modal-card">
+        <div className="modal-header">
+          <h2>Suggest a Date</h2>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
+        </div>
+
+        <div className="modal-body">
+          <p className="modal-help">
+            Suggest a livestream event. The admin will receive a Telegram notification and can turn it into a scheduled event.
+          </p>
+
+          <label className="modal-field">
+            <span className="modal-label">Your name</span>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="modal-input"
+              placeholder="Enter your name"
+              autoFocus={!defaultName}
+            />
+          </label>
+
+          <div className="modal-field">
+            <span className="modal-label">Type of event</span>
+            <div className="segmented segmented-stack">
+              {SUGGEST_TYPES.map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`segment ${eventType === t ? 'active' : ''}`}
+                  onClick={() => setEventType(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {eventType === 'Other' && (
+            <label className="modal-field">
+              <span className="modal-label">Title</span>
+              <input
+                type="text"
+                value={customTitle}
+                onChange={e => setCustomTitle(e.target.value)}
+                placeholder="What's the event called?"
+                className="modal-input"
+              />
+            </label>
+          )}
+
+          <div className="modal-field-row">
+            <label className="modal-field">
+              <span className="modal-label">Date</span>
+              <input
+                type="date"
+                value={date}
+                min={todayKey}
+                onChange={e => setDate(e.target.value)}
+                className="modal-input"
+              />
+            </label>
+            <label className="modal-field">
+              <span className="modal-label">Time</span>
+              <input
+                type="time"
+                value={time}
+                onChange={e => setTime(e.target.value)}
+                className="modal-input"
+              />
+            </label>
+          </div>
+
+          <label className="modal-field">
+            <span className="modal-label">Notes (optional)</span>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              className="modal-input"
+              rows={3}
+              placeholder="Anything the admin should know"
+            />
+          </label>
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={submitting}>
+            {submitting ? 'Sending…' : 'Submit suggestion'}
           </button>
         </div>
       </div>
