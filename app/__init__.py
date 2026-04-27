@@ -391,6 +391,15 @@ def _start_daily_scheduler(app):
             except Exception as e:
                 print(f"[Scheduler] 5PM reminder job failed: {e}")
 
+    def _fire_noon_response_followups():
+        with app.app_context():
+            try:
+                from .telegram_v2 import send_noon_response_followups
+                sent = send_noon_response_followups()
+                print(f"[Scheduler] Noon follow-up fired — sent {sent} message(s)")
+            except Exception as e:
+                print(f"[Scheduler] Noon follow-up failed: {e}")
+
     def _fire_deadline_sweep():
         """Run sweep_expired_swaps() every hour — clean up unresolved shifts."""
         with app.app_context():
@@ -421,6 +430,13 @@ def _start_daily_scheduler(app):
         _fire_weekday_5pm_reminders,
         trigger=CronTrigger(hour=17, minute=0, timezone="America/Vancouver"),
         id="weekday_5pm_reminder_v2",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    scheduler.add_job(
+        _fire_noon_response_followups,
+        trigger=CronTrigger(hour=12, minute=0, timezone="America/Vancouver"),
+        id="noon_response_followup",
         replace_existing=True,
         misfire_grace_time=3600,
     )

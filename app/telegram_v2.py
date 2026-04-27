@@ -1376,6 +1376,45 @@ def sweep_expired_temp_chats():
     return processed
 
 
+def send_noon_response_followups(chat_id=None):
+    today = vancouver_today()
+    now_utc = datetime.datetime.utcnow()
+    temp_chats = TempChat.query.join(
+        Assignment,
+        TempChat.assignment_id == Assignment.id,
+    ).join(
+        Event,
+        Assignment.event_id == Event.id,
+    ).filter(
+        TempChat.status == "active",
+        TempChat.kind.in_(("question", "weekday_ack")),
+        TempChat.expires_at.isnot(None),
+        TempChat.expires_at > now_utc,
+        Event.date == today,
+        Assignment.status == "pending",
+        Assignment.cover.is_(None),
+    ).all()
+
+    sent = 0
+    for temp_chat in temp_chats:
+        target = chat_id or temp_chat.chat_id
+        msg_id = send_message("Just a reminder to tap on a response :) Thank you!", chat_id=target)
+        if not msg_id:
+            continue
+        temp_chat.kind = f"{temp_chat.kind}_followup"
+        db.session.add(InteractionLog(
+            action="followup_reminder",
+            person_name=temp_chat.recipient or temp_chat.person,
+            assignment_id=temp_chat.assignment_id,
+            details=f"temp_chat:{temp_chat.id}",
+        ))
+        sent += 1
+
+    if sent:
+        db.session.commit()
+    return sent
+
+
 def send_weekday_5pm_reminders_v2(chat_id=None):
     today = vancouver_today()
     events = Event.query.filter(Event.date == today, Event.day_type != "Sunday").all()
