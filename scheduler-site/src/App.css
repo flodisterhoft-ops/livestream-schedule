@@ -108,7 +108,7 @@ body {
 }
 
 .app-title {
-  font-size: 1.5rem;
+  font-size: 1.65rem;
   font-weight: 800;
   color: var(--accent);
   letter-spacing: -0.5px;
@@ -116,7 +116,7 @@ body {
 }
 
 .user-greeting {
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
@@ -132,20 +132,23 @@ body {
 .user-greeting .wave {
   display: inline-block;
   transform-origin: 70% 70%;
-  animation: handWave 2.4s ease-in-out infinite;
+  animation: handWave 2s ease-in-out infinite;
 }
 
 @keyframes handWave {
-  0%, 60%, 100% { transform: rotate(0deg); }
-  10% { transform: rotate(14deg); }
-  20% { transform: rotate(-8deg); }
-  30% { transform: rotate(14deg); }
-  40% { transform: rotate(-4deg); }
-  50% { transform: rotate(10deg); }
+  0%, 70%, 100% { transform: rotate(0deg); }
+  8% { transform: rotate(22deg); }
+  16% { transform: rotate(-14deg); }
+  24% { transform: rotate(22deg); }
+  32% { transform: rotate(-12deg); }
+  40% { transform: rotate(20deg); }
+  48% { transform: rotate(-8deg); }
+  56% { transform: rotate(14deg); }
 }
 
 @media (max-width: 480px) {
-  .app-title { font-size: 1.2rem; }
+  .app-title { font-size: 1.55rem; }
+  .user-greeting { font-size: 0.95rem; }
 }
 
 .header-actions {
@@ -193,8 +196,8 @@ body {
 }
 
 .icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-card);
@@ -202,7 +205,7 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   transition: all 0.15s ease;
 }
 
@@ -210,13 +213,13 @@ body {
 .icon-btn.active { background: var(--accent-light); border-color: var(--accent); }
 
 .manager-btn {
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-card);
   color: var(--text-secondary);
-  font-size: 1.1rem;
+  font-size: 1.3rem;
   line-height: 1;
   cursor: pointer;
   display: inline-flex;
