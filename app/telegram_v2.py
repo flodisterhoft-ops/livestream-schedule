@@ -258,12 +258,18 @@ def _short_date(date_obj):
     return date_obj.strftime("%B %d").replace(" 0", " ")
 
 
+def _is_sunday_event(event):
+    return event.day_type == "Sunday" or event.date.weekday() == 6
+
+
 def _event_start_dt(event):
-    hour = 14 if event.day_type == "Sunday" or event.date.weekday() >= 5 else 19
+    hour = 14 if _is_sunday_event(event) else 19
     return datetime.datetime.combine(event.date, datetime.time(hour=hour), tzinfo=VANCOUVER_TZ)
 
 
 def _swap_deadline(event):
+    if _is_sunday_event(event):
+        return datetime.datetime.combine(event.date, datetime.time(hour=17), tzinfo=VANCOUVER_TZ)
     return _event_start_dt(event) + datetime.timedelta(hours=2)
 
 
@@ -1293,8 +1299,17 @@ def refresh_event_telegram(event):
 #  Scheduled Notifications
 # ═══════════════════════════════════════════════════════════════════
 
+def _inside_daily_reminder_window(now=None):
+    now = now or vancouver_now()
+    return now.hour == 9
+
+
 def send_daily_reminders_v2(chat_id=None):
     """Send 9 AM group posts and temp-group personal questions."""
+    now = vancouver_now()
+    if not _inside_daily_reminder_window(now):
+        print(f"[Scheduler] Skipping daily reminders outside 9AM window ({now.isoformat()})")
+        return 0
     today = vancouver_today()
     events = Event.query.filter_by(date=today).all()
     sent = 0
@@ -1346,6 +1361,8 @@ def send_weekday_5pm_reminders_v2(chat_id=None):
     events = Event.query.filter(Event.date == today, Event.day_type != "Sunday").all()
     sent = 0
     for event in events:
+        if _is_sunday_event(event) or event.date.weekday() >= 5:
+            continue
         for assignment in event.assignments:
             worker = assignment.cover or assignment.person
             if worker in ("TBD", "Select Helper") or assignment.status == "swap_needed":
