@@ -1172,8 +1172,6 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
   const preset = PRESET_TYPES.find(p => p.value === type) || PRESET_TYPES[0]
   const [computerCount, setComputerCount] = useState(preset.defaultRoles.filter(r => r === 'Computer').length || 1)
   const [cameraCount, setCameraCount] = useState(preset.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
-  const [helperCount, setHelperCount] = useState(0)
-  const [leaderCount, setLeaderCount] = useState(type === 'Friday' ? 1 : 0)
   const [people, setPeople] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const overlayRef = useRef(null)
@@ -1191,26 +1189,18 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
   for (let i = 0; i < computerCount; i++) roles.push(computerCount > 1 ? `Computer ${i + 1}` : 'Computer')
   if (cameraCount === 1) roles.push('Camera')
   else for (let i = 0; i < cameraCount; i++) roles.push(`Camera ${i + 1}`)
-  for (let i = 0; i < leaderCount; i++) roles.push(leaderCount > 1 ? `Leader ${i + 1}` : 'Leader')
-  for (let i = 0; i < helperCount; i++) roles.push(helperCount > 1 ? `Helper ${i + 1}` : 'Helper')
 
   const applyTypeDefaults = (newType) => {
     setType(newType)
     if (newType === 'Sunday') {
       setComputerCount(1)
       setCameraCount(2)
-      setLeaderCount(0)
-      setHelperCount(0)
     } else if (newType === 'Friday') {
       setComputerCount(1)
       setCameraCount(1)
-      setLeaderCount(1)
-      setHelperCount(0)
     } else {
       setComputerCount(1)
       setCameraCount(1)
-      setLeaderCount(0)
-      setHelperCount(0)
     }
   }
 
@@ -1324,8 +1314,6 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
             <div className="counter-grid">
               <Counter label="Computer" value={computerCount} onChange={setComputerCount} max={3} />
               <Counter label="Camera" value={cameraCount} onChange={setCameraCount} max={4} />
-              <Counter label="Leader" value={leaderCount} onChange={setLeaderCount} max={2} />
-              <Counter label="Helper" value={helperCount} onChange={setHelperCount} max={4} />
             </div>
           </div>
 
