@@ -203,7 +203,7 @@ export default function App() {
       loadSchedule()
       if (action === 'confirm') showFlash('Confirmed!')
       else if (action === 'pickup') showFlash('Shift picked up! Thank you!')
-      else if (action === 'decline') showFlash('Marked as unavailable')
+      else if (action === 'decline') showFlash("Thanks for letting us know! We'll ask the others to cover your shift.")
       else if (action === 'volunteer') showFlash('Volunteered! Thank you!')
       else loadSchedule()
     } catch (e) {
