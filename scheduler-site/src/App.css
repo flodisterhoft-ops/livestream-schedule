@@ -799,7 +799,7 @@ body {
   justify-content: center;
   padding: 8px 10px;
   background: linear-gradient(160deg, #dbeafe 0%, #ede9fe 100%);
-  min-width: 64px;
+  min-width: 58px;
   border-right: 1px solid var(--border-light);
   border-top: none;
   border-bottom: none;
@@ -818,7 +818,7 @@ body {
 }
 
 .event-day-name {
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--accent);
   text-transform: uppercase;
@@ -826,14 +826,14 @@ body {
 }
 
 .event-day-num {
-  font-size: 1.75rem;
+  font-size: 1.45rem;
   font-weight: 800;
   color: var(--accent);
   line-height: 1.05;
 }
 
 .event-month {
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
