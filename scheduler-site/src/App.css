@@ -1112,6 +1112,18 @@ body {
 .action-btn:hover { box-shadow: var(--shadow-sm); }
 .action-btn:active { transform: scale(0.94); }
 
+.action-btn.confirm,
+.action-btn.decline {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 1.05rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .action-btn.confirm { background: var(--success-light); color: var(--success); }
 .action-btn.confirm:hover { background: var(--success); color: white; }
 
