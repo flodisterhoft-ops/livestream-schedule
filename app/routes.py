@@ -61,7 +61,8 @@ def render_row(assign_dict, full_date, current_user, is_manager, roster_data=Non
         all_names=ALL_NAMES
     )
 
-@bp.route("/")
+# Legacy home route removed — / is now served by the React app (see app/__init__.py).
+# Function kept only for backward references; no URL mapping.
 def home():
     if "user_name" not in session:
         session["user_name"] = None
@@ -128,7 +129,7 @@ def set_identity(name):
             password = request.form.get("password", "")
             if password == "steroids":
                 session["user_name"] = name
-                return redirect(url_for("main.home"))
+                return redirect("/")
             else:
                 flash("Incorrect password", "error")
                 return render_template("login.html", name=name)
@@ -136,7 +137,7 @@ def set_identity(name):
             return render_template("login.html", name=name)
     elif name in ALL_NAMES:
         session["user_name"] = name
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/switch_user")
 @bp.route("/logout")
@@ -144,21 +145,21 @@ def switch_user():
     """Logout - return to identity selection."""
     session.pop("user_name", None)
     session.pop("manager", None)
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/toggle_manager")
 @bp.route("/logout_manager")
 def toggle_manager():
     """Toggle manager mode on/off for Florian."""
     if session.get("user_name") != "Florian":
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     if session.get("manager"):
         session.pop("manager", None)
     else:
         session["manager"] = True
     
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/request_access", methods=["POST"])
 def request_access():
@@ -175,7 +176,7 @@ def request_access():
         flash("Admin notified! Check email for magic link.", "success")
     else:
         flash("Error sending email.", "error")
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/manager_login/<token>")
 def manager_login(token):
@@ -190,7 +191,7 @@ def manager_login(token):
         db.session.commit()
     else:
         flash("Invalid or expired token", "error")
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/pickup/<token>", methods=["GET", "POST"])
 def pickup_via_token(token):
@@ -199,7 +200,7 @@ def pickup_via_token(token):
     
     if not pickup_token:
         flash("This link has expired or already been used.", "error")
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     assignment = Assignment.query.get(pickup_token.assignment_id)
     if not assignment or assignment.status != "swap_needed":
@@ -207,7 +208,7 @@ def pickup_via_token(token):
         # Mark this token as used anyway
         pickup_token.used = True
         db.session.commit()
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     event = assignment.event
     
@@ -258,12 +259,12 @@ def pickup_via_token(token):
     # Set session so user sees the result
     session["user_name"] = person
     flash(f"You've picked up the {assignment.role} shift! Thank you! 🎉", "success")
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 
 @bp.route("/generate_specific", methods=["POST"])
 def generate_specific_route():
-    if not session.get("manager"): return redirect(url_for("main.home"))
+    if not session.get("manager"): return redirect("/")
     
     ym_str = request.form.get("gen_month") # YYYY-MM
     if ym_str:
@@ -271,11 +272,11 @@ def generate_specific_route():
         y, m = map(int, ym_str.split("-"))
         generate_month_v2(y, m)
         flash(f"Generated events for {ym_str}", "CONFETTI")
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/wipe_month", methods=["POST"])
 def wipe_month():
-    if not session.get("manager"): return redirect(url_for("main.home"))
+    if not session.get("manager"): return redirect("/")
     ym_str = request.form.get("gen_month")
     if ym_str:
         y, m = map(int, ym_str.split("-"))
@@ -285,13 +286,13 @@ def wipe_month():
         Event.query.filter(Event.date >= start_date, Event.date <= end_date).delete()
         db.session.commit()
         flash(f"Wiped events for {ym_str}", "success")
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/test_telegram", methods=["POST"])
 def test_telegram():
     """Test Telegram bot connection and send a test message."""
     if not session.get("manager"):
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     # Test connection
     result = test_telegram_connection()
@@ -306,13 +307,13 @@ def test_telegram():
     else:
         flash(f"Telegram error: {result.get('error', 'Unknown error')}", "error")
     
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/notify_event", methods=["POST"])
 def notify_event():
     """Send Telegram notification for a specific event."""
     if not session.get("manager"):
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     d_str = request.form.get("event_date")
     if d_str:
@@ -338,11 +339,11 @@ def notify_event():
             else:
                 flash("Failed to send Telegram notification", "error")
     
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/add_event", methods=["POST"])
 def add_event():
-    if not session.get("manager"): return redirect(url_for("main.home"))
+    if not session.get("manager"): return redirect("/")
     
     d_str = request.form.get("event_date")
     e_type = request.form.get("event_type")
@@ -381,21 +382,21 @@ def add_event():
             db.session.commit()
             flash("Event added!", "CONFETTI")
             
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/delete/<d_key>")
 def delete_event_route(d_key):
-    if not session.get("manager"): return redirect(url_for("main.home"))
+    if not session.get("manager"): return redirect("/")
     d_obj = datetime.datetime.strptime(d_key, "%B %d, %Y").date()
     e = Event.query.filter_by(date=d_obj).first()
     if e:
         db.session.delete(e)
         db.session.commit()
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/edit_title", methods=["POST"])
 def edit_title():
-    if not session.get("manager"): return redirect(url_for("main.home"))
+    if not session.get("manager"): return redirect("/")
     d_key = request.form.get("date")
     new_title = request.form.get("new_title")
     d_obj = datetime.datetime.strptime(d_key, "%B %d, %Y").date()
@@ -403,7 +404,7 @@ def edit_title():
     if e:
         e.custom_title = new_title
         db.session.commit()
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/update_person", methods=["POST"])
 def update_person():
@@ -439,7 +440,7 @@ def update_person():
                 ad['idx'] = idx 
                 return render_row(ad, d_key, curr, is_mgr)
 
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/action", methods=["POST"])
 def action_route():
@@ -566,7 +567,7 @@ def action_route():
                 ad['idx'] = idx
                 return render_row(ad, d_key, curr, is_mgr)
 
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 # ============================================================
 # BULK CONFIRM
@@ -575,7 +576,7 @@ def action_route():
 def bulk_confirm():
     """Confirm all pending assignments for a given month."""
     if not session.get("manager"):
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     ym_str = request.form.get("gen_month")  # YYYY-MM
     if ym_str:
@@ -599,7 +600,7 @@ def bulk_confirm():
             refresh_event_telegram(event)
         flash(f"Confirmed {count} assignments!", "CONFETTI")
     
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 # ============================================================
 # iCAL CALENDAR EXPORT
@@ -758,7 +759,7 @@ def delete_availability(avail_id):
 def update_notes():
     """Update notes for an event."""
     if not session.get("manager"):
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     d_str = request.form.get("date")
     notes = request.form.get("notes", "")
@@ -771,13 +772,13 @@ def update_notes():
             db.session.commit()
             flash("Notes updated", "success")
     
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/update_title", methods=["POST"])
 def update_title():
     """Update event title and type (manager only)."""
     if not session.get("manager"):
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     d_str = request.form.get("date")
     new_title = request.form.get("title", "").strip()
@@ -800,14 +801,14 @@ def update_title():
         except Exception as e:
             flash(f"Error updating event: {e}", "error")
     
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 
 @bp.route("/update_date", methods=["POST"])
 def update_date():
     """Update event date (manager only)."""
     if not session.get("manager"):
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     old_d_str = request.form.get("old_date")
     new_d_str = request.form.get("new_date")
@@ -820,7 +821,7 @@ def update_date():
         existing = Event.query.filter_by(date=new_d_obj).first()
         if existing:
             flash(f"An event already exists on {new_d_obj.strftime('%B %d, %Y')}", "error")
-            return redirect(url_for("main.home"))
+            return redirect("/")
         
         event = Event.query.filter_by(date=old_d_obj).first()
         if event:
@@ -828,7 +829,7 @@ def update_date():
             db.session.commit()
             flash(f"Event date changed to {new_d_obj.strftime('%B %d, %Y')}", "success")
     
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 # ============================================================
 # STATISTICS DASHBOARD
@@ -971,7 +972,7 @@ def generate_year_2026():
     """
     if not session.get("manager"):
         flash("Unauthorized access", "error")
-        return redirect(url_for("main.home"))
+        return redirect("/")
     
     try:
         from .scheduler_v2 import generate_month_v2
@@ -1014,7 +1015,7 @@ def generate_year_2026():
         flash(f"Error generating year schedule: {str(e)}", "error")
         current_app.logger.error(f"Year generation error: {e}")
     
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 @bp.route("/regenerate_future", methods=["POST"])
 def regenerate_future():
@@ -1024,7 +1025,7 @@ def regenerate_future():
     Manager-only.
     """
     if not session.get("manager"):
-        return redirect(url_for("main.home"))
+        return redirect("/")
         
     try:
         # Wipe future events (Mar 1, 2026 onwards)
@@ -1052,7 +1053,7 @@ def regenerate_future():
     except Exception as e:
         flash(f"Error regenerating: {e}", "error")
         
-    return redirect(url_for("main.home"))
+    return redirect("/")
 
 # ============================================================
 # CRON WEBHOOK - Daily Reminders

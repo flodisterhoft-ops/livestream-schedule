@@ -178,68 +178,6 @@ def apply_data_hotfixes():
                 db.session.delete(assignment)
                 changed = True
 
-    target_date = datetime.date(2026, 2, 20)
-    event = Event.query.filter_by(date=target_date).first()
-    if not event:
-        if changed:
-            db.session.commit()
-        return
-
-    event.day_type = "Friday"
-    changed = True
-
-    # Remove Sunday camera roles from this Bible study date.
-    for assignment in list(event.assignments):
-        if assignment.role in ("Camera 1", "Camera 2"):
-            db.session.delete(assignment)
-            changed = True
-
-    # Ensure a single Computer assignment exists and is not Marvin.
-    computers = Assignment.query.filter_by(event_id=event.id, role="Computer").order_by(Assignment.id).all()
-    if computers:
-        computer = computers[0]
-        for extra in computers[1:]:
-            db.session.delete(extra)
-            changed = True
-    else:
-        leader = Assignment.query.filter_by(event_id=event.id, role="Leader").order_by(Assignment.id).first()
-        if leader:
-            leader.role = "Computer"
-            computer = leader
-            changed = True
-        else:
-            computer = Assignment(event_id=event.id, role="Computer", person="Rene", status="pending")
-            db.session.add(computer)
-            changed = True
-
-    if computer.person in ("Marvin", "Stefan", "TBD", "Select Helper", None, ""):
-        computer.person = "Rene"
-        changed = True
-    if not computer.status:
-        computer.status = "pending"
-        changed = True
-
-    # Ensure exactly one Camera assignment exists.
-    cameras = Assignment.query.filter_by(event_id=event.id, role="Camera").order_by(Assignment.id).all()
-    if cameras:
-        for extra in cameras[1:]:
-            db.session.delete(extra)
-            changed = True
-    else:
-        helper = Assignment.query.filter_by(event_id=event.id, role="Helper").order_by(Assignment.id).first()
-        if helper:
-            helper.role = "Camera"
-            changed = True
-        else:
-            db.session.add(Assignment(event_id=event.id, role="Camera", person="Select Helper", status="pending"))
-            changed = True
-
-    # Remove any leftover unexpected roles for this date.
-    for assignment in Assignment.query.filter_by(event_id=event.id).all():
-        if assignment.role not in ("Computer", "Camera"):
-            db.session.delete(assignment)
-            changed = True
-
     if changed:
         db.session.commit()
 
@@ -252,24 +190,35 @@ def create_app(config_class='config.Config'):
 
     db.init_app(app)
 
-    app.register_blueprint(main_bp)
-    app.register_blueprint(api_v2)  # v2 REST API at /api/v2/
+    # ── Serve React frontend at / (main) and /v2 (back-compat) ──
+    react_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scheduler-site', 'dist')
 
-    # ── Serve React v2 frontend ──────────────────────────────
-    v2_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scheduler-site', 'dist')
+    def _serve_react(path='index.html'):
+        if os.path.isdir(react_dist):
+            file_path = os.path.join(react_dist, path)
+            if os.path.isfile(file_path):
+                return send_from_directory(react_dist, path)
+            # SPA fallback: serve index.html for client-side routing
+            return send_from_directory(react_dist, 'index.html')
+        return "Frontend not built yet. Run: cd scheduler-site && npm install && npm run build", 404
 
+    @app.route('/')
+    def serve_root():
+        return _serve_react('index.html')
+
+    @app.route('/assets/<path:path>')
+    def serve_root_assets(path):
+        return _serve_react(os.path.join('assets', path))
+
+    # Back-compat: /v2 → still serves the same SPA
     @app.route('/v2')
     @app.route('/v2/')
     @app.route('/v2/<path:path>')
     def serve_v2(path='index.html'):
-        """Serve the React v2 frontend from scheduler-site/dist/."""
-        if os.path.isdir(v2_dist):
-            file_path = os.path.join(v2_dist, path)
-            if os.path.isfile(file_path):
-                return send_from_directory(v2_dist, path)
-            # SPA fallback: serve index.html for client-side routing
-            return send_from_directory(v2_dist, 'index.html')
-        return "v2 frontend not built yet. Run: cd scheduler-site && npm install && npm run build", 404
+        return _serve_react(path)
+
+    app.register_blueprint(main_bp)
+    app.register_blueprint(api_v2)  # v2 REST API at /api/v2/
 
     with app.app_context():
         # Create tables if they don't exist (covers new models like SwapRequest)

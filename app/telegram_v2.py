@@ -207,7 +207,7 @@ def _site_url():
 
 
 def _schedule_url(person=None):
-    url = _site_url().rstrip("/") + "/v2"
+    url = _site_url().rstrip("/") + "/"
     if person:
         try:
             token = URLSafeSerializer(current_app.secret_key, salt="v2-auth").dumps({
@@ -293,7 +293,7 @@ def _notify_admin_text(text):
 
 
 def _suggestion_url(suggestion_id):
-    base = _site_url().rstrip("/") + "/v2"
+    base = _site_url().rstrip("/") + "/"
     return f"{base}?suggest={suggestion_id}"
 
 

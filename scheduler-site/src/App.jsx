@@ -436,7 +436,6 @@ export default function App() {
 // ═══════════════════════════════════════════════════════════════
 
 function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team }) {
-  const [expandedYears, setExpandedYears] = useState({})
   const navRef = useRef(null)
   const [indicator, setIndicator] = useState(null)
   useEffect(() => {
@@ -452,7 +451,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [activeMonth, expandedYears, months.length, schedule.length])
+  }, [activeMonth, months.length, schedule.length])
 
   const handleNotify = async (date) => {
     try {
