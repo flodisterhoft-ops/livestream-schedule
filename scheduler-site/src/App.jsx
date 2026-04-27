@@ -352,7 +352,7 @@ export default function App() {
         </div>
         <div className="header-actions">
           <button
-            className="icon-btn primary"
+            className="manager-btn"
             onClick={() => {
               if (isManager) {
                 setCreatePrefill(null)
@@ -364,7 +364,7 @@ export default function App() {
             title={isManager ? 'New event' : 'Suggest a date'}
             aria-label={isManager ? 'Create event' : 'Suggest a date'}
           >
-            {'+'}
+            <span className="manager-btn-icon">{'+'}</span>
           </button>
           {isAdmin && (
             <button
