@@ -313,15 +313,13 @@ body {
 .notify-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 36px;
-  padding: 0;
+  gap: 6px;
+  padding: 5px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--accent);
   background: var(--accent-light);
   color: var(--accent);
-  font-size: 1.05rem;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
@@ -334,7 +332,7 @@ body {
     padding 0.36s cubic-bezier(.2,.8,.2,1),
     border-width 0.18s ease,
     opacity 0.28s ease;
-  max-width: 40px;
+  max-width: 200px;
   overflow: hidden;
 }
 
@@ -357,8 +355,13 @@ body {
 
 .notify-btn:active { transform: scale(0.96); }
 
+.notify-btn-label {
+  letter-spacing: 0.2px;
+}
+
 @media (max-width: 380px) {
-  .notify-btn { width: 40px; height: 36px; padding: 0; }
+  .notify-btn-label { display: none; }
+  .notify-btn { padding: 5px 8px; }
 }
 
 /* ── Tab Navigation ───────────────────────────────────────── */

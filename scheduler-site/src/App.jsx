@@ -586,6 +586,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               aria-hidden={!isManager}
             >
               <span aria-hidden="true">{'\uD83D\uDCE8'}</span>
+              <span className="notify-btn-label">Notify</span>
             </button>
           )}
         </div>
