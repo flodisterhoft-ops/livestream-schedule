@@ -24,10 +24,6 @@ class Config:
     # Use HTTPS for generated links only when Secure cookies are enabled
     PREFERRED_URL_SCHEME = 'https' if os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true' else 'http'
     
-    # Email settings
-    EMAIL_ADDRESS = os.environ.get('SCHEDULE_EMAIL', '')
-    EMAIL_PASSWORD = os.environ.get('SCHEDULE_EMAIL_APP_PASSWORD', '')
-    
     # Telegram settings
     TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
     TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
@@ -37,7 +33,7 @@ class Config:
     # Notification settings
     REMINDER_HOUR = int(os.environ.get('REMINDER_HOUR', '9'))  # 9 AM Vancouver time
 
-    # External URL for generating links (for example Telegram pickup links).
+    # External URL for generating Telegram and frontend links.
     # In live environments prefer the Oracle public domain via env var.
     BASE_URL = os.environ.get('BASE_URL', 'https://livestream.disterhoft.com')
 

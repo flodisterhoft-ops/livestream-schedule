@@ -110,11 +110,6 @@ class Assignment(db.Model):
             "_hist": self.history
         }
 
-class Token(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    token = db.Column(db.String(36), unique=True, nullable=False)
-    created_at = db.Column(db.Date, default=datetime.utcnow)
-
 class Availability(db.Model):
     """Tracks when team members are unavailable."""
     id = db.Column(db.Integer, primary_key=True)
@@ -136,20 +131,6 @@ class Availability(db.Model):
             "recurring": self.recurring,
             "pattern": self.pattern
         }
-
-
-class PickupToken(db.Model):
-    """Stores unique tokens for Telegram shift pickup links."""
-    id = db.Column(db.Integer, primary_key=True)
-    token = db.Column(db.String(36), unique=True, nullable=False)  # UUID
-    assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.id'), nullable=False)
-    person = db.Column(db.String(50), nullable=False)  # Who this token is for
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    used = db.Column(db.Boolean, default=False)  # Mark as used after pickup
-    
-    assignment = db.relationship('Assignment', backref=db.backref('pickup_tokens', cascade='all, delete-orphan'))
-
-
 class InteractionLog(db.Model):
     """Logs every Telegram button press for the admin stats page."""
     id = db.Column(db.Integer, primary_key=True)

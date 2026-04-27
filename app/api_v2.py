@@ -12,7 +12,7 @@ import hmac
 import time
 from itsdangerous import BadSignature, URLSafeSerializer
 from flask import Blueprint, request, jsonify, session, current_app
-from .models import Event, Assignment, TeamMember, Availability, PickupToken, SwapRequest, TempChat, EventSuggestion
+from .models import Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion
 from .extensions import db
 from .utils import (
     ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats,
@@ -353,9 +353,6 @@ def do_action():
                     assignment.telegram_message_id = None
                 except Exception:
                     pass
-                PickupToken.query.filter_by(
-                    assignment_id=assignment.id, used=False
-                ).update({"used": True})
         elif assignment.status == "confirmed":
             assignment.status = "pending"
         push_history()

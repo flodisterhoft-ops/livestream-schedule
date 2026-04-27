@@ -1,35 +1,51 @@
-# Livestream Scheduler
+﻿# Livestream Scheduler
 
-Church media team scheduler for Friday/Sunday services, availability, swaps, pickup links, and Telegram reminders.
+React/Vite + Flask scheduler for the church livestream team.
 
-## Live Deployment Note
+The React frontend in `scheduler-site/` is the only website UI. Flask serves it at the main production URL:
 
-This project's current live hosting is documented as Oracle infrastructure, not Render.
+- `https://livestream.disterhoft.com/`
 
-It is bundled with the Young Couples Scheduler deployment, so when you are asked to make live-site or deployment changes, start from the Oracle-hosted stack and its public domains instead of the old `onrender.com` setup.
-
-Treat old Render files, `onrender.com` URLs, and Render-specific notes in this repo as legacy references unless you are explicitly reviving that deployment path.
+`/v2` is kept only as a backwards-compatible alias for older Telegram/browser links. Do not treat it as a separate site.
 
 ## Start Here
 
-- `DEPLOYMENT_CONTEXT.md` contains the current hosting context and cross-references.
-- `app/routes.py` contains the public URL helper used for pickup links and other external links.
-- `config.py` contains the runtime config, including `BASE_URL`.
+- `scheduler-site/src/`: active frontend UI
+- `app/api_v2.py`: JSON API consumed by the frontend (`/api/v2/*`)
+- `app/telegram_v2.py`: Telegram bot callbacks, reminders, temp-chat coverage workflow, and suggestion alerts
+- `app/scheduler_v2.py`: active schedule generation/fairness logic
+- `app/routes.py`: small non-UI compatibility blueprint for calendar feeds and optional cron webhook only
+- `app/__init__.py`: app factory, React serving, DB startup migration, data hotfixes, APScheduler jobs
+- `config.py`: runtime config, database URL, Telegram env vars, `BASE_URL`
+- `DEPLOYMENT_CONTEXT.md`: Oracle deployment notes
 
-## Cross-Project Context
+## Removed Legacy UI
 
-The bundled deployment notes live in the Young Couples project too:
+The old Flask/Jinja website has been removed. There are no active Jinja templates, old static assets, v1 Telegram module, v1 scheduler, or PythonAnywhere task script.
 
-- `C:\Users\Disterhoft\OneDrive\Documents\AI Projects\Young Couples Scheduler\README.md`
-- `C:\Users\Disterhoft\OneDrive\Documents\AI Projects\Young Couples Scheduler\CLAUDE_HANDOFF_2026-03-22.md`
+## Local Development
 
-If there is ever a mismatch between old Render-era notes and the Oracle bundle notes, prefer the Oracle bundle notes.
+Backend:
 
-## Project Layout
+```powershell
+python run.py
+```
 
-- `app/`: current Flask app package
-- `config.py`: config and environment variable handling
-- `run.py`: app entrypoint
-- `schedule.db`: local SQLite snapshot for local work
-- `render.yaml`: legacy Render manifest kept for historical reference
-- `flask_app.py`: older single-file version kept in the repo for history/reference
+Frontend:
+
+```powershell
+cd scheduler-site
+npm install
+npm run dev
+```
+
+Build frontend assets for Flask to serve:
+
+```powershell
+cd scheduler-site
+npm run build
+```
+
+## Deployment
+
+Live deployment is the Oracle VM documented in `DEPLOYMENT_CONTEXT.md`. Push to `origin/main`, update the server repo, then restart `livestream.service`.

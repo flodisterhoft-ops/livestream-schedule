@@ -20,7 +20,7 @@ import time
 import requests
 from itsdangerous import URLSafeSerializer
 from flask import current_app
-from .models import Event, Assignment, PickupToken, TeamMember, InteractionLog, SwapRequest, TempChat
+from .models import Event, Assignment, TeamMember, InteractionLog, SwapRequest, TempChat
 from .extensions import db
 from .utils import is_available, vancouver_today, vancouver_now, VANCOUVER_TZ
 from . import telegram_temp_groups

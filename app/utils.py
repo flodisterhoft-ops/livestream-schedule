@@ -1,14 +1,6 @@
 import datetime
-import os
-import smtplib
-import uuid
 from zoneinfo import ZoneInfo
-from flask import url_for
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from .models import Event, Assignment, Token
-from .extensions import db
-from sqlalchemy.exc import IntegrityError
+from .models import Event
 
 # ============================================================
 # Timezone helpers — server runs in UTC, we need Vancouver time
@@ -41,9 +33,6 @@ PC_ROTATION_ORDER = ["Florian", "Marvin", "Rene", "Stefan", "Andy", "Patric"]
 BLACKOUTS = {
     "Florian": [(datetime.date(2025, 12, 12), datetime.date(2025, 12, 27))]
 }
-
-EMAIL_ADDRESS = os.environ.get("SCHEDULE_EMAIL", "flodisterhoft@gmail.com")
-EMAIL_PASSWORD = os.environ.get("SCHEDULE_EMAIL_APP_PASSWORD", "REPLACE_ME")
 
 # ============================================================
 # Helpers
@@ -100,80 +89,6 @@ def matches_pattern(date_obj, pattern):
 
 def is_real_person(p: str) -> bool:
     return bool(p) and p in ROLES_CONFIG and p != "TBD" and p != "Select Helper"
-
-def check_and_init():
-    # Force Create Jan 1 (New Year's) if missing
-    d1 = datetime.date(2026, 1, 1)
-    if not Event.query.filter_by(date=d1).first():
-        e1 = Event(date=d1, day_type="Custom", custom_title="New Year's Day Service")
-        db.session.add(e1)
-        db.session.commit() # Commit to get ID
-        
-        assigns = [
-            Assignment(event_id=e1.id, role="Computer", person="Florian", status="confirmed"),
-            Assignment(event_id=e1.id, role="Camera 1", person="Marvin", status="confirmed"),
-            Assignment(event_id=e1.id, role="Camera 2", person="Viktor", status="confirmed"),
-        ]
-        db.session.add_all(assigns)
-        db.session.commit()
-
-    # Force Create Jan 4 (Sunday Service) if missing
-    d2 = datetime.date(2026, 1, 4)
-    if not Event.query.filter_by(date=d2).first():
-        e2 = Event(date=d2, day_type="Sunday", custom_title="Sunday Service")
-        db.session.add(e2)
-        db.session.commit()
-        
-        assigns = [
-            Assignment(event_id=e2.id, role="Computer", person="Stefan", status="confirmed"),
-            Assignment(event_id=e2.id, role="Camera 1", person="Andy", status="confirmed"),
-            Assignment(event_id=e2.id, role="Camera 2", person="Viktor", status="confirmed"),
-        ]
-        db.session.add_all(assigns)
-        db.session.commit()
-
-def send_access_email(magic_link, requester_name):
-    subject = f"Access Request: {requester_name}"
-    body = f"""
-    <h3>Manager Access Request</h3>
-    <p><b>{requester_name}</b> is requesting manager access.</p>
-    <p>Forward this link to them (valid until you delete tokens):</p>
-    <p>{magic_link}</p>
-    <hr>
-    <p><small><a href="{magic_link}">Login Link</a></small></p>
-    """
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_ADDRESS
-    msg["To"] = EMAIL_ADDRESS
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "html"))
-    try:
-        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)
-        server.starttls()
-        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Email Error: {e}")
-        return False
-
-def start_access_grant(user_name):
-    token_str = str(uuid.uuid4())
-    t = Token(token=token_str)
-    db.session.add(t)
-    db.session.commit()
-    
-    link = url_for('main.manager_login', token=token_str, _external=True)
-    return send_access_email(link, user_name)
-
-def verify_token(token_str):
-    t = Token.query.filter_by(token=token_str).first()
-    if t:
-        db.session.delete(t)
-        db.session.commit()
-        return True
-    return False
 
 def get_history_stats():
     """

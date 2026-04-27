@@ -1,8 +1,8 @@
-# Deployment Context
+﻿# Deployment Context
 
 Use this file as the first stop when a request mentions the live livestream scheduler site.
 
-## Live Server — Oracle Cloud
+## Live Server - Oracle Cloud
 
 | Item | Value |
 |------|-------|
@@ -21,17 +21,17 @@ Both the Livestream Scheduler and the Young Couples Scheduler run on this single
 | `https://livestream.disterhoft.com` | `127.0.0.1:5000` | Livestream Scheduler |
 | `https://cleaning.disterhoft.com` | `127.0.0.1:5001` | Young Couples Scheduler |
 
-- **DNS provider:** Cloudflare (SSL mode: Flexible — Cloudflare terminates HTTPS, talks HTTP to Oracle)
-- **No SSL certificates on Oracle itself** — Cloudflare handles all TLS
+- **DNS provider:** Cloudflare (SSL mode: Flexible - Cloudflare terminates HTTPS, talks HTTP to Oracle)
+- **No SSL certificates on Oracle itself** - Cloudflare handles all TLS
 
 ## Nginx
 
 - **Config file:** `/etc/nginx/sites-available/church-apps`
 - Routes by `server_name` to the correct localhost port
 - Forwards headers: `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`
-- Default fallback server → port 5000 (livestream)
+- Default fallback server -> port 5000 (livestream)
 
-## Systemd Service — Livestream
+## Systemd Service - Livestream
 
 | Item | Value |
 |------|-------|
@@ -41,75 +41,61 @@ Both the Livestream Scheduler and the Young Couples Scheduler run on this single
 | **Workers / Threads** | 1 worker, 4 threads |
 
 Manage with:
+
 ```bash
 sudo systemctl restart livestream.service
 sudo systemctl status livestream.service
 sudo journalctl -u livestream.service -f
 ```
 
-## Systemd Service — Young Couples (sister app)
+## Environment Variables
 
-| Item | Value |
-|------|-------|
-| **Service name** | `young-couples-scheduler.service` |
-| **Working directory** | `/home/ubuntu/young-couples-scheduler` |
-| **Gunicorn bind** | `127.0.0.1:5001` |
+Set secrets via systemd override or service file. Do not commit secret values.
 
-## Environment Variables (set via systemd override or service file)
-
-| Variable | Value / Source |
-|----------|---------------|
-| `TELEGRAM_BOT_TOKEN` | Livestream bot token (see below) |
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Optional DB URL; defaults to local SQLite `schedule.db` |
+| `SCHEDULE_SECRET_KEY` | Flask/session/signing secret |
+| `TELEGRAM_BOT_TOKEN` | Livestream bot token |
 | `TELEGRAM_CHAT_ID` | Livestream group chat ID |
-| `TELEGRAM_PERSONAL_CHAT_ID` | `27859948` (Flo) |
-| `TELEGRAM_WEBHOOK_SECRET` | Random secret for webhook verification |
+| `TELEGRAM_PERSONAL_CHAT_ID` | Florian/admin DM chat ID |
+| `TELEGRAM_WEBHOOK_SECRET` | Telegram webhook verification secret |
+| `TELEGRAM_LOGIN_URL_ENABLED` | Enables Telegram `login_url` schedule buttons |
 | `BASE_URL` | `https://livestream.disterhoft.com` |
 | `PYTHONUNBUFFERED` | `1` |
 
 ## Telegram Bot
 
-| Field | Value |
-|-------|-------|
-| **Bot Token** | `8194048646:AAFGx1WrZYSlBs0Ef2WY0aENoq40VHWlpwU` |
-| **Personal Chat ID** | `27859948` |
-| **Webhook URL** | `https://livestream.disterhoft.com/api/v2/telegram/webhook` |
+- Webhook URL: `https://livestream.disterhoft.com/api/v2/telegram/webhook`
+- Do not store bot tokens in this repository.
 
 ## Database
 
-- **Current:** SQLite (`schedule.db` in working directory)
-- **Supabase migration script exists** (`migrate_to_supabase.py`) but is **not active**
-- The `config.py` `DATABASE_URL` env var can point to PostgreSQL if needed
+- Current: SQLite (`schedule.db` in working directory)
+- `config.py` can use `DATABASE_URL` for PostgreSQL if needed
 
 ## Deployment Workflow
 
 1. Push changes to `origin/main` on GitHub (`flodisterhoft-ops/livestream-schedule`)
 2. SSH into Oracle: `ssh -i ~/.ssh/oracle_vm ubuntu@192.18.138.167`
-3. Pull changes:
-   ```bash
-   cd /home/ubuntu/livestream-schedule
-   git pull origin main
-   ```
+3. Pull/reset changes in `/home/ubuntu/livestream-schedule`
 4. Install any new deps: `venv/bin/pip install -r requirements.txt`
 5. Restart: `sudo systemctl restart livestream.service`
 
-The Young Couples Scheduler has a PowerShell deploy script (`oracle_deploy.ps1`) — a similar one could be created for this repo if desired.
+## Current Architecture
 
-## Legacy (NOT live)
-
-- `render.yaml` — old Render config, kept for history only
-- Any `*.onrender.com` URLs — dead
-- Render keep-alive cron — not needed
-- **Do NOT treat Render as the deployment target**
+- Main website: React/Vite frontend in `scheduler-site/`, served at `/`
+- Backwards-compatible frontend alias: `/v2`
+- API: `/api/v2/*`
+- Telegram integration: `app/telegram_v2.py`
+- Scheduler/fairness: `app/scheduler_v2.py`
+- Non-UI compatibility routes: `app/routes.py` (`/calendar.ics`, `/calendar/<person>.ics`, `/cron/daily-reminder`)
 
 ## Cross-References
 
 - Young Couples Scheduler repo: `C:\Users\Disterhoft\OneDrive\Documents\AI Projects\Young Couples Scheduler\`
-- YCS deployment docs: `CLAUDE_HANDOFF_2026-04-05.md`, `ORACLE_DEPLOY.md`, `ORACLE_MIGRATION.md`
-- Shared Nginx config example: `oracle_nginx_church-apps.conf.example` (in YCS repo)
+- Shared Oracle/Nginx context lives in the Young Couples repo deployment docs too.
 
 ## Maintenance
 
-If the Oracle host, domains, ports, or arrangement change, update:
-1. This file
-2. The corresponding YCS handoff doc
-3. The Copilot memory notes (so future chats don't drift back to stale info)
+If the Oracle host, domains, ports, or arrangement change, update this file and related deployment docs.
