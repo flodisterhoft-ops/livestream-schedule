@@ -47,6 +47,31 @@ async function api(path, opts = {}) {
   return data
 }
 
+function TelegramIcon({ size = 16 }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 240 240"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <linearGradient id="telegramGradient" x1="0.5" y1="0" x2="0.5" y2="1">
+          <stop offset="0%" stopColor="#37AEE2" />
+          <stop offset="100%" stopColor="#1E96C8" />
+        </linearGradient>
+      </defs>
+      <circle cx="120" cy="120" r="120" fill="url(#telegramGradient)" />
+      <path
+        fill="#FFFFFF"
+        d="M52 116.7c34.8-15.2 58-25.2 69.6-30.1 33.1-13.8 40-16.2 44.5-16.3 1 0 3.2.2 4.6 1.4 1.2 1 1.5 2.3 1.7 3.3.2 1 .4 3.2.2 4.9-1.8 18.7-9.5 64-13.4 84.9-1.7 8.8-5 11.8-8.2 12.1-7 .6-12.3-4.6-19-9-10.6-7-16.5-11.3-26.7-18.1-11.9-7.8-4.2-12.1 2.6-19.1 1.8-1.8 32.6-29.8 33.2-32.4.1-.3.1-1.5-.6-2.1-.7-.6-1.7-.4-2.5-.2-1.1.2-18 11.5-50.6 33.7-4.8 3.3-9.1 4.9-13 4.8-4.3-.1-12.5-2.4-18.7-4.4-7.5-2.4-13.5-3.7-13-7.9.3-2.1 3.2-4.3 8.7-6.5z"
+      />
+    </svg>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  App
 // ═══════════════════════════════════════════════════════════════
@@ -585,7 +610,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               tabIndex={isManager ? 0 : -1}
               aria-hidden={!isManager}
             >
-              <span aria-hidden="true">{'\uD83D\uDCE8'}</span>
+              <TelegramIcon />
             </button>
           )}
         </div>
