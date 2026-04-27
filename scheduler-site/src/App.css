@@ -1114,10 +1114,10 @@ body {
 
 .action-btn.confirm,
 .action-btn.decline {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   padding: 0;
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
