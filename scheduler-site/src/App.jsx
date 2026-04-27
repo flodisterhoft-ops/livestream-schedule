@@ -275,6 +275,9 @@ export default function App() {
   const activeMonth = selectedMonth && months.includes(selectedMonth)
     ? selectedMonth
     : defaultMonth
+  const pastMonths = new Set(
+    months.filter(m => !schedule.some(e => e.date.startsWith(m) && e.date >= today))
+  )
 
   const filtered = activeMonth
     ? schedule.filter(e => e.date.startsWith(activeMonth))
@@ -341,6 +344,7 @@ export default function App() {
       <ScheduleTab
         schedule={visibleSchedule}
         months={months}
+        pastMonths={pastMonths}
         activeMonth={activeMonth}
         isAdmin={isAdmin}
         onMonthChange={setSelectedMonth}
@@ -372,7 +376,7 @@ export default function App() {
 //  Schedule Tab
 // ═══════════════════════════════════════════════════════════════
 
-function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team }) {
+function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team }) {
   const [expandedYears, setExpandedYears] = useState({})
   const navRef = useRef(null)
   const [indicator, setIndicator] = useState(null)
@@ -446,7 +450,7 @@ function ScheduleTab({ schedule, months, activeMonth, onMonthChange, user, isAdm
   }
   const renderMonthPill = (month) => {
     const label = new Date(month + '-15').toLocaleString('en', { month: 'short' })
-    const isPast = month < new Date().toISOString().slice(0, 7)
+    const isPast = pastMonths ? pastMonths.has(month) : month < new Date().toISOString().slice(0, 7)
     return (
       <button
         key={month}

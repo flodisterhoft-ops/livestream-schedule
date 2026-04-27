@@ -649,7 +649,9 @@ body {
 .month-pill {
   position: relative;
   z-index: 1;
-  padding: 6px 14px;
+  flex: 1 1 calc((100% - 30px) / 6);
+  min-width: 0;
+  padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--bg-card);
@@ -657,6 +659,7 @@ body {
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
+  text-align: center;
   transition:
     color 0.32s cubic-bezier(.2,.8,.2,1),
     border-color 0.32s cubic-bezier(.2,.8,.2,1),
@@ -682,11 +685,8 @@ body {
   display: contents;
 }
 
-.year-pill {
-  min-width: 64px;
-}
-
 .year-months {
+  flex: 1 1 100%;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
