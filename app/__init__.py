@@ -395,8 +395,9 @@ def _start_daily_scheduler(app):
         """Run sweep_expired_swaps() every hour — clean up unresolved shifts."""
         with app.app_context():
             try:
-                from .telegram_v2 import sweep_expired_swaps
+                from .telegram_v2 import sweep_expired_swaps, sweep_expired_temp_chats
                 sweep_expired_swaps()
+                sweep_expired_temp_chats()
             except Exception as e:
                 print(f"[Scheduler] Deadline sweep failed: {e}")
 

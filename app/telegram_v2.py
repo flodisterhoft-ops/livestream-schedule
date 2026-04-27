@@ -349,6 +349,8 @@ def _send_temp_group(kind, person, text, buttons, assignment=None, swap_request=
     if not chat_id:
         _notify_admin_text(f"⚠️ Could not create temp chat for {person}")
         return None
+    if expires_at and expires_at.tzinfo is not None:
+        expires_at = expires_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     message_id = send_message(text, chat_id=str(chat_id), reply_markup=_make_inline_keyboard(buttons))
     temp_chat = TempChat(
         chat_id=str(chat_id),
@@ -1353,6 +1355,24 @@ def sweep_expired_swaps(chat_id=None):
 
     if processed:
         print(f"[sweep] Processed {processed} expired swap(s)")
+    return processed
+
+
+def sweep_expired_temp_chats():
+    now_utc = datetime.datetime.utcnow()
+    expired = TempChat.query.filter(
+        TempChat.status == "active",
+        TempChat.expires_at.isnot(None),
+        TempChat.expires_at <= now_utc,
+    ).all()
+
+    processed = 0
+    for temp_chat in expired:
+        if _delete_temp_chat(temp_chat):
+            processed += 1
+
+    if processed:
+        print(f"[sweep] Deleted {processed} expired temp chat(s)")
     return processed
 
 
