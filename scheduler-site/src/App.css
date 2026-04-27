@@ -652,7 +652,7 @@ body {
 .month-pill {
   position: relative;
   z-index: 1;
-  flex: 1 1 calc((100% - 30px) / 6);
+  flex: 0 0 calc((100% - 30px) / 6);
   min-width: 0;
   padding: 6px 10px;
   border: 1px solid var(--border);
