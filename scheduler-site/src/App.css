@@ -684,15 +684,45 @@ body {
   color: var(--accent);
 }
 
-.year-group {
-  display: contents;
-}
-
-.year-months {
-  flex: 1 1 100%;
+.year-nav {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.year-pill {
+  flex: 0 0 calc((100% - 30px) / 6);
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.year-pill:not(.active):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.year-pill.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.year-pill.past:not(.active) {
+  opacity: 0.5;
 }
 
 /* ── Event Cards ──────────────────────────────────────────── */

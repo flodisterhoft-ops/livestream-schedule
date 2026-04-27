@@ -437,17 +437,20 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
     : ['Andy', 'Florian', 'Marvin', 'Patric', 'Rene', 'Stefan', 'Viktor', 'TBD']
 
   const currentYear = new Date().getFullYear()
-  const monthGroups = months.reduce((groups, month) => {
-    const year = month.slice(0, 4)
-    groups[year] = groups[year] || []
-    groups[year].push(month)
-    return groups
-  }, {})
-  const pastYears = Object.keys(monthGroups).filter(year => Number(year) < currentYear).sort()
-  const currentAndFutureMonths = months.filter(month => Number(month.slice(0, 4)) >= currentYear)
-  const toggleYear = (year) => {
-    setExpandedYears(prev => ({ ...prev, [year]: !prev[year] }))
+  const yearList = [...new Set(months.map(m => m.slice(0, 4)))].sort()
+  const activeYear = (activeMonth && activeMonth.slice(0, 4)) || String(currentYear)
+  const isYearPast = (year) => {
+    const ms = months.filter(m => m.slice(0, 4) === year)
+    return ms.length > 0 && ms.every(m => pastMonths && pastMonths.has(m))
   }
+  const handleYearChange = (year) => {
+    if (year === activeYear) return
+    const yearMonths = months.filter(m => m.slice(0, 4) === year)
+    if (yearMonths.length === 0) return
+    const firstFuture = yearMonths.find(m => !(pastMonths && pastMonths.has(m)))
+    onMonthChange(firstFuture || yearMonths[0])
+  }
+  const monthsForActiveYear = months.filter(m => m.slice(0, 4) === activeYear)
   const renderMonthPill = (month) => {
     const label = new Date(month + '-15').toLocaleString('en', { month: 'short' })
     const isPast = pastMonths ? pastMonths.has(month) : month < new Date().toISOString().slice(0, 7)
@@ -464,6 +467,19 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
 
   return (
     <div className="schedule-tab">
+      {/* Year navigation */}
+      <div className="year-nav">
+        {yearList.map(year => (
+          <button
+            key={year}
+            className={`year-pill ${year === activeYear ? 'active' : ''} ${isYearPast(year) ? 'past' : ''}`}
+            onClick={() => handleYearChange(year)}
+          >
+            {year}
+          </button>
+        ))}
+      </div>
+
       {/* Month navigation */}
       <div className="month-nav" ref={navRef}>
         {indicator && (
@@ -477,26 +493,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
             aria-hidden="true"
           />
         )}
-        {pastYears.map(year => {
-          const yearMonths = monthGroups[year]
-          const hasActiveMonth = yearMonths.includes(activeMonth)
-          return (
-            <div key={year} className="year-group">
-              <button
-                className={`month-pill year-pill ${hasActiveMonth ? 'active' : ''}`}
-                onClick={() => toggleYear(year)}
-              >
-                {year}
-              </button>
-              {expandedYears[year] && (
-                <div className="year-months">
-                  {yearMonths.map(renderMonthPill)}
-                </div>
-              )}
-            </div>
-          )
-        })}
-        {currentAndFutureMonths.map(renderMonthPill)}
+        {monthsForActiveYear.map(renderMonthPill)}
       </div>
 
       {/* Events */}
