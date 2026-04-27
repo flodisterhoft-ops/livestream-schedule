@@ -313,13 +313,15 @@ body {
 .notify-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  justify-content: center;
+  width: 40px;
+  height: 36px;
+  padding: 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--accent);
   background: var(--accent-light);
   color: var(--accent);
-  font-size: 0.78rem;
+  font-size: 1.05rem;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
@@ -332,7 +334,7 @@ body {
     padding 0.36s cubic-bezier(.2,.8,.2,1),
     border-width 0.18s ease,
     opacity 0.28s ease;
-  max-width: 200px;
+  max-width: 40px;
   overflow: hidden;
 }
 
@@ -355,13 +357,8 @@ body {
 
 .notify-btn:active { transform: scale(0.96); }
 
-.notify-btn-label {
-  letter-spacing: 0.2px;
-}
-
 @media (max-width: 380px) {
-  .notify-btn-label { display: none; }
-  .notify-btn { padding: 5px 8px; }
+  .notify-btn { width: 40px; height: 36px; padding: 0; }
 }
 
 /* ── Tab Navigation ───────────────────────────────────────── */
@@ -1114,10 +1111,24 @@ body {
 .action-btn:hover { box-shadow: var(--shadow-sm); }
 .action-btn:active { transform: scale(0.94); }
 
-.action-btn.confirm { background: var(--success-light); color: var(--success); }
+.action-btn.confirm {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  background: var(--success-light);
+  color: var(--success);
+}
 .action-btn.confirm:hover { background: var(--success); color: white; }
 
-.action-btn.decline { background: var(--danger-light); color: var(--danger); }
+.action-btn.decline {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  background: var(--danger-light);
+  color: var(--danger);
+}
 .action-btn.decline:hover { background: var(--danger); color: white; }
 
 .action-btn.pickup { background: var(--accent-light); color: var(--accent); }
