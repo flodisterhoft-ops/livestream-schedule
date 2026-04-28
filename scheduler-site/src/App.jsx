@@ -357,12 +357,7 @@ export default function App() {
   const filtered = activeMonth
     ? schedule.filter(e => e.date.startsWith(activeMonth))
     : schedule
-  const visibleSchedule = activeMonth === currentMonth
-    ? [
-        ...filtered.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date)),
-        ...filtered.filter(e => e.date < today).sort((a, b) => b.date.localeCompare(a.date)),
-      ]
-    : filtered.sort((a, b) => a.date.localeCompare(b.date))
+  const visibleSchedule = filtered.sort((a, b) => a.date.localeCompare(b.date))
 
   return (
     <div className={`app ${isManager ? 'manager' : ''}`}>
