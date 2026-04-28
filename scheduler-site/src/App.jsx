@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 
 const API = '/api/v2'
@@ -367,7 +367,31 @@ export default function App() {
     <div className={`app ${isManager ? 'manager' : ''}`}>
       {/* Flash message */}
       {flash && (
-        <div className={`flash flash-${flash.type}`} role="status" aria-live="polite">{flash.msg}</div>
+        <div className={`flash flash-${flash.type || 'success'}`} role="status" aria-live="polite">
+          <span>{flash.msg}</span>
+          {flash.undoSnapshotId && (
+            <button
+              className="flash-undo"
+              type="button"
+              onClick={async () => {
+                const snapshotId = flash.undoSnapshotId
+                setFlash(null)
+                try {
+                  const res = await api('/scheduling-controls/undo', {
+                    method: 'POST',
+                    body: JSON.stringify({ snapshot_id: snapshotId }),
+                  })
+                  loadSchedule()
+                  showFlash(`Undid last apply (${res.restored} assignments restored)`)
+                } catch (e) {
+                  showFlash(e.message, 'error')
+                }
+              }}
+            >
+              Undo
+            </button>
+          )}
+        </div>
       )}
 
       {/* Header */}
@@ -503,7 +527,21 @@ export default function App() {
           onApplied={(result) => {
             setShowSchedulingControls(false)
             loadSchedule()
-            showFlash(`Updated ${result.future_assignments_updated} future assignments`)
+            const tbd = result.tbd_assignments || 0
+            const locked = result.confirmed_locked || 0
+            const lockedNote = locked ? ` · ${locked} locked` : ''
+            const tbdNote = tbd ? ` · ${tbd} TBD` : ''
+            const snapshotId = result.snapshot?.id
+            setFlash({
+              msg: `Updated ${result.future_assignments_updated} future assignments${lockedNote}${tbdNote}`,
+              type: tbd ? 'warning' : 'success',
+              undoSnapshotId: snapshotId,
+            })
+            if (!snapshotId) {
+              setTimeout(() => setFlash(null), 3000)
+            } else {
+              setTimeout(() => setFlash(f => (f && f.undoSnapshotId === snapshotId ? null : f)), 30000)
+            }
           }}
           showFlash={showFlash}
         />
@@ -1515,14 +1553,45 @@ const CONTROL_ROLES = [
   { key: 'Friday:Camera', label: 'Bible Camera', dayType: 'Friday', roles: ['Camera'] },
 ]
 
+const SCOPE_OPTIONS = [
+  { value: '1m', label: '1 month' },
+  { value: '3m', label: '3 months' },
+  { value: 'all', label: 'All future' },
+]
+
+function addMonths(date, months) {
+  const d = new Date(date)
+  d.setMonth(d.getMonth() + months)
+  return d
+}
+
 function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash }) {
   const todayKey = toDateKey(new Date())
   const activeTeam = team.filter(member => member.id && member.active !== false)
   const overlayRef = useRef(null)
-  const initialTargets = useRef(buildSchedulingTargets(schedule, activeTeam, todayKey))
-  const [targets, setTargets] = useState(initialTargets.current)
+  const [scope, setScope] = useState('3m')
+  const endDateKey = useMemo(() => {
+    if (scope === 'all') return null
+    const months = scope === '1m' ? 1 : 3
+    const end = addMonths(new Date(), months)
+    return toDateKey(end)
+  }, [scope])
+
+  const futureEvents = useMemo(() => (
+    schedule.filter(event =>
+      event.date >= todayKey
+      && (!endDateKey || event.date <= endDateKey)
+      && ['Sunday', 'Friday'].includes(event.day_type)
+    )
+  ), [schedule, todayKey, endDateKey])
+  const futureMonths = useMemo(() => new Set(futureEvents.map(event => event.date.slice(0, 7))), [futureEvents])
+
+  const initialTargets = useMemo(() => buildSchedulingTargets(futureEvents, activeTeam), [futureEvents, activeTeam])
+  const [targets, setTargets] = useState(initialTargets)
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
+
+  useEffect(() => { setTargets(initialTargets) }, [initialTargets])
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') { confirming ? setConfirming(false) : onClose() } }
@@ -1530,8 +1599,15 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose, confirming])
 
-  const futureEvents = schedule.filter(event => event.date >= todayKey && ['Sunday', 'Friday'].includes(event.day_type))
-  const futureMonths = new Set(futureEvents.map(event => event.date.slice(0, 7)))
+  const lockedTotals = CONTROL_ROLES.reduce((acc, role) => {
+    acc[role.key] = futureEvents.reduce((total, event) => {
+      if (event.day_type !== role.dayType) return total
+      return total + (event.assignments || []).filter(a => role.roles.includes(a.role) && a.status === 'confirmed').length
+    }, 0)
+    return acc
+  }, {})
+  const totalLocked = CONTROL_ROLES.reduce((sum, role) => sum + (lockedTotals[role.key] || 0), 0)
+
   const slotTotals = CONTROL_ROLES.reduce((acc, role) => {
     acc[role.key] = futureEvents.reduce((total, event) => {
       if (event.day_type !== role.dayType) return total
@@ -1548,13 +1624,24 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
     return acc
   }, {})
   const balanced = CONTROL_ROLES.every(role => delta[role.key] === 0)
-  const totalChanges = CONTROL_ROLES.reduce((sum, role) => {
-    return sum + (initialTargets.current[role.key]
-      ? Object.keys(targets[role.key] || {}).reduce((d, name) => {
-          return d + Math.abs((targets[role.key][name] || 0) - (initialTargets.current[role.key][name] || 0))
-        }, 0)
-      : 0)
-  }, 0) / 2
+  const personDiff = useMemo(() => {
+    const aggregated = {}
+    CONTROL_ROLES.forEach(role => {
+      const baseline = initialTargets[role.key] || {}
+      const current = targets[role.key] || {}
+      const names = new Set([...Object.keys(baseline), ...Object.keys(current)])
+      names.forEach(name => {
+        const change = (current[name] || 0) - (baseline[name] || 0)
+        if (change !== 0) {
+          aggregated[name] = (aggregated[name] || 0) + change
+        }
+      })
+    })
+    return Object.entries(aggregated)
+      .filter(([, value]) => value !== 0)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+  }, [targets, initialTargets])
+  const totalChanges = personDiff.reduce((sum, [, value]) => sum + Math.abs(value), 0) / 2
 
   const isEligible = (member, role) => {
     const list = role.dayType === 'Sunday' ? member.sunday_roles || [] : member.friday_roles || []
@@ -1572,7 +1659,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
   }
 
   const resetToCurrent = () => {
-    setTargets(initialTargets.current)
+    setTargets(initialTargets)
   }
 
   const distributeEvenly = () => {
@@ -1607,7 +1694,11 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
     try {
       const result = await api('/scheduling-controls/apply', {
         method: 'POST',
-        body: JSON.stringify({ targets }),
+        body: JSON.stringify({
+          targets,
+          end_date: endDateKey || undefined,
+          label: scope === 'all' ? 'all-future' : `next-${scope}`,
+        }),
       })
       onApplied(result)
     } catch (e) {
@@ -1632,7 +1723,8 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
           <div>
             <h2>Scheduling Controls</h2>
             <p className="modal-subtitle">
-              Edits balance and apply only to {totalSlots} future regular slots across {futureMonths.size} month{futureMonths.size === 1 ? '' : 's'}. Past events stay untouched.
+              {totalSlots} future slots across {futureMonths.size} month{futureMonths.size === 1 ? '' : 's'}
+              {totalLocked > 0 ? ` · ${totalLocked} locked (confirmed)` : ''}. Past events stay untouched.
             </p>
           </div>
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
@@ -1640,8 +1732,22 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
 
         <div className="modal-body">
           <div className="control-toolbar">
-            <button className="btn btn-ghost btn-sm" onClick={resetToCurrent} type="button">Reset to current</button>
-            <button className="btn btn-outline btn-sm" onClick={distributeEvenly} type="button">Distribute evenly</button>
+            <div className="segmented scope-segmented" role="tablist" aria-label="Scope">
+              {SCOPE_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={scope === opt.value}
+                  className={`segment ${scope === opt.value ? 'active' : ''}`}
+                  onClick={() => setScope(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={resetToCurrent} type="button">Reset</button>
+            <button className="btn btn-outline btn-sm" onClick={distributeEvenly} type="button">Even split</button>
             <span className={`balance-status ${balanced ? 'balanced' : 'unbalanced'}`}>
               {balanced ? 'Balanced' : `${CONTROL_ROLES.filter(r => delta[r.key] !== 0).length} role${CONTROL_ROLES.filter(r => delta[r.key] !== 0).length === 1 ? '' : 's'} need attention`}
             </span>
@@ -1734,6 +1840,9 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
           totalSlots={totalSlots}
           totalChanges={totalChanges}
           months={futureMonths.size}
+          totalLocked={totalLocked}
+          personDiff={personDiff}
+          scopeLabel={SCOPE_OPTIONS.find(opt => opt.value === scope)?.label || ''}
           submitting={submitting}
           onCancel={() => setConfirming(false)}
           onConfirm={performApply}
@@ -1743,7 +1852,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
   )
 }
 
-function ConfirmApplyModal({ totalSlots, totalChanges, months, submitting, onCancel, onConfirm }) {
+function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, personDiff, scopeLabel, submitting, onCancel, onConfirm }) {
   return (
     <div className="modal-overlay confirm-overlay" role="dialog" aria-modal="true" aria-label="Confirm apply">
       <div className="modal-card confirm-card">
@@ -1752,14 +1861,29 @@ function ConfirmApplyModal({ totalSlots, totalChanges, months, submitting, onCan
         </div>
         <div className="modal-body">
           <p className="modal-help">
-            This rewrites <strong>{totalSlots}</strong> future regular slots across <strong>{months}</strong> month{months === 1 ? '' : 's'} based on your target distribution.
+            Rewrite <strong>{totalSlots}</strong> future slots across <strong>{months}</strong> month{months === 1 ? '' : 's'}
+            {scopeLabel ? ` (scope: ${scopeLabel})` : ''}.
           </p>
           <ul className="modal-list">
-            <li>{totalChanges} planned change{totalChanges === 1 ? '' : 's'} from current distribution.</li>
-            <li>Past events are untouched.</li>
-            <li>Custom events (baptisms, etc.) stay unchanged.</li>
-            <li>Florian gap and cap rules still apply when possible.</li>
+            <li>{totalChanges} change{totalChanges === 1 ? '' : 's'} compared to current distribution.</li>
+            {totalLocked > 0 && <li>{totalLocked} confirmed assignment{totalLocked === 1 ? '' : 's'} stay locked and untouched.</li>}
+            <li>Past events untouched. Custom events (baptisms, etc.) untouched.</li>
+            <li>Florian caps and gap rules still apply where possible.</li>
+            <li>You can Undo from the toast for 30s after applying.</li>
           </ul>
+
+          {personDiff.length > 0 && (
+            <div className="diff-block">
+              <div className="diff-title">Per person</div>
+              <div className="diff-list">
+                {personDiff.map(([name, value]) => (
+                  <span key={name} className={`diff-chip ${value > 0 ? 'plus' : 'minus'}`}>
+                    {name} {value > 0 ? `+${value}` : value}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onCancel} disabled={submitting}>Back</button>
@@ -1772,7 +1896,7 @@ function ConfirmApplyModal({ totalSlots, totalChanges, months, submitting, onCan
   )
 }
 
-function buildSchedulingTargets(schedule, team, todayKey) {
+function buildSchedulingTargets(events, team) {
   const names = team.map(member => member.name)
   const initial = CONTROL_ROLES.reduce((acc, role) => {
     acc[role.key] = names.reduce((people, name) => {
@@ -1782,17 +1906,16 @@ function buildSchedulingTargets(schedule, team, todayKey) {
     return acc
   }, {})
 
-  schedule
-    .filter(event => event.date >= todayKey && ['Sunday', 'Friday'].includes(event.day_type))
-    .forEach(event => {
-      ;(event.assignments || []).forEach(assignment => {
-        const match = CONTROL_ROLES.find(role => role.dayType === event.day_type && role.roles.includes(assignment.role))
-        const worker = assignment.cover || assignment.person
-        if (match && worker && initial[match.key] && worker in initial[match.key]) {
-          initial[match.key][worker] += 1
-        }
-      })
+  events.forEach(event => {
+    if (!['Sunday', 'Friday'].includes(event.day_type)) return
+    ;(event.assignments || []).forEach(assignment => {
+      const match = CONTROL_ROLES.find(role => role.dayType === event.day_type && role.roles.includes(assignment.role))
+      const worker = assignment.cover || assignment.person
+      if (match && worker && initial[match.key] && worker in initial[match.key]) {
+        initial[match.key][worker] += 1
+      }
     })
+  })
 
   return initial
 }

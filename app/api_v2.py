@@ -12,7 +12,7 @@ import hmac
 import time
 from itsdangerous import BadSignature, URLSafeSerializer
 from flask import Blueprint, request, jsonify, session, current_app
-from .models import Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion
+from .models import Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion, SchedulingSnapshot
 from .extensions import db
 from .utils import (
     ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats,
@@ -731,10 +731,28 @@ def apply_scheduling_controls():
 
     data = request.json or {}
     targets = data.get("targets", {})
+    end_date_str = data.get("end_date")
+    end_date = datetime.date.fromisoformat(end_date_str) if end_date_str else None
 
     try:
         from .scheduler_v2 import rebalance_future_to_targets
-        result = rebalance_future_to_targets(targets, vancouver_today())
+        result = rebalance_future_to_targets(
+            targets,
+            start_date=vancouver_today(),
+            end_date=end_date,
+            lock_confirmed=True,
+        )
+        snapshot = result.pop("snapshot", [])
+        snapshot_record = None
+        if snapshot:
+            snap = SchedulingSnapshot(
+                created_by=session.get("user_name") or "manager",
+                label=data.get("label") or "scheduling-controls",
+            )
+            snap.snapshot = snapshot
+            db.session.add(snap)
+            db.session.flush()
+            snapshot_record = snap.to_dict()
         db.session.commit()
     except ValueError as e:
         db.session.rollback()
@@ -743,7 +761,39 @@ def apply_scheduling_controls():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-    return jsonify({"ok": True, **result})
+    return jsonify({"ok": True, "snapshot": snapshot_record, **result})
+
+
+@api_v2.route("/scheduling-controls/undo", methods=["POST"])
+def undo_scheduling_controls():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    data = request.json or {}
+    snapshot_id = data.get("snapshot_id")
+    snap = (
+        SchedulingSnapshot.query.get(int(snapshot_id))
+        if snapshot_id
+        else SchedulingSnapshot.query.order_by(SchedulingSnapshot.created_at.desc()).first()
+    )
+    if not snap:
+        return jsonify({"error": "No snapshot to undo"}), 404
+
+    restored = 0
+    for item in snap.snapshot:
+        assignment = Assignment.query.get(item.get("id"))
+        if not assignment:
+            continue
+        assignment.person = item.get("person")
+        assignment.cover = item.get("cover")
+        assignment.status = item.get("status") or "pending"
+        assignment.swapped_with = item.get("swapped_with")
+        assignment.telegram_message_id = None
+        restored += 1
+
+    db.session.delete(snap)
+    db.session.commit()
+    return jsonify({"ok": True, "restored": restored})
 
 
 # ═══════════════════════════════════════════════════════════════════

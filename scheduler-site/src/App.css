@@ -154,7 +154,7 @@ body {
 .header-actions {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .manager-control-stack {
@@ -162,6 +162,7 @@ body {
   flex-direction: column;
   gap: 8px;
   align-items: center;
+  position: relative;
 }
 
 .schedule-controls-btn {
@@ -201,8 +202,8 @@ body {
 }
 
 @keyframes gearDrop {
-  0% { opacity: 0; transform: translateY(-14px) scale(0.55) rotate(-90deg); }
-  55% { opacity: 1; transform: translateY(3px) scale(1.06) rotate(10deg); }
+  0% { opacity: 0; transform: translateY(-54px) scale(0.7) rotate(-90deg); }
+  55% { opacity: 1; transform: translateY(4px) scale(1.06) rotate(8deg); }
   100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
 }
 
@@ -469,6 +470,35 @@ body {
 
 .flash-success { background: var(--success); color: white; }
 .flash-error { background: var(--danger); color: white; }
+.flash-warning { background: var(--warning); color: white; }
+
+.flash {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.flash:has(.flash-undo) {
+  animation: flashIn 0.3s ease;
+}
+
+.flash-undo {
+  border: none;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  transition: background 0.15s ease;
+}
+
+.flash-undo:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
 
 @keyframes flashIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
 @keyframes flashOut { to { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
@@ -1858,7 +1888,56 @@ body {
 }
 
 .confirm-card {
-  max-width: 420px;
+  max-width: 460px;
+}
+
+.scope-segmented {
+  grid-template-columns: repeat(3, auto);
+  gap: 4px;
+  padding: 3px;
+}
+
+.scope-segmented .segment {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+}
+
+.diff-block {
+  margin-top: 4px;
+}
+
+.diff-title {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.diff-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.diff-chip {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.diff-chip.plus {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.diff-chip.minus {
+  background: var(--danger-light);
+  color: var(--danger);
 }
 
 .schedule-control-table-wrap {

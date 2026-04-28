@@ -215,6 +215,36 @@ class EventSuggestion(db.Model):
         }
 
 
+class SchedulingSnapshot(db.Model):
+    """Stores a snapshot of future assignments before a scheduling-controls apply.
+    Used by the admin Undo flow to revert the most recent rebalance."""
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_by = db.Column(db.String(50))
+    label = db.Column(db.String(80))
+    _snapshot_json = db.Column(db.Text, default='[]')
+
+    @property
+    def snapshot(self):
+        try:
+            return json.loads(self._snapshot_json or '[]')
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    @snapshot.setter
+    def snapshot(self, value):
+        self._snapshot_json = json.dumps(value or [])
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_by": self.created_by,
+            "label": self.label,
+            "size": len(self.snapshot),
+        }
+
+
 class TempChat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     chat_id = db.Column(db.String(40), nullable=False, index=True)

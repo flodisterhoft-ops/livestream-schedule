@@ -604,6 +604,7 @@ def rebalance_future_after_member_removal(removed_name, start_date=None):
     events = Event.query.filter(Event.date >= start_date).order_by(Event.date).all()
     replaced = 0
     tbd = 0
+    locked = 0
     touched_events = set()
 
     for event in events:
@@ -613,10 +614,22 @@ def rebalance_future_after_member_removal(removed_name, start_date=None):
             pool_role = _assignment_pool_role(day_type, assignment.role)
             pool = _get_role_pool(roster, pool_role, day_type=day_type)
             worker = assignment.cover or assignment.person
+            references_removed = (
+                assignment.person == removed_name
+                or assignment.cover == removed_name
+            )
 
             _increment_expected(pool, pool_role, event.date, role_tracking, roster, exclude=assigned_today, day_type=day_type)
 
-            if worker == removed_name or assignment.person == removed_name or assignment.cover == removed_name:
+            # Lock: keep confirmed future assignments unless they belong to the removed person
+            if assignment.status == "confirmed" and not references_removed:
+                locked += 1
+                if worker and worker in roster and worker not in ("TBD", "Select Helper"):
+                    assigned_today.append(worker)
+                    _record_assignment(worker, pool_role, event.date, day_type, role_tracking, overall)
+                continue
+
+            if references_removed:
                 replacement = _select_best(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
                 if replacement == "TBD":
                     replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
@@ -643,17 +656,21 @@ def rebalance_future_after_member_removal(removed_name, start_date=None):
         "future_assignments_replaced": replaced,
         "future_events_touched": len(touched_events),
         "tbd_assignments": tbd,
+        "confirmed_locked": locked,
     }
 
 
-def rebalance_future_to_targets(targets, start_date=None):
+def rebalance_future_to_targets(targets, start_date=None, end_date=None, lock_confirmed=True):
     start_date = start_date or vancouver_today()
     roster = get_roster()
     roster_names = set(roster.keys())
-    events = Event.query.filter(
+    query = Event.query.filter(
         Event.date >= start_date,
         Event.day_type.in_(["Sunday", "Friday"]),
-    ).order_by(Event.date).all()
+    )
+    if end_date is not None:
+        query = query.filter(Event.date <= end_date)
+    events = query.order_by(Event.date).all()
 
     slot_totals = {}
     for event in events:
@@ -676,9 +693,26 @@ def rebalance_future_to_targets(targets, start_date=None):
         if target_total != total:
             raise ValueError(f"{tracking_key} target total must equal {total}")
 
+    # Pre-decrement remaining for confirmed/locked future assignments so they
+    # don't double-spend the user's targeted counts.
+    locked_count = 0
+    if lock_confirmed:
+        for event in events:
+            for assignment in event.assignments:
+                if assignment.status != "confirmed":
+                    continue
+                day_type = _assignment_schedule_type(event, assignment.role)
+                pool_role = _assignment_pool_role(day_type, assignment.role)
+                tracking_key = _tracking_role(day_type, pool_role)
+                worker = assignment.cover or assignment.person
+                if worker and worker in remaining.get(tracking_key, {}):
+                    remaining[tracking_key][worker] = max(0, remaining[tracking_key][worker] - 1)
+                locked_count += 1
+
     role_tracking, overall = _build_history(roster, end_before=start_date)
     updated = 0
     tbd = 0
+    snapshot = []
 
     for event in events:
         assigned_today = []
@@ -686,6 +720,14 @@ def rebalance_future_to_targets(targets, start_date=None):
             day_type = _assignment_schedule_type(event, assignment.role)
             pool_role = _assignment_pool_role(day_type, assignment.role)
             tracking_key = _tracking_role(day_type, pool_role)
+
+            if lock_confirmed and assignment.status == "confirmed":
+                worker = assignment.cover or assignment.person
+                if worker and worker not in ("TBD", "Select Helper"):
+                    assigned_today.append(worker)
+                    _record_assignment(worker, pool_role, event.date, day_type, role_tracking, overall)
+                continue
+
             pool = [
                 name for name in _get_role_pool(roster, pool_role, day_type=day_type)
                 if remaining.get(tracking_key, {}).get(name, 0) > 0
@@ -695,6 +737,15 @@ def rebalance_future_to_targets(targets, start_date=None):
             replacement = _select_best(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
             if replacement == "TBD":
                 replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+
+            snapshot.append({
+                "id": assignment.id,
+                "person": assignment.person,
+                "cover": assignment.cover,
+                "status": assignment.status,
+                "swapped_with": assignment.swapped_with,
+            })
+
             assignment.person = replacement
             assignment.cover = None
             assignment.swapped_with = None
@@ -705,7 +756,8 @@ def rebalance_future_to_targets(targets, start_date=None):
             if replacement == "TBD":
                 tbd += 1
             else:
-                remaining[tracking_key][replacement] -= 1
+                if remaining.get(tracking_key, {}).get(replacement, 0) > 0:
+                    remaining[tracking_key][replacement] -= 1
                 assigned_today.append(replacement)
                 _record_assignment(replacement, pool_role, event.date, day_type, role_tracking, overall)
 
@@ -713,7 +765,9 @@ def rebalance_future_to_targets(targets, start_date=None):
     return {
         "future_assignments_updated": updated,
         "tbd_assignments": tbd,
+        "confirmed_locked": locked_count,
         "remaining_targets": remaining,
+        "snapshot": snapshot,
     }
 
 
