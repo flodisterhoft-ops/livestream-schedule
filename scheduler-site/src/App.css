@@ -2017,6 +2017,20 @@ body {
   font-weight: 900;
 }
 
+.overview-header-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.overview-header-label.grand-total {
+  font-weight: 950;
+}
+
 .overview-total-row td {
   background: var(--bg);
   font-weight: 800;

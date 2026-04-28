@@ -1603,14 +1603,14 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
 }
 
 const OVERVIEW_ROWS = [
-  { key: 'S\uD83D\uDDA5', label: '\u2600\uFE0F\uD83D\uDDA5\uFE0F' },
-  { key: 'S\uD83C\uDFA51', label: '\u2600\uFE0F\uD83C\uDFA51\uFE0F\u20E3' },
-  { key: 'S\uD83C\uDFA52', label: '\u2600\uFE0F\uD83C\uDFA52\uFE0F\u20E3' },
-  { key: 'S\u03A3', label: '\u2600\uFE0F\u03A3' },
-  { key: 'F\uD83D\uDDA5', label: '\uD83D\uDCD6\uD83D\uDDA5\uFE0F' },
-  { key: 'F\uD83C\uDFA5', label: '\uD83D\uDCD6\uD83C\uDFA5' },
-  { key: 'F\u03A3', label: '\uD83D\uDCD6\u03A3' },
-  { key: '\u03A3', label: '\u03A3' },
+  { key: 'S\uD83D\uDDA5', labelTop: 'Sun', labelBottom: '\uD83D\uDDA5\uFE0F' },
+  { key: 'S\uD83C\uDFA51', labelTop: 'Sun', labelBottom: '\uD83C\uDFA51\uFE0F\u20E3' },
+  { key: 'S\uD83C\uDFA52', labelTop: 'Sun', labelBottom: '\uD83C\uDFA52\uFE0F\u20E3' },
+  { key: 'S\u03A3', labelTop: 'Sun', labelBottom: 'Total' },
+  { key: 'F\uD83D\uDDA5', labelTop: 'Bible', labelBottom: '\uD83D\uDDA5\uFE0F' },
+  { key: 'F\uD83C\uDFA5', labelTop: 'Bible', labelBottom: '\uD83C\uDFA5' },
+  { key: 'F\u03A3', labelTop: 'Bible', labelBottom: 'Total' },
+  { key: '\u03A3', labelTop: 'Total', labelBottom: '' },
 ]
 
 const emptyOverviewCounts = (names) => names.reduce((acc, name) => {
@@ -1651,7 +1651,14 @@ function OverviewMatrix({ title, events, names }) {
           <thead>
             <tr>
               <th>Name</th>
-              {OVERVIEW_ROWS.map(row => <th key={row.key}>{row.label}</th>)}
+              {OVERVIEW_ROWS.map(row => (
+                <th key={row.key}>
+                  <span className={`overview-header-label ${row.key === '\u03A3' ? 'grand-total' : ''}`}>
+                    <span>{row.labelTop}</span>
+                    {row.labelBottom && <span>{row.labelBottom}</span>}
+                  </span>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -1679,13 +1686,21 @@ function YearOverviewModal({ schedule, team, onClose }) {
   const years = [...new Set(schedule.map(event => event.date.slice(0, 4)))].sort()
   const currentYear = String(new Date().getFullYear())
   const [year, setYear] = useState(years.includes(currentYear) ? currentYear : years[years.length - 1])
-  const names = useMemo(() => (
+  const activeNames = useMemo(() => (
     team
       .filter(member => member.active !== false)
       .map(member => member.name)
-      .sort((a, b) => (a === 'Florian' ? -1 : b === 'Florian' ? 1 : a.localeCompare(b)))
   ), [team])
   const yearEvents = useMemo(() => schedule.filter(event => event.date.startsWith(year) && ['Sunday', 'Friday'].includes(event.day_type)), [schedule, year])
+  const names = useMemo(() => {
+    const counts = buildOverviewCounts(yearEvents, activeNames)
+    return [...activeNames].sort((a, b) => {
+      if (a === 'Florian') return -1
+      if (b === 'Florian') return 1
+      const totalDiff = (counts[b]?.['\u03A3'] || 0) - (counts[a]?.['\u03A3'] || 0)
+      return totalDiff || a.localeCompare(b)
+    })
+  }, [activeNames, yearEvents])
   const months = useMemo(() => [...new Set(yearEvents.map(event => event.date.slice(0, 7)))].sort(), [yearEvents])
 
   useEffect(() => {
