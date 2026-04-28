@@ -159,13 +159,27 @@ body {
 
 .header-actions.admin-actions {
   display: grid;
-  grid-template-columns: 46px 46px;
-  grid-auto-rows: 46px;
-  gap: 8px;
+  grid-template-columns: 40px 40px;
+  grid-auto-rows: 40px;
+  gap: 5px;
   position: absolute;
   top: 14px;
   right: 0;
   z-index: 5;
+}
+
+.header-actions.admin-actions .manager-btn {
+  width: 40px;
+  height: 40px;
+  font-size: 1.15rem;
+}
+
+.header-actions.admin-actions .manager-btn.add-btn .manager-btn-icon {
+  font-size: 1.5rem;
+}
+
+.header-actions.admin-actions .manager-btn.settings-btn .manager-btn-icon {
+  font-size: 1.2rem;
 }
 
 .manager-control-stack {
