@@ -401,38 +401,58 @@ export default function App() {
             </div>
           )}
         </div>
-        <div className="header-actions">
+        <div className={`header-actions ${isAdmin ? 'admin-actions' : ''}`}>
           {isAdmin ? (
-            <button
-              className="manager-btn"
-              onClick={() => setShowAdminAddMenu(true)}
-              title="Manager tools"
-              aria-label="Manager tools"
-            >
-              <span className="manager-btn-icon">{'+'}</span>
-            </button>
+            <>
+              <button
+                className="manager-btn"
+                onClick={() => setShowAdminAddMenu(true)}
+                title="Manager tools"
+                aria-label="Manager tools"
+              >
+                <span className="manager-btn-icon">{'+'}</span>
+              </button>
+              <div className="manager-control-stack">
+                <button
+                  className={`manager-btn ${isManager ? 'active' : ''}`}
+                  onClick={toggleManager}
+                  title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+                  aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+                  aria-pressed={isManager}
+                >
+                  <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
+                    {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
+                  </span>
+                </button>
+                <button
+                  className="manager-btn overview-btn"
+                  onClick={openYearOverview}
+                  title="Year overview"
+                  aria-label="Year overview"
+                >
+                  <span className="manager-btn-icon">{'\uD83D\uDCCA'}</span>
+                </button>
+              </div>
+            </>
           ) : (
-            <button
-              className="manager-btn"
-              onClick={() => setShowSuggest(true)}
-              title="Suggest a date"
-              aria-label="Suggest a date"
-            >
-              <span className="manager-btn-icon">{'+'}</span>
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              className={`manager-btn ${isManager ? 'active' : ''}`}
-              onClick={toggleManager}
-              title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
-              aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
-              aria-pressed={isManager}
-            >
-              <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
-                {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
-              </span>
-            </button>
+            <>
+              <button
+                className="manager-btn"
+                onClick={() => setShowSuggest(true)}
+                title="Suggest a date"
+                aria-label="Suggest a date"
+              >
+                <span className="manager-btn-icon">{'+'}</span>
+              </button>
+              <button
+                className="manager-btn overview-btn"
+                onClick={openYearOverview}
+                title="Year overview"
+                aria-label="Year overview"
+              >
+                <span className="manager-btn-icon">{'\uD83D\uDCCA'}</span>
+              </button>
+            </>
           )}
           {!user && hasSavedAuth && (
             <button className="icon-btn" onClick={restoreSavedLogin} title="Restore Admin">
