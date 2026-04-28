@@ -157,6 +157,37 @@ body {
   align-items: center;
 }
 
+.manager-control-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+}
+
+.schedule-controls-btn {
+  width: 46px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.schedule-controls-btn:hover {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+
+.schedule-controls-btn:active {
+  transform: scale(0.95);
+}
+
 .user-chip {
   padding: 4px 9px;
   border-radius: var(--radius-pill);
@@ -254,34 +285,6 @@ body {
 .manager-btn-icon {
   display: inline-block;
   animation: iconSwap 0.32s cubic-bezier(.2,.8,.2,1) both;
-}
-
-.add-event-btn {
-  width: auto;
-  min-width: 112px;
-  padding: 0 12px;
-  color: var(--accent);
-  border-color: rgba(59, 130, 246, 0.35);
-  background: var(--accent-light);
-}
-
-.manager-btn-label {
-  font-size: 0.76rem;
-  line-height: 1.05;
-  font-weight: 800;
-  letter-spacing: -0.1px;
-  white-space: nowrap;
-}
-
-@media (max-width: 420px) {
-  .add-event-btn {
-    min-width: 96px;
-    padding: 0 9px;
-  }
-
-  .manager-btn-label {
-    font-size: 0.68rem;
-  }
 }
 
 @keyframes iconSwap {
@@ -1697,6 +1700,129 @@ body {
   color: var(--text-secondary);
   font-size: 0.78rem;
   line-height: 1.35;
+}
+
+.action-choice-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.action-choice.compact {
+  align-items: flex-start;
+  padding: 12px;
+}
+
+.action-choice.compact .action-choice-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 1rem;
+}
+
+.danger-choice:hover {
+  border-color: var(--danger);
+  background: var(--danger-light);
+}
+
+.scheduling-card {
+  max-width: 760px;
+}
+
+.schedule-control-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.schedule-control-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.schedule-control-table th,
+.schedule-control-table td {
+  padding: 8px 7px;
+  border-bottom: 1px solid var(--border-light);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.schedule-control-table th:first-child,
+.schedule-control-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg-card);
+  text-align: left;
+  font-weight: 700;
+  min-width: 92px;
+}
+
+.schedule-control-table th {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+  background: var(--bg);
+}
+
+.schedule-control-table tfoot td {
+  font-weight: 800;
+  border-bottom: none;
+  background: var(--bg);
+}
+
+.target-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.target-control button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.target-control button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.target-control span {
+  min-width: 18px;
+  font-weight: 800;
+}
+
+.not-eligible {
+  color: var(--text-muted);
+}
+
+.row-total {
+  font-weight: 800;
+}
+
+.balanced-total {
+  color: var(--success);
+}
+
+.unbalanced-total {
+  color: var(--danger);
+}
+
+@media (max-width: 480px) {
+  .action-choice-split {
+    grid-template-columns: 1fr;
+  }
 }
 
 .member-role-list {

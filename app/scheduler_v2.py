@@ -142,7 +142,7 @@ def _person_is_active(name, date_obj, roster):
     return True
 
 
-def _build_history(roster):
+def _build_history(roster, end_before=None):
     """
     Scan existing events to build per-role and overall assignment tracking.
 
@@ -183,7 +183,10 @@ def _build_history(roster):
         for name in all_names
     }
 
-    events = Event.query.order_by(Event.date).all()
+    query = Event.query
+    if end_before is not None:
+        query = query.filter(Event.date < end_before)
+    events = query.order_by(Event.date).all()
 
     for event in events:
         d = event.date
@@ -418,6 +421,19 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
     return constrained[0]
 
 
+def _select_relaxed(pool, role, date_obj, day_type, role_tracking, overall, roster, exclude):
+    candidates = [
+        p for p in pool
+        if p not in exclude
+        and is_available(p, date_obj)
+        and _person_is_active(p, date_obj, roster)
+    ]
+    if not candidates:
+        return "TBD"
+    candidates.sort(key=lambda p: _schedule_priority(p, role, day_type, role_tracking, overall, roster, date_obj))
+    return candidates[0]
+
+
 def _record_assignment(name, role, date_obj, day_type, role_tracking, overall):
     """Record an assignment in the tracking data structures."""
     # Per-role assigned
@@ -564,6 +580,141 @@ def generate_month_v2(year, month):
         created_events += 1
 
     return created_events
+
+
+def _assignment_schedule_type(event, role):
+    if event.day_type == "Friday" or role in ("Camera", "Helper"):
+        return "Friday"
+    return "Sunday"
+
+
+def _assignment_pool_role(day_type, role):
+    if day_type == "Friday":
+        return "Camera" if role in ("Camera", "Helper") else "Computer"
+    if role in ("Camera 1", "Camera 2"):
+        return role
+    return "Computer"
+
+
+def rebalance_future_after_member_removal(removed_name, start_date=None):
+    start_date = start_date or vancouver_today()
+    roster = get_roster()
+    roster.pop(removed_name, None)
+    role_tracking, overall = _build_history(roster, end_before=start_date)
+    events = Event.query.filter(Event.date >= start_date).order_by(Event.date).all()
+    replaced = 0
+    tbd = 0
+    touched_events = set()
+
+    for event in events:
+        assigned_today = []
+        for assignment in event.assignments:
+            day_type = _assignment_schedule_type(event, assignment.role)
+            pool_role = _assignment_pool_role(day_type, assignment.role)
+            pool = _get_role_pool(roster, pool_role, day_type=day_type)
+            worker = assignment.cover or assignment.person
+
+            _increment_expected(pool, pool_role, event.date, role_tracking, roster, exclude=assigned_today, day_type=day_type)
+
+            if worker == removed_name or assignment.person == removed_name or assignment.cover == removed_name:
+                replacement = _select_best(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+                if replacement == "TBD":
+                    replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+                assignment.person = replacement
+                assignment.cover = None
+                assignment.swapped_with = None
+                assignment.status = "pending"
+                assignment.telegram_message_id = None
+                replaced += 1
+                touched_events.add(event.id)
+
+                if replacement == "TBD":
+                    tbd += 1
+                else:
+                    assigned_today.append(replacement)
+                    _record_assignment(replacement, pool_role, event.date, day_type, role_tracking, overall)
+            elif worker and worker in roster and worker not in ("TBD", "Select Helper"):
+                assigned_today.append(worker)
+                _record_assignment(worker, pool_role, event.date, day_type, role_tracking, overall)
+
+    db.session.flush()
+    return {
+        "removed_name": removed_name,
+        "future_assignments_replaced": replaced,
+        "future_events_touched": len(touched_events),
+        "tbd_assignments": tbd,
+    }
+
+
+def rebalance_future_to_targets(targets, start_date=None):
+    start_date = start_date or vancouver_today()
+    roster = get_roster()
+    roster_names = set(roster.keys())
+    events = Event.query.filter(
+        Event.date >= start_date,
+        Event.day_type.in_(["Sunday", "Friday"]),
+    ).order_by(Event.date).all()
+
+    slot_totals = {}
+    for event in events:
+        for assignment in event.assignments:
+            day_type = _assignment_schedule_type(event, assignment.role)
+            pool_role = _assignment_pool_role(day_type, assignment.role)
+            tracking_key = _tracking_role(day_type, pool_role)
+            slot_totals[tracking_key] = slot_totals.get(tracking_key, 0) + 1
+
+    remaining = {}
+    for tracking_key, people in (targets or {}).items():
+        remaining[tracking_key] = {}
+        for name, value in (people or {}).items():
+            if name not in roster_names:
+                continue
+            remaining[tracking_key][name] = max(0, int(value or 0))
+
+    for tracking_key, total in slot_totals.items():
+        target_total = sum(remaining.get(tracking_key, {}).values())
+        if target_total != total:
+            raise ValueError(f"{tracking_key} target total must equal {total}")
+
+    role_tracking, overall = _build_history(roster, end_before=start_date)
+    updated = 0
+    tbd = 0
+
+    for event in events:
+        assigned_today = []
+        for assignment in event.assignments:
+            day_type = _assignment_schedule_type(event, assignment.role)
+            pool_role = _assignment_pool_role(day_type, assignment.role)
+            tracking_key = _tracking_role(day_type, pool_role)
+            pool = [
+                name for name in _get_role_pool(roster, pool_role, day_type=day_type)
+                if remaining.get(tracking_key, {}).get(name, 0) > 0
+            ]
+
+            _increment_expected(pool, pool_role, event.date, role_tracking, roster, exclude=assigned_today, day_type=day_type)
+            replacement = _select_best(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+            if replacement == "TBD":
+                replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+            assignment.person = replacement
+            assignment.cover = None
+            assignment.swapped_with = None
+            assignment.status = "pending"
+            assignment.telegram_message_id = None
+            updated += 1
+
+            if replacement == "TBD":
+                tbd += 1
+            else:
+                remaining[tracking_key][replacement] -= 1
+                assigned_today.append(replacement)
+                _record_assignment(replacement, pool_role, event.date, day_type, role_tracking, overall)
+
+    db.session.flush()
+    return {
+        "future_assignments_updated": updated,
+        "tbd_assignments": tbd,
+        "remaining_targets": remaining,
+    }
 
 
 def reschedule_declined(requestor, original_event_date, role, max_lookahead_months=6):

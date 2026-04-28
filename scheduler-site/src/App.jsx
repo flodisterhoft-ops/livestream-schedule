@@ -91,6 +91,8 @@ export default function App() {
   const [showSuggest, setShowSuggest] = useState(false)
   const [showAdminAddMenu, setShowAdminAddMenu] = useState(false)
   const [showAddMember, setShowAddMember] = useState(false)
+  const [showRemoveMember, setShowRemoveMember] = useState(false)
+  const [showSchedulingControls, setShowSchedulingControls] = useState(false)
   const [createPrefill, setCreatePrefill] = useState(null)
   const [pendingSuggestId, setPendingSuggestId] = useState(null)
 
@@ -252,6 +254,13 @@ export default function App() {
     setShowAddMember(true)
   }
 
+  const openAdminRemoveMember = async () => {
+    const ok = await ensureManager()
+    if (!ok) return
+    setShowAdminAddMenu(false)
+    setShowRemoveMember(true)
+  }
+
   // When opened from a Telegram suggestion link, fetch & prefill once auth resolved.
   useEffect(() => {
     if (loading || !pendingSuggestId) return
@@ -375,12 +384,12 @@ export default function App() {
         <div className="header-actions">
           {isAdmin ? (
             <button
-              className="manager-btn add-event-btn"
+              className="manager-btn"
               onClick={() => setShowAdminAddMenu(true)}
-              title="Add new event or user"
-              aria-label="Add new event or user"
+              title="Add"
+              aria-label="Add"
             >
-              <span className="manager-btn-label">Add New Event</span>
+              <span className="manager-btn-icon">{'+'}</span>
             </button>
           ) : (
             <button
@@ -393,17 +402,29 @@ export default function App() {
             </button>
           )}
           {isAdmin && (
-            <button
-              className={`manager-btn ${isManager ? 'active' : ''}`}
-              onClick={toggleManager}
-              title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
-              aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
-              aria-pressed={isManager}
-            >
-              <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
-                {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
-              </span>
-            </button>
+            <div className="manager-control-stack">
+              <button
+                className={`manager-btn ${isManager ? 'active' : ''}`}
+                onClick={toggleManager}
+                title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+                aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+                aria-pressed={isManager}
+              >
+                <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
+                  {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
+                </span>
+              </button>
+              {isManager && (
+                <button
+                  className="schedule-controls-btn"
+                  onClick={() => setShowSchedulingControls(true)}
+                  title="Scheduling Controls"
+                  aria-label="Scheduling Controls"
+                >
+                  {'\u2699\uFE0F'}
+                </button>
+              )}
+            </div>
           )}
           {!user && hasSavedAuth && (
             <button className="icon-btn" onClick={restoreSavedLogin} title="Restore Admin">
@@ -447,6 +468,7 @@ export default function App() {
           onClose={() => setShowAdminAddMenu(false)}
           onAddEvent={openAdminCreateEvent}
           onAddMember={openAdminAddMember}
+          onRemoveMember={openAdminRemoveMember}
         />
       )}
       {showAddMember && (
@@ -455,6 +477,32 @@ export default function App() {
           onCreated={() => {
             setShowAddMember(false)
             loadTeam()
+          }}
+          showFlash={showFlash}
+        />
+      )}
+      {showRemoveMember && (
+        <RemoveMemberModal
+          team={team}
+          onClose={() => setShowRemoveMember(false)}
+          onRemoved={(result) => {
+            setShowRemoveMember(false)
+            loadTeam()
+            loadSchedule()
+            showFlash(`${result.removed_name} removed from future schedule`)
+          }}
+          showFlash={showFlash}
+        />
+      )}
+      {showSchedulingControls && (
+        <SchedulingControlsModal
+          schedule={schedule}
+          team={team}
+          onClose={() => setShowSchedulingControls(false)}
+          onApplied={(result) => {
+            setShowSchedulingControls(false)
+            loadSchedule()
+            showFlash(`Updated ${result.future_assignments_updated} future assignments`)
           }}
           showFlash={showFlash}
         />
@@ -1188,7 +1236,7 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
   )
 }
 
-function AdminAddMenu({ onClose, onAddEvent, onAddMember }) {
+function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember }) {
   const overlayRef = useRef(null)
 
   useEffect(() => {
@@ -1219,13 +1267,22 @@ function AdminAddMenu({ onClose, onAddEvent, onAddMember }) {
               <small>Create a service, Bible study, baptism, thanksgiving, or custom event.</small>
             </span>
           </button>
-          <button className="action-choice" onClick={onAddMember}>
-            <span className="action-choice-icon">{'\uD83D\uDC64'}</span>
-            <span>
-              <strong>Add new user</strong>
-              <small>Add a team member and choose role preferences for fair scheduling.</small>
-            </span>
-          </button>
+          <div className="action-choice-split">
+            <button className="action-choice compact" onClick={onAddMember}>
+              <span className="action-choice-icon">{'\uD83D\uDC64'}</span>
+              <span>
+                <strong>Add user</strong>
+                <small>Add roles and preferences.</small>
+              </span>
+            </button>
+            <button className="action-choice compact danger-choice" onClick={onRemoveMember}>
+              <span className="action-choice-icon">{'\uD83D\uDDD1'}</span>
+              <span>
+                <strong>Remove user</strong>
+                <small>Refill future events.</small>
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1383,6 +1440,244 @@ function AddMemberModal({ onClose, onCreated, showFlash }) {
       </div>
     </div>
   )
+}
+
+function RemoveMemberModal({ team, onClose, onRemoved, showFlash }) {
+  const [memberId, setMemberId] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const overlayRef = useRef(null)
+  const selected = team.find(m => String(m.id) === String(memberId))
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const submit = async () => {
+    if (!selected) { showFlash('Choose a user to remove', 'error'); return }
+    setSubmitting(true)
+    try {
+      const result = await api(`/team/${selected.id}`, { method: 'DELETE' })
+      onRemoved(result)
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Remove user"
+    >
+      <div className="modal-card">
+        <div className="modal-header">
+          <h2>Remove User</h2>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
+        </div>
+        <div className="modal-body">
+          <label className="modal-field">
+            <span className="modal-label">User</span>
+            <select value={memberId} onChange={e => setMemberId(e.target.value)} className="modal-input">
+              <option value="">Select a person</option>
+              {team.filter(m => m.id).map(member => (
+                <option key={member.id} value={member.id}>{member.name}</option>
+              ))}
+            </select>
+          </label>
+          <p className="modal-help">
+            This removes the person from the team and refills only future schedule assignments using the existing fairness rules. Past events stay unchanged.
+          </p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="btn btn-danger" onClick={submit} disabled={submitting || !selected}>
+            {submitting ? 'Removing…' : 'Remove and refill'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const CONTROL_ROLES = [
+  { key: 'Sunday:Computer', label: 'Sun Computer', dayType: 'Sunday', roles: ['Computer'] },
+  { key: 'Sunday:Camera 1', label: 'Sun Cam 1', dayType: 'Sunday', roles: ['Camera 1'] },
+  { key: 'Sunday:Camera 2', label: 'Sun Cam 2', dayType: 'Sunday', roles: ['Camera 2'] },
+  { key: 'Friday:Computer', label: 'Bible Computer', dayType: 'Friday', roles: ['Computer'] },
+  { key: 'Friday:Camera', label: 'Bible Camera', dayType: 'Friday', roles: ['Camera'] },
+]
+
+function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash }) {
+  const todayKey = toDateKey(new Date())
+  const activeTeam = team.filter(member => member.id && member.active !== false)
+  const overlayRef = useRef(null)
+  const [targets, setTargets] = useState(() => buildSchedulingTargets(schedule, activeTeam, todayKey))
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const futureEvents = schedule.filter(event => event.date >= todayKey && ['Sunday', 'Friday'].includes(event.day_type))
+  const slotTotals = CONTROL_ROLES.reduce((acc, role) => {
+    acc[role.key] = futureEvents.reduce((total, event) => {
+      if (event.day_type !== role.dayType) return total
+      return total + (event.assignments || []).filter(a => role.roles.includes(a.role)).length
+    }, 0)
+    return acc
+  }, {})
+
+  const getValue = (roleKey, name) => targets[roleKey]?.[name] || 0
+  const roleTotal = (roleKey) => Object.values(targets[roleKey] || {}).reduce((sum, value) => sum + value, 0)
+  const delta = CONTROL_ROLES.reduce((acc, role) => {
+    acc[role.key] = roleTotal(role.key) - (slotTotals[role.key] || 0)
+    return acc
+  }, {})
+  const balanced = CONTROL_ROLES.every(role => delta[role.key] === 0)
+
+  const isEligible = (member, role) => {
+    const list = role.dayType === 'Sunday' ? member.sunday_roles || [] : member.friday_roles || []
+    return role.roles.some(r => list.includes(r))
+  }
+
+  const updateTarget = (roleKey, name, amount) => {
+    setTargets(prev => ({
+      ...prev,
+      [roleKey]: {
+        ...(prev[roleKey] || {}),
+        [name]: Math.max(0, (prev[roleKey]?.[name] || 0) + amount),
+      },
+    }))
+  }
+
+  const submit = async () => {
+    if (!balanced) { showFlash('Balance every role before saving', 'error'); return }
+    setSubmitting(true)
+    try {
+      const result = await api('/scheduling-controls/apply', {
+        method: 'POST',
+        body: JSON.stringify({ targets }),
+      })
+      onApplied(result)
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Scheduling Controls"
+    >
+      <div className="modal-card scheduling-card">
+        <div className="modal-header">
+          <h2>Scheduling Controls</h2>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
+        </div>
+        <div className="modal-body">
+          <p className="modal-help">
+            Adjust target counts for the generated future schedule. Totals must match before saving.
+          </p>
+          <div className="schedule-control-table-wrap">
+            <table className="schedule-control-table">
+              <thead>
+                <tr>
+                  <th>Person</th>
+                  {CONTROL_ROLES.map(role => (
+                    <th key={role.key}>{role.label}</th>
+                  ))}
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeTeam.map(member => (
+                  <tr key={member.id}>
+                    <td>{member.name}</td>
+                    {CONTROL_ROLES.map(role => {
+                      const eligible = isEligible(member, role)
+                      return (
+                        <td key={role.key}>
+                          {eligible ? (
+                            <div className="target-control">
+                              <button type="button" onClick={() => updateTarget(role.key, member.name, -1)} disabled={getValue(role.key, member.name) <= 0}>-</button>
+                              <span>{getValue(role.key, member.name)}</span>
+                              <button type="button" onClick={() => updateTarget(role.key, member.name, 1)} disabled={getValue(role.key, member.name) >= (slotTotals[role.key] || 0)}>+</button>
+                            </div>
+                          ) : (
+                            <span className="not-eligible">-</span>
+                          )}
+                        </td>
+                      )
+                    })}
+                    <td className="row-total">
+                      {CONTROL_ROLES.reduce((sum, role) => sum + getValue(role.key, member.name), 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>Totals</td>
+                  {CONTROL_ROLES.map(role => (
+                    <td key={role.key} className={delta[role.key] === 0 ? 'balanced-total' : 'unbalanced-total'}>
+                      {roleTotal(role.key)} / {slotTotals[role.key] || 0}
+                    </td>
+                  ))}
+                  <td>{CONTROL_ROLES.reduce((sum, role) => sum + roleTotal(role.key), 0)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={submitting || !balanced}>
+            {submitting ? 'Applying…' : 'Apply to future schedule'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function buildSchedulingTargets(schedule, team, todayKey) {
+  const names = team.map(member => member.name)
+  const initial = CONTROL_ROLES.reduce((acc, role) => {
+    acc[role.key] = names.reduce((people, name) => {
+      people[name] = 0
+      return people
+    }, {})
+    return acc
+  }, {})
+
+  schedule
+    .filter(event => event.date >= todayKey && ['Sunday', 'Friday'].includes(event.day_type))
+    .forEach(event => {
+      ;(event.assignments || []).forEach(assignment => {
+        const match = CONTROL_ROLES.find(role => role.dayType === event.day_type && role.roles.includes(assignment.role))
+        const worker = assignment.cover || assignment.person
+        if (match && worker && initial[match.key] && worker in initial[match.key]) {
+          initial[match.key][worker] += 1
+        }
+      })
+    })
+
+  return initial
 }
 
 // ═══════════════════════════════════════════════════════════════

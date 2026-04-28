@@ -717,9 +717,33 @@ def delete_team_member(member_id):
     if not member:
         return jsonify({"error": "Not found"}), 404
 
+    from .scheduler_v2 import rebalance_future_after_member_removal
+    rebalance_result = rebalance_future_after_member_removal(member.name, vancouver_today())
     db.session.delete(member)
     db.session.commit()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, **rebalance_result})
+
+
+@api_v2.route("/scheduling-controls/apply", methods=["POST"])
+def apply_scheduling_controls():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    data = request.json or {}
+    targets = data.get("targets", {})
+
+    try:
+        from .scheduler_v2 import rebalance_future_to_targets
+        result = rebalance_future_to_targets(targets, vancouver_today())
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"ok": True, **result})
 
 
 # ═══════════════════════════════════════════════════════════════════
