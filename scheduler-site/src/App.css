@@ -1661,8 +1661,10 @@ body {
 }
 
 .year-overview-card {
-  width: calc(100vw - 12px);
-  max-width: calc(100vw - 12px);
+  width: calc(100vw - 8px);
+  max-width: calc(100vw - 8px);
+  height: calc(100vh - 8px);
+  max-height: calc(100vh - 8px);
 }
 
 .role-settings-body,
