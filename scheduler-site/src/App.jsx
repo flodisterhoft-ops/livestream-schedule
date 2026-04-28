@@ -7,8 +7,8 @@ const TELEGRAM_LOGIN_KEYS = ['id', 'first_name', 'last_name', 'username', 'photo
 
 const ROLE_ICONS = {
   Computer: '\uD83D\uDDA5\uFE0F',
-  'Camera 1': '\uD83C\uDFA5',
-  'Camera 2': '\uD83C\uDFA5',
+  'Camera 1': '\uD83C\uDFA51\uFE0F\u20E3',
+  'Camera 2': '\uD83C\uDFA52\uFE0F\u20E3',
   Camera: '\uD83C\uDFA5',
   Leader: '\uD83D\uDCD6',
   Helper: '\uD83E\uDD1D',
@@ -108,9 +108,6 @@ export default function App() {
   const [showCreate, setShowCreate] = useState(false)
   const [showSuggest, setShowSuggest] = useState(false)
   const [showAdminAddMenu, setShowAdminAddMenu] = useState(false)
-  const [showAddMember, setShowAddMember] = useState(false)
-  const [showRemoveMember, setShowRemoveMember] = useState(false)
-  const [showSchedulingControls, setShowSchedulingControls] = useState(false)
   const [showRoleSettings, setShowRoleSettings] = useState(false)
   const [showYearOverview, setShowYearOverview] = useState(false)
   const [createPrefill, setCreatePrefill] = useState(null)
@@ -268,27 +265,6 @@ export default function App() {
     setShowCreate(true)
   }
 
-  const openAdminAddMember = async () => {
-    const ok = await ensureManager()
-    if (!ok) return
-    setShowAdminAddMenu(false)
-    setShowAddMember(true)
-  }
-
-  const openAdminRemoveMember = async () => {
-    const ok = await ensureManager()
-    if (!ok) return
-    setShowAdminAddMenu(false)
-    setShowRemoveMember(true)
-  }
-
-  const openSchedulingControls = async () => {
-    const ok = await ensureManager()
-    if (!ok) return
-    setShowAdminAddMenu(false)
-    setShowSchedulingControls(true)
-  }
-
   const openRoleSettings = async () => {
     const ok = await ensureManager()
     if (!ok) return
@@ -444,8 +420,8 @@ export default function App() {
             <button
               className="manager-btn"
               onClick={() => setShowAdminAddMenu(true)}
-              title="Add"
-              aria-label="Add"
+              title="Manager tools"
+              aria-label="Manager tools"
             >
               <span className="manager-btn-icon">{'+'}</span>
             </button>
@@ -514,74 +490,8 @@ export default function App() {
         <AdminAddMenu
           onClose={() => setShowAdminAddMenu(false)}
           onAddEvent={openAdminCreateEvent}
-          onAddMember={openAdminAddMember}
-          onRemoveMember={openAdminRemoveMember}
           onYearOverview={openYearOverview}
           onRoleSettings={openRoleSettings}
-          onSchedulingControls={openSchedulingControls}
-        />
-      )}
-      {showAddMember && (
-        <AddMemberModal
-          onClose={() => setShowAddMember(false)}
-          onCreated={() => {
-            setShowAddMember(false)
-            loadTeam()
-          }}
-          showFlash={showFlash}
-        />
-      )}
-      {showRemoveMember && (
-        <RemoveMemberModal
-          team={team}
-          onClose={() => setShowRemoveMember(false)}
-          onRemoved={(result) => {
-            setShowRemoveMember(false)
-            loadTeam()
-            loadSchedule()
-            showFlash(`${result.removed_name} removed from future schedule`)
-          }}
-          showFlash={showFlash}
-        />
-      )}
-      {showSchedulingControls && (
-        <SchedulingControlsModal
-          schedule={schedule}
-          team={team}
-          onClose={() => setShowSchedulingControls(false)}
-          onRestored={(result) => {
-            setShowSchedulingControls(false)
-            loadSchedule()
-            showFlash(`Restored ${result.restored} assignments`)
-          }}
-          onApplied={(result, changedIds) => {
-            setShowSchedulingControls(false)
-            loadSchedule()
-            if (changedIds && changedIds.length) {
-              const ids = new Set(changedIds)
-              setRecentlyChanged(ids)
-              setTimeout(() => setRecentlyChanged(curr => {
-                if (curr === ids) return new Set()
-                return curr
-              }), 12000)
-            }
-            const tbd = result.tbd_assignments || 0
-            const locked = result.confirmed_locked || 0
-            const lockedNote = locked ? ` · ${locked} locked` : ''
-            const tbdNote = tbd ? ` · ${tbd} TBD` : ''
-            const snapshotId = result.snapshot?.id
-            setFlash({
-              msg: `Updated ${result.future_assignments_updated} future assignments${lockedNote}${tbdNote}`,
-              type: tbd ? 'warning' : 'success',
-              undoSnapshotId: snapshotId,
-            })
-            if (!snapshotId) {
-              setTimeout(() => setFlash(null), 3000)
-            } else {
-              setTimeout(() => setFlash(f => (f && f.undoSnapshotId === snapshotId ? null : f)), 30000)
-            }
-          }}
-          showFlash={showFlash}
         />
       )}
       {showRoleSettings && (
@@ -592,7 +502,7 @@ export default function App() {
             loadTeam()
             loadSchedule()
             const changed = result?.future_assignments_replaced || 0
-            showFlash(changed ? `User role settings saved — ${changed} future assignments updated` : 'User role settings saved')
+            showFlash(changed ? `Scheduling settings saved — ${changed} future assignments updated` : 'Scheduling settings saved')
           }}
           showFlash={showFlash}
         />
@@ -1368,7 +1278,7 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
   )
 }
 
-function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember, onYearOverview, onRoleSettings, onSchedulingControls }) {
+function AdminAddMenu({ onClose, onAddEvent, onYearOverview, onRoleSettings }) {
   const overlayRef = useRef(null)
 
   useEffect(() => {
@@ -1384,11 +1294,11 @@ function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember, onYear
       onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
       role="dialog"
       aria-modal="true"
-      aria-label="Add"
+      aria-label="Manager tools"
     >
       <div className="modal-card action-choice-card">
         <div className="modal-header">
-          <h2>What do you want to add?</h2>
+          <h2>Manager tools</h2>
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
         </div>
         <div className="modal-body">
@@ -1399,22 +1309,6 @@ function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember, onYear
               <small>Create a service, Bible study, baptism, thanksgiving, or custom event.</small>
             </span>
           </button>
-          <div className="action-choice-split">
-            <button className="action-choice compact" onClick={onAddMember}>
-              <span className="action-choice-icon">{'\uD83D\uDC64'}</span>
-              <span>
-                <strong>Add user</strong>
-                <small>Add roles and preferences.</small>
-              </span>
-            </button>
-            <button className="action-choice compact danger-choice" onClick={onRemoveMember}>
-              <span className="action-choice-icon">{'\uD83D\uDDD1'}</span>
-              <span>
-                <strong>Remove user</strong>
-                <small>Refill future events.</small>
-              </span>
-            </button>
-          </div>
           <div className="action-choice-section">
             <button className="action-choice compact" onClick={onYearOverview}>
               <span className="action-choice-icon">{'\uD83D\uDCCA'}</span>
@@ -1424,17 +1318,10 @@ function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember, onYear
               </span>
             </button>
             <button className="action-choice compact" onClick={onRoleSettings}>
-              <span className="action-choice-icon">{'\uD83E\uDDEE'}</span>
+              <span className="action-choice-icon">{'\uD83D\uDD27'}</span>
               <span>
-                <strong>User role settings</strong>
-                <small>Edit role eligibility, preferences, and monthly caps.</small>
-              </span>
-            </button>
-            <button className="action-choice compact" onClick={onSchedulingControls}>
-              <span className="action-choice-icon">{'\u2699\uFE0F'}</span>
-              <span>
-                <strong>Scheduling controls</strong>
-                <small>Preview, rebalance, apply, and undo schedule changes.</small>
+                <strong>Scheduling settings</strong>
+                <small>Edit users, role eligibility, preferences, and monthly caps.</small>
               </span>
             </button>
           </div>
@@ -1445,11 +1332,11 @@ function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember, onYear
 }
 
 const ROLE_SETTING_DEFS = [
-  { key: 'Sunday:Computer', dayType: 'Sunday', role: 'Computer', label: 'Sunday Computer' },
-  { key: 'Sunday:Camera 1', dayType: 'Sunday', role: 'Camera 1', label: 'Sunday Camera 1' },
-  { key: 'Sunday:Camera 2', dayType: 'Sunday', role: 'Camera 2', label: 'Sunday Camera 2' },
-  { key: 'Friday:Computer', dayType: 'Friday', role: 'Computer', label: 'Friday Computer' },
-  { key: 'Friday:Camera', dayType: 'Friday', role: 'Camera', label: 'Friday Camera' },
+  { key: 'Sunday:Computer', dayType: 'Sunday', role: 'Computer', label: 'Sunday \uD83D\uDDA5\uFE0F' },
+  { key: 'Sunday:Camera 1', dayType: 'Sunday', role: 'Camera 1', label: 'Sunday \uD83C\uDFA51\uFE0F\u20E3' },
+  { key: 'Sunday:Camera 2', dayType: 'Sunday', role: 'Camera 2', label: 'Sunday \uD83C\uDFA52\uFE0F\u20E3' },
+  { key: 'Friday:Computer', dayType: 'Friday', role: 'Computer', label: 'Friday \uD83D\uDDA5\uFE0F' },
+  { key: 'Friday:Camera', dayType: 'Friday', role: 'Camera', label: 'Friday \uD83C\uDFA5' },
 ]
 
 const ROLE_PREFERENCE_OPTIONS = [
@@ -1506,7 +1393,7 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
   const initialMembers = useMemo(() => team.filter(m => m.id).map(cloneMemberSettings), [team])
   const [members, setMembers] = useState(() => initialMembers)
   const [removedIds, setRemovedIds] = useState(() => new Set())
-  const [expandedId, setExpandedId] = useState(() => initialMembers[0]?.id || null)
+  const [expandedId, setExpandedId] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -1614,13 +1501,13 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
       onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
       role="dialog"
       aria-modal="true"
-      aria-label="User role settings"
+      aria-label="Scheduling settings"
     >
       <div className="modal-card role-settings-card">
         <div className="modal-header">
           <div>
-            <h2>User Role Settings</h2>
-            <p className="modal-subtitle">Expand a user to edit roles, preferences, and caps. Save refills only future schedule slots that need to change.</p>
+            <h2>{'\uD83D\uDD27'} Scheduling Settings</h2>
+            <p className="modal-subtitle">Expand a user to edit roles, preferences, caps, or add/remove users. Save refills only future schedule slots that need to change.</p>
           </div>
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
         </div>
@@ -1662,12 +1549,12 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
                                 <input type="checkbox" checked={selected} onChange={() => toggleRole(member, def.dayType, def.role)} />
                                 <span>{def.label}</span>
                               </label>
-                              <div className="segmented preference-segmented inline">
+                              <div className={`preference-pill-group pill-value-${value} ${selected ? '' : 'disabled'}`}>
                                 {ROLE_PREFERENCE_OPTIONS.map(opt => (
                                   <button
                                     key={opt.value}
                                     type="button"
-                                    className={`segment ${value === opt.value ? 'active' : ''}`}
+                                    className={`preference-pill-option ${value === opt.value ? 'active' : ''}`}
                                     onClick={() => setPreference(member, def.key, opt.value)}
                                     disabled={!selected}
                                   >
@@ -1726,13 +1613,13 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
 }
 
 const OVERVIEW_ROWS = [
-  { key: 'S\uD83D\uDDA5', label: 'S\uD83D\uDDA5\uFE0F' },
-  { key: 'S\uD83C\uDFA51', label: 'S\uD83C\uDFA51' },
-  { key: 'S\uD83C\uDFA52', label: 'S\uD83C\uDFA52' },
-  { key: 'S\u03A3', label: 'S\u03A3' },
-  { key: 'F\uD83D\uDDA5', label: 'F\uD83D\uDDA5\uFE0F' },
-  { key: 'F\uD83C\uDFA5', label: 'F\uD83C\uDFA5' },
-  { key: 'F\u03A3', label: 'F\u03A3' },
+  { key: 'S\uD83D\uDDA5', label: '\u2600\uFE0F \uD83D\uDDA5\uFE0F' },
+  { key: 'S\uD83C\uDFA51', label: '\u2600\uFE0F \uD83C\uDFA51\uFE0F\u20E3' },
+  { key: 'S\uD83C\uDFA52', label: '\u2600\uFE0F \uD83C\uDFA52\uFE0F\u20E3' },
+  { key: 'S\u03A3', label: '\u2600\uFE0F \u03A3' },
+  { key: 'F\uD83D\uDDA5', label: '\uD83D\uDCD6 \uD83D\uDDA5\uFE0F' },
+  { key: 'F\uD83C\uDFA5', label: '\uD83D\uDCD6 \uD83C\uDFA5' },
+  { key: 'F\u03A3', label: '\uD83D\uDCD6 \u03A3' },
   { key: '\u03A3', label: '\u03A3' },
 ]
 
@@ -1773,22 +1660,23 @@ function OverviewMatrix({ title, events, names }) {
         <table className="year-overview-table">
           <thead>
             <tr>
-              <th>Role</th>
-              {names.map(name => <th key={name}>{name}</th>)}
-              <th>Total</th>
+              <th>Name</th>
+              {OVERVIEW_ROWS.map(row => <th key={row.key}>{row.label}</th>)}
             </tr>
           </thead>
           <tbody>
-            {OVERVIEW_ROWS.map(row => {
-              const total = names.reduce((sum, name) => sum + (counts[name]?.[row.key] || 0), 0)
-              return (
-                <tr key={row.key} className={row.key.includes('\u03A3') ? 'overview-total-row' : ''}>
-                  <td>{row.label}</td>
-                  {names.map(name => <td key={name}>{counts[name]?.[row.key] || 0}</td>)}
-                  <td>{total}</td>
-                </tr>
-              )
-            })}
+            {names.map(name => (
+              <tr key={name}>
+                <td>{name}</td>
+                {OVERVIEW_ROWS.map(row => <td key={row.key}>{counts[name]?.[row.key] || 0}</td>)}
+              </tr>
+            ))}
+            <tr className="overview-total-row">
+              <td>Total</td>
+              {OVERVIEW_ROWS.map(row => (
+                <td key={row.key}>{names.reduce((sum, name) => sum + (counts[name]?.[row.key] || 0), 0)}</td>
+              ))}
+            </tr>
           </tbody>
         </table>
       </div>

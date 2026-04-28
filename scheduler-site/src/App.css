@@ -1791,9 +1791,9 @@ body {
   border-radius: var(--radius-sm);
   background: var(--bg-card);
   padding: 7px 8px;
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(220px, 280px);
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
 }
 
@@ -1807,12 +1807,71 @@ body {
   gap: 8px;
   font-weight: 800;
   color: var(--text);
+  min-width: 0;
+  flex: 1;
 }
 
-.preference-segmented.mini {
-  grid-template-columns: repeat(3, 1fr);
+.preference-pill-group {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(56px, 1fr));
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-hover);
+  flex: 0 0 230px;
+  overflow: hidden;
 }
 
+.preference-pill-group::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 3);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.42s cubic-bezier(.2,.8,.2,1);
+}
+
+.preference-pill-group.pill-value-normal::before {
+  transform: translateX(100%);
+}
+
+.preference-pill-group.pill-value-more::before {
+  transform: translateX(200%);
+}
+
+.preference-pill-group.disabled {
+  opacity: 0.45;
+}
+
+.preference-pill-option {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.preference-pill-option.active {
+  color: white;
+}
+
+.preference-pill-option:disabled {
+  cursor: not-allowed;
+}
+
+.preference-segmented.mini,
 .preference-segmented.inline {
   grid-template-columns: repeat(3, 1fr);
   min-width: 0;
@@ -1879,7 +1938,12 @@ body {
 
 @media (max-width: 640px) {
   .role-setting-row {
-    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .preference-pill-group {
+    flex-basis: 190px;
+    grid-template-columns: repeat(3, minmax(48px, 1fr));
   }
 }
 
