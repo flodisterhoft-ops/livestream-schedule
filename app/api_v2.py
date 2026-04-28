@@ -197,15 +197,11 @@ def get_schedule():
     """Get all events with assignments."""
     events = Event.query.order_by(Event.date).all()
     today = vancouver_today()
-    current_user = session.get("user_name")
-    personal_view = bool(current_user and current_user != "Florian")
 
     result = []
     for event in events:
         assignments = []
         for a in event.assignments:
-            if personal_view and a.person != current_user and a.cover != current_user:
-                continue
             assignments.append({
                 "id": a.id,
                 "role": a.role,
@@ -216,9 +212,6 @@ def get_schedule():
                 "history": a.history,
                 "locked": bool(getattr(a, "locked", False)),
             })
-
-        if personal_view and not assignments:
-            continue
 
         title = event.custom_title
         if not title:
