@@ -771,6 +771,64 @@ def rebalance_future_to_targets(targets, start_date=None, end_date=None, lock_co
     }
 
 
+def preview_future_targets(targets, start_date=None, end_date=None, lock_confirmed=True):
+    """Run rebalance_future_to_targets without committing and return per-event diffs.
+
+    Captures before-state, runs the same algorithm in-memory, then rolls back
+    so no database changes persist.
+    """
+    start_date = start_date or vancouver_today()
+    query = Event.query.filter(
+        Event.date >= start_date,
+        Event.day_type.in_(["Sunday", "Friday"]),
+    )
+    if end_date is not None:
+        query = query.filter(Event.date <= end_date)
+    events = query.order_by(Event.date).all()
+
+    before = {}
+    for event in events:
+        for assignment in event.assignments:
+            before[assignment.id] = {
+                "date": event.date.isoformat(),
+                "day_type": event.day_type,
+                "role": assignment.role,
+                "person": assignment.person,
+                "cover": assignment.cover,
+                "status": assignment.status,
+            }
+
+    try:
+        result = rebalance_future_to_targets(
+            targets,
+            start_date=start_date,
+            end_date=end_date,
+            lock_confirmed=lock_confirmed,
+        )
+        result.pop("snapshot", None)
+
+        changes = []
+        for event in events:
+            for assignment in event.assignments:
+                prev = before.get(assignment.id)
+                if not prev:
+                    continue
+                from_worker = prev.get("cover") or prev.get("person")
+                to_worker = assignment.cover or assignment.person
+                if from_worker != to_worker:
+                    changes.append({
+                        "assignment_id": assignment.id,
+                        "date": prev["date"],
+                        "day_type": prev["day_type"],
+                        "role": prev["role"],
+                        "from": from_worker,
+                        "to": to_worker,
+                    })
+        return {"changes": changes, **result}
+    finally:
+        db.session.rollback()
+
+
 def reschedule_declined(requestor, original_event_date, role, max_lookahead_months=6):
     """Perform a two-way swap for someone who declined and wasn't picked up.
 

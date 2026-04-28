@@ -12,7 +12,7 @@ import hmac
 import time
 from itsdangerous import BadSignature, URLSafeSerializer
 from flask import Blueprint, request, jsonify, session, current_app
-from .models import Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion, SchedulingSnapshot
+from .models import Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion, SchedulingSnapshot, SchedulingPreset
 from .extensions import db
 from .utils import (
     ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats,
@@ -724,6 +724,9 @@ def delete_team_member(member_id):
     return jsonify({"ok": True, **rebalance_result})
 
 
+SNAPSHOT_RETENTION = 50
+
+
 @api_v2.route("/scheduling-controls/apply", methods=["POST"])
 def apply_scheduling_controls():
     if not session.get("manager"):
@@ -753,6 +756,16 @@ def apply_scheduling_controls():
             db.session.add(snap)
             db.session.flush()
             snapshot_record = snap.to_dict()
+
+            # Prune older snapshots to stay under retention.
+            stale = (
+                SchedulingSnapshot.query
+                .order_by(SchedulingSnapshot.created_at.desc())
+                .offset(SNAPSHOT_RETENTION)
+                .all()
+            )
+            for old in stale:
+                db.session.delete(old)
         db.session.commit()
     except ValueError as e:
         db.session.rollback()
@@ -762,6 +775,85 @@ def apply_scheduling_controls():
         return jsonify({"error": str(e)}), 500
 
     return jsonify({"ok": True, "snapshot": snapshot_record, **result})
+
+
+@api_v2.route("/scheduling-controls/preview", methods=["POST"])
+def preview_scheduling_controls():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    data = request.json or {}
+    targets = data.get("targets", {})
+    end_date_str = data.get("end_date")
+    end_date = datetime.date.fromisoformat(end_date_str) if end_date_str else None
+
+    try:
+        from .scheduler_v2 import preview_future_targets
+        preview = preview_future_targets(
+            targets,
+            start_date=vancouver_today(),
+            end_date=end_date,
+            lock_confirmed=True,
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"ok": True, **preview})
+
+
+@api_v2.route("/scheduling-controls/refresh-reminders", methods=["POST"])
+def refresh_scheduling_reminders():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    try:
+        sent = tg.send_daily_reminders_v2()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True, "sent": sent})
+
+
+@api_v2.route("/scheduling-controls/presets")
+def list_scheduling_presets():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+    presets = SchedulingPreset.query.order_by(SchedulingPreset.name).all()
+    return jsonify([p.to_dict() for p in presets])
+
+
+@api_v2.route("/scheduling-controls/presets", methods=["POST"])
+def create_scheduling_preset():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    targets = data.get("targets") or {}
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    preset = SchedulingPreset.query.filter(db.func.lower(SchedulingPreset.name) == name.lower()).first()
+    if preset is None:
+        preset = SchedulingPreset(name=name)
+        db.session.add(preset)
+    preset.targets = targets
+    preset.created_by = session.get("user_name") or "manager"
+    db.session.commit()
+    return jsonify(preset.to_dict()), 201
+
+
+@api_v2.route("/scheduling-controls/presets/<int:preset_id>", methods=["DELETE"])
+def delete_scheduling_preset(preset_id):
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+    preset = SchedulingPreset.query.get(preset_id)
+    if not preset:
+        return jsonify({"error": "Not found"}), 404
+    db.session.delete(preset)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @api_v2.route("/scheduling-controls/snapshots")

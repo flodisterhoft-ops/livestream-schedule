@@ -245,6 +245,35 @@ class SchedulingSnapshot(db.Model):
         }
 
 
+class SchedulingPreset(db.Model):
+    """A saved target distribution preset for the Scheduling Controls modal."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(50))
+    _targets_json = db.Column(db.Text, default='{}')
+
+    @property
+    def targets(self):
+        try:
+            return json.loads(self._targets_json or '{}')
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    @targets.setter
+    def targets(self, value):
+        self._targets_json = json.dumps(value or {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_by": self.created_by,
+            "targets": self.targets,
+        }
+
+
 class TempChat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     chat_id = db.Column(db.String(40), nullable=False, index=True)

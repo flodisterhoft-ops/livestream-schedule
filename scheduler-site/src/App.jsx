@@ -1606,10 +1606,19 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
   }, [onClose, confirming])
 
   const [snapshots, setSnapshots] = useState([])
+  const [presets, setPresets] = useState([])
+  const [focusedRole, setFocusedRole] = useState('all')
+  const [refreshReminders, setRefreshReminders] = useState(false)
+  const [previewChanges, setPreviewChanges] = useState(null)
+  const [previewing, setPreviewing] = useState(false)
+
   const loadSnapshots = useCallback(() => {
     api('/scheduling-controls/snapshots').then(setSnapshots).catch(() => setSnapshots([]))
   }, [])
-  useEffect(() => { loadSnapshots() }, [loadSnapshots])
+  const loadPresets = useCallback(() => {
+    api('/scheduling-controls/presets').then(setPresets).catch(() => setPresets([]))
+  }, [])
+  useEffect(() => { loadSnapshots(); loadPresets() }, [loadSnapshots, loadPresets])
 
   const restoreSnapshot = async (snapshotId) => {
     try {
@@ -1730,7 +1739,23 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
 
   const handleApply = async () => {
     if (!balanced) { showFlash('Balance every role before saving', 'error'); return }
-    setConfirming(true)
+    setPreviewing(true)
+    setPreviewChanges(null)
+    try {
+      const preview = await api('/scheduling-controls/preview', {
+        method: 'POST',
+        body: JSON.stringify({
+          targets,
+          end_date: endDateKey || undefined,
+        }),
+      })
+      setPreviewChanges(preview.changes || [])
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setPreviewing(false)
+      setConfirming(true)
+    }
   }
 
   const performApply = async () => {
@@ -1744,12 +1769,57 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
           label: scope === 'all' ? 'all-future' : `next-${scope}`,
         }),
       })
+      if (refreshReminders) {
+        try { await api('/scheduling-controls/refresh-reminders', { method: 'POST' }) }
+        catch (e) { showFlash(`Apply succeeded but reminders failed: ${e.message}`, 'warning') }
+      }
       onApplied(result)
     } catch (e) {
       showFlash(e.message, 'error')
     } finally {
       setSubmitting(false)
       setConfirming(false)
+    }
+  }
+
+  const savePreset = async () => {
+    const name = window.prompt('Preset name?')
+    if (!name) return
+    try {
+      await api('/scheduling-controls/presets', {
+        method: 'POST',
+        body: JSON.stringify({ name, targets }),
+      })
+      showFlash(`Saved preset “${name}”`)
+      loadPresets()
+    } catch (e) {
+      showFlash(e.message, 'error')
+    }
+  }
+
+  const loadPreset = (preset) => {
+    setTargets(prev => {
+      const next = {}
+      CONTROL_ROLES.forEach(role => {
+        const baseline = prev[role.key] || {}
+        const incoming = (preset.targets && preset.targets[role.key]) || {}
+        const merged = {}
+        Object.keys(baseline).forEach(name => { merged[name] = incoming[name] || 0 })
+        Object.keys(incoming).forEach(name => { merged[name] = incoming[name] })
+        next[role.key] = merged
+      })
+      return next
+    })
+    showFlash(`Loaded preset “${preset.name}”`)
+  }
+
+  const deletePreset = async (presetId) => {
+    if (!window.confirm('Delete this preset?')) return
+    try {
+      await api(`/scheduling-controls/presets/${presetId}`, { method: 'DELETE' })
+      loadPresets()
+    } catch (e) {
+      showFlash(e.message, 'error')
     }
   }
 
@@ -1809,12 +1879,32 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
             </div>
           )}
 
+          <div className="role-focus-bar" role="tablist" aria-label="Focused role">
+            <button
+              type="button"
+              className={`role-focus-tab ${focusedRole === 'all' ? 'active' : ''}`}
+              onClick={() => setFocusedRole('all')}
+            >
+              All roles
+            </button>
+            {CONTROL_ROLES.map(role => (
+              <button
+                key={role.key}
+                type="button"
+                className={`role-focus-tab ${focusedRole === role.key ? 'active' : ''}`}
+                onClick={() => setFocusedRole(role.key)}
+              >
+                {role.label}
+              </button>
+            ))}
+          </div>
+
           <div className="schedule-control-table-wrap">
             <table className="schedule-control-table">
               <thead>
                 <tr>
                   <th>Person</th>
-                  {CONTROL_ROLES.map(role => (
+                  {CONTROL_ROLES.filter(role => focusedRole === 'all' || role.key === focusedRole).map(role => (
                     <th key={role.key}>
                       <div className="control-th-stack">
                         <span>{role.label}</span>
@@ -1843,7 +1933,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
                           <span>{member.name}</span>
                         </div>
                       </td>
-                      {CONTROL_ROLES.map(role => {
+                      {CONTROL_ROLES.filter(role => focusedRole === 'all' || role.key === focusedRole).map(role => {
                         const eligible = isEligible(member, role)
                         const val = getValue(role.key, member.name)
                         return (
@@ -1868,7 +1958,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
               <tfoot>
                 <tr>
                   <td>Totals</td>
-                  {CONTROL_ROLES.map(role => (
+                  {CONTROL_ROLES.filter(role => focusedRole === 'all' || role.key === focusedRole).map(role => (
                     <td key={role.key} className={delta[role.key] === 0 ? 'balanced-total' : 'unbalanced-total'}>
                       {roleTotal(role.key)} / {slotTotals[role.key] || 0}
                     </td>
@@ -1878,6 +1968,42 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
               </tfoot>
             </table>
           </div>
+
+          <div className="snapshot-panel">
+            <div className="panel-row">
+              <div className="snapshot-panel-title">Presets</div>
+              <button className="btn btn-outline btn-sm" type="button" onClick={savePreset}>
+                Save current as preset
+              </button>
+            </div>
+            {presets.length === 0 ? (
+              <div className="modal-help" style={{ marginTop: 4 }}>No saved presets yet.</div>
+            ) : (
+              <ul className="snapshot-list">
+                {presets.map(preset => (
+                  <li key={preset.id} className="snapshot-item">
+                    <div className="snapshot-meta">
+                      <strong>{preset.name}</strong>
+                      <span>{preset.created_by ? `by ${preset.created_by} · ` : ''}{preset.created_at ? new Date(preset.created_at).toLocaleDateString() : ''}</span>
+                    </div>
+                    <div className="footer-actions">
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => loadPreset(preset)}>Load</button>
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => deletePreset(preset.id)}>Delete</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <label className="reminder-toggle">
+            <input
+              type="checkbox"
+              checked={refreshReminders}
+              onChange={e => setRefreshReminders(e.target.checked)}
+            />
+            <span>Re-send today's Telegram reminders after applying</span>
+          </label>
 
           {snapshots.length > 0 && (
             <div className="snapshot-panel">
@@ -1906,9 +2032,9 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
         <div className="modal-footer">
           <span className="footer-hint">{totalChanges > 0 ? `${totalChanges} change${totalChanges === 1 ? '' : 's'}` : 'No changes yet'}</span>
           <div className="footer-actions">
-            <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleApply} disabled={submitting || !balanced || totalChanges === 0}>
-              {submitting ? 'Applying…' : 'Apply to future schedule'}
+            <button className="btn btn-ghost" onClick={onClose} disabled={submitting || previewing}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleApply} disabled={submitting || previewing || !balanced || totalChanges === 0}>
+              {previewing ? 'Previewing…' : submitting ? 'Applying…' : 'Apply to future schedule'}
             </button>
           </div>
         </div>
@@ -1923,7 +2049,9 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
           personDiff={personDiff}
           warnings={florianWarnings}
           scopeLabel={SCOPE_OPTIONS.find(opt => opt.value === scope)?.label || ''}
+          previewChanges={previewChanges}
           submitting={submitting}
+          refreshReminders={refreshReminders}
           onCancel={() => setConfirming(false)}
           onConfirm={performApply}
         />
@@ -1932,7 +2060,8 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
   )
 }
 
-function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, personDiff, warnings = [], scopeLabel, submitting, onCancel, onConfirm }) {
+function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, personDiff, warnings = [], scopeLabel, previewChanges, submitting, refreshReminders, onCancel, onConfirm }) {
+  const previewCount = previewChanges ? previewChanges.length : null
   return (
     <div className="modal-overlay confirm-overlay" role="dialog" aria-modal="true" aria-label="Confirm apply">
       <div className="modal-card confirm-card">
@@ -1946,10 +2075,12 @@ function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, pers
           </p>
           <ul className="modal-list">
             <li>{totalChanges} change{totalChanges === 1 ? '' : 's'} compared to current distribution.</li>
+            {previewCount !== null && <li>Preview: {previewCount} actual event-level change{previewCount === 1 ? '' : 's'}.</li>}
             {totalLocked > 0 && <li>{totalLocked} confirmed assignment{totalLocked === 1 ? '' : 's'} stay locked and untouched.</li>}
             <li>Past events untouched. Custom events (baptisms, etc.) untouched.</li>
             <li>Florian caps and gap rules still apply where possible.</li>
             <li>You can Undo from the toast for 30s after applying.</li>
+            {refreshReminders && <li>Today's Telegram reminders will be re-sent after apply.</li>}
           </ul>
 
           {warnings.length > 0 && (
@@ -1971,6 +2102,24 @@ function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, pers
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {previewChanges && previewChanges.length > 0 && (
+            <div className="diff-block">
+              <div className="diff-title">Per event</div>
+              <ul className="event-diff-list">
+                {previewChanges.slice(0, 12).map((change, idx) => (
+                  <li key={`${change.assignment_id}-${idx}`} className="event-diff-row">
+                    <span className="event-diff-date">{change.date}</span>
+                    <span className="event-diff-role">{change.day_type === 'Friday' ? 'Bible' : 'Sunday'} {change.role}</span>
+                    <span className="event-diff-arrow">{change.from || '—'} → {change.to || '—'}</span>
+                  </li>
+                ))}
+                {previewChanges.length > 12 && (
+                  <li className="event-diff-more">…and {previewChanges.length - 12} more</li>
+                )}
+              </ul>
             </div>
           )}
         </div>
