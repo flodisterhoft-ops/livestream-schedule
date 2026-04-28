@@ -7,8 +7,8 @@ const TELEGRAM_LOGIN_KEYS = ['id', 'first_name', 'last_name', 'username', 'photo
 
 const ROLE_ICONS = {
   Computer: '\uD83D\uDDA5\uFE0F',
-  'Camera 1': '\uD83C\uDFA51\uFE0F\u20E3',
-  'Camera 2': '\uD83C\uDFA52\uFE0F\u20E3',
+  'Camera 1': '\uD83C\uDFA5',
+  'Camera 2': '\uD83C\uDFA5',
   Camera: '\uD83C\uDFA5',
   Leader: '\uD83D\uDCD6',
   Helper: '\uD83E\uDD1D',
@@ -1603,13 +1603,13 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
 }
 
 const OVERVIEW_ROWS = [
-  { key: 'S\uD83D\uDDA5', label: '\u2600\uFE0F \uD83D\uDDA5\uFE0F' },
-  { key: 'S\uD83C\uDFA51', label: '\u2600\uFE0F \uD83C\uDFA51\uFE0F\u20E3' },
-  { key: 'S\uD83C\uDFA52', label: '\u2600\uFE0F \uD83C\uDFA52\uFE0F\u20E3' },
-  { key: 'S\u03A3', label: '\u2600\uFE0F \u03A3' },
-  { key: 'F\uD83D\uDDA5', label: '\uD83D\uDCD6 \uD83D\uDDA5\uFE0F' },
-  { key: 'F\uD83C\uDFA5', label: '\uD83D\uDCD6 \uD83C\uDFA5' },
-  { key: 'F\u03A3', label: '\uD83D\uDCD6 \u03A3' },
+  { key: 'S\uD83D\uDDA5', label: '\u2600\uFE0F\uD83D\uDDA5\uFE0F' },
+  { key: 'S\uD83C\uDFA51', label: '\u2600\uFE0F\uD83C\uDFA51\uFE0F\u20E3' },
+  { key: 'S\uD83C\uDFA52', label: '\u2600\uFE0F\uD83C\uDFA52\uFE0F\u20E3' },
+  { key: 'S\u03A3', label: '\u2600\uFE0F\u03A3' },
+  { key: 'F\uD83D\uDDA5', label: '\uD83D\uDCD6\uD83D\uDDA5\uFE0F' },
+  { key: 'F\uD83C\uDFA5', label: '\uD83D\uDCD6\uD83C\uDFA5' },
+  { key: 'F\u03A3', label: '\uD83D\uDCD6\u03A3' },
   { key: '\u03A3', label: '\u03A3' },
 ]
 

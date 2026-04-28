@@ -1975,11 +1975,17 @@ body {
 
 .year-overview-table th,
 .year-overview-table td {
-  padding: 4px 3px;
+  padding: 4px 2px;
   border-bottom: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
   text-align: center;
   white-space: nowrap;
   width: 1%;
+}
+
+.year-overview-table th:last-child,
+.year-overview-table td:last-child {
+  border-right: 0;
 }
 
 .year-overview-table th:first-child,
@@ -1990,11 +1996,17 @@ body {
   text-align: left;
   font-weight: 800;
   z-index: 1;
-  width: 64px;
-  max-width: 74px;
-  min-width: 58px;
+  width: 1%;
+  max-width: max-content;
+  min-width: 0;
+  padding-left: 5px;
+  padding-right: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.year-overview-table th:first-child {
+  width: 1%;
 }
 
 .overview-total-row td {
