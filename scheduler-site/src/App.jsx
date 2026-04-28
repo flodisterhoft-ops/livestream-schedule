@@ -151,6 +151,7 @@ export default function App() {
       window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
     }
     if (urlToken) {
+      localStorage.removeItem(AUTH_TOKEN_KEY)
       localStorage.setItem(AUTH_TOKEN_KEY, urlToken)
       setHasSavedAuth(true)
     } else {
