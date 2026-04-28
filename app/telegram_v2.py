@@ -35,16 +35,16 @@ BASE_API = "https://api.telegram.org/bot"
 
 # ── Emoji maps ───────────────────────────────────────────────────────
 ROLE_EMOJI = {
-    "Computer": "🖥️",
-    "Camera 1": "🎦",
-    "Camera 2": "🎦",
-    "Camera": "🎦",
+    "Computer": "�",
+    "Camera 1": "📹",
+    "Camera 2": "📹",
+    "Camera": "📹",
     "Leader": "🎤",
     "Helper": "🙌",
 }
 
 # Friday Bible Study: first person gets computer icon, second gets hands icon
-FRIDAY_ICONS = ["🖥️", "🙌"]
+FRIDAY_ICONS = ["�", "�"]
 
 # Short display names for roles
 ROLE_SHORT = {
@@ -245,9 +245,10 @@ def _event_title(event):
 
 
 def _event_time(event):
-    if event.day_type == "Sunday" or event.date.weekday() >= 5:
-        return "2:00 PM"
-    return "7:00 PM"
+    start_time = event.start_time
+    if not start_time:
+        start_time = datetime.time(14, 0) if _is_sunday_event(event) else datetime.time(19, 0)
+    return start_time.strftime("%I:%M %p").lstrip("0")
 
 
 def _date_line(date_obj):
@@ -263,8 +264,8 @@ def _is_sunday_event(event):
 
 
 def _event_start_dt(event):
-    hour = 14 if _is_sunday_event(event) else 19
-    return datetime.datetime.combine(event.date, datetime.time(hour=hour), tzinfo=VANCOUVER_TZ)
+    start_time = event.start_time or (datetime.time(14, 0) if _is_sunday_event(event) else datetime.time(19, 0))
+    return datetime.datetime.combine(event.date, start_time, tzinfo=VANCOUVER_TZ)
 
 
 def _swap_deadline(event):
@@ -705,7 +706,7 @@ def _assignment_line(assignment, role_label=None):
     if not worker or worker in ("TBD", "Select Helper"):
         worker = "TBD"
     label = role_label or assignment.role
-    icon = "🎥" if "Camera" in assignment.role else ROLE_EMOJI.get(assignment.role, "👤")
+    icon = "📹" if "Camera" in assignment.role else ROLE_EMOJI.get(assignment.role, "👤")
     return f"{icon} {label}: {worker}"
 
 
@@ -714,12 +715,13 @@ def format_weekly_schedule(today=None):
     lines = ["📅 <b>Livestream schedule this week</b>", ""]
 
     for event in extras:
-        lines.append(f"<b>{_event_title(event)} — {event.date.strftime('%A')}</b>")
+        lines.append(f"<b>{_event_title(event)}</b> <i>@ {_event_time(event)}</i>")
         for assignment in event.assignments:
             lines.append(_assignment_line(assignment))
         lines.append("")
 
-    lines.append("<b>Friday Bible Study</b>")
+    friday_time = _event_time(friday) if friday else "7:00 PM"
+    lines.append(f"<b>Friday Bible Study</b> <i>@ {friday_time}</i>")
     if friday:
         for assignment in friday.assignments:
             lines.append(_assignment_line(assignment))
@@ -727,7 +729,8 @@ def format_weekly_schedule(today=None):
         lines.append("<i>No Bible Study scheduled.</i>")
     lines.append("")
 
-    lines.append("<b>Sunday Service</b>")
+    sunday_time = _event_time(sunday_event) if sunday_event else "2:00 PM"
+    lines.append(f"<b>Sunday Service</b> <i>@ {sunday_time}</i>")
     if sunday_event:
         for assignment in sunday_event.assignments:
             lines.append(_assignment_line(assignment))

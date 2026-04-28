@@ -48,6 +48,21 @@ def _optional_bool(value, field_name):
     raise ValueError(f"{field_name} must be a boolean")
 
 
+def _default_start_time(day_type):
+    if day_type == "Sunday":
+        return datetime.time(14, 0)
+    return datetime.time(19, 0)
+
+
+def _parse_start_time(value):
+    if value in (None, ""):
+        return None
+    try:
+        return datetime.time.fromisoformat(str(value)[:5])
+    except (TypeError, ValueError):
+        raise ValueError("start_time must be HH:MM")
+
+
 def _auth_serializer():
     return URLSafeSerializer(current_app.secret_key, salt="v2-auth")
 
@@ -227,6 +242,7 @@ def get_schedule():
             "day_type": event.day_type,
             "title": title,
             "custom_title": event.custom_title,
+            "start_time": (event.start_time or _default_start_time(event.day_type)).strftime("%H:%M"),
             "notes": event.notes,
             "is_past": event.date < today,
             "assignments": assignments,
@@ -541,6 +557,10 @@ def add_event():
     custom_title = data.get("custom_title")
     roles = data.get("roles")  # Optional: list of roles to create
     suggestion_id = data.get("suggestion_id")
+    try:
+        start_time = _parse_start_time(data.get("start_time")) or _default_start_time(day_type)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     if not date_str:
         return jsonify({"error": "Missing date"}), 400
@@ -549,7 +569,7 @@ def add_event():
     if Event.query.filter_by(date=d).first():
         return jsonify({"error": "Event already exists on this date"}), 409
 
-    event = Event(date=d, day_type=day_type, custom_title=custom_title)
+    event = Event(date=d, day_type=day_type, custom_title=custom_title, start_time=start_time)
     db.session.add(event)
     db.session.flush()
 
@@ -610,6 +630,13 @@ def update_event(date_str):
         event.custom_title = data["custom_title"] or None
     if "day_type" in data:
         event.day_type = data["day_type"]
+        if "start_time" not in data and event.start_time is None:
+            event.start_time = _default_start_time(event.day_type)
+    if "start_time" in data:
+        try:
+            event.start_time = _parse_start_time(data.get("start_time")) or _default_start_time(event.day_type)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
     if "notes" in data:
         event.notes = data["notes"]
     if "new_date" in data:
@@ -1368,6 +1395,7 @@ def _event_to_dict(event):
         "day_type": event.day_type,
         "title": title,
         "custom_title": event.custom_title,
+        "start_time": (event.start_time or _default_start_time(event.day_type)).strftime("%H:%M"),
         "notes": event.notes,
         "is_past": event.date < vancouver_today(),
         "assignments": [_assignment_to_dict(a) for a in event.assignments],

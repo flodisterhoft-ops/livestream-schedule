@@ -240,6 +240,9 @@ def create_app(config_class='config.Config'):
             db.session.execute(text('ALTER TABLE event ADD COLUMN telegram_message_id INTEGER'))
             db.session.execute(text('ALTER TABLE event ADD COLUMN telegram_chat_id VARCHAR(30)'))
             db.session.commit()
+        if 'start_time' not in event_cols:
+            db.session.execute(text('ALTER TABLE event ADD COLUMN start_time TIME'))
+            db.session.commit()
 
         # Seed database with schedule data if empty
         from .seed_data import seed_database

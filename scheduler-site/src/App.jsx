@@ -6,7 +6,7 @@ const AUTH_TOKEN_KEY = 'livestreamV2AuthToken'
 const TELEGRAM_LOGIN_KEYS = ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date', 'hash']
 
 const ROLE_ICONS = {
-  Computer: '\uD83D\uDDA5\uFE0F',
+  Computer: '💻',
   'Camera 1': '\uD83C\uDFA5',
   'Camera 2': '\uD83C\uDFA5',
   Camera: '\uD83C\uDFA5',
@@ -49,6 +49,35 @@ const timeAgo = (input) => {
   const weeks = Math.floor(days / 7)
   if (weeks < 5) return `${weeks}w ago`
   return new Date(input).toLocaleDateString()
+}
+
+const defaultStartTime = (type) => type === 'Sunday' ? '14:00' : '19:00'
+
+const formatDisplayTime = (value) => {
+  if (!value) return ''
+  const [hourRaw, minuteRaw] = value.split(':')
+  const hour = Number(hourRaw)
+  if (Number.isNaN(hour)) return value
+  const minute = minuteRaw || '00'
+  const suffix = hour >= 12 ? 'PM' : 'AM'
+  const displayHour = hour % 12 || 12
+  return `${displayHour}:${minute} ${suffix}`
+}
+
+const normalizeSuggestedTime = (value) => {
+  if (!value) return ''
+  const trimmed = value.trim()
+  const direct = trimmed.match(/^([01]?\d|2[0-3]):([0-5]\d)$/)
+  if (direct) return `${direct[1].padStart(2, '0')}:${direct[2]}`
+  const match = trimmed.match(/^(\d{1,2})(?::([0-5]\d))?\s*(am|pm)$/i)
+  if (!match) return ''
+  let hour = Number(match[1])
+  const minute = match[2] || '00'
+  const period = match[3].toLowerCase()
+  if (period === 'pm' && hour < 12) hour += 12
+  if (period === 'am' && hour === 12) hour = 0
+  if (hour < 0 || hour > 23) return ''
+  return `${String(hour).padStart(2, '0')}:${minute}`
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -707,6 +736,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
   const [editType, setEditType] = useState(event.day_type === 'Sunday' ? 'Sunday' : event.day_type === 'Friday' ? 'Bible Study' : 'Other')
   const [editTitle, setEditTitle] = useState(event.custom_title || event.title || '')
   const [editDate, setEditDate] = useState(event.date)
+  const [editTime, setEditTime] = useState(event.start_time || defaultStartTime(event.day_type))
   const editorRef = useRef(null)
   const d = new Date(event.date + 'T12:00:00')
   const dayNum = d.getDate()
@@ -717,6 +747,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
       new_date: editDate,
       day_type: editType === 'Sunday' ? 'Sunday' : editType === 'Bible Study' ? 'Friday' : 'Custom',
       custom_title: editType === 'Other' ? editTitle : null,
+      start_time: editTime,
     }
     onEventUpdate(event, updates)
     setEditingEvent(false)
@@ -744,6 +775,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
   const canEdit = isManager
   const DateTag = canEdit ? 'button' : 'div'
   const TitleTag = canEdit ? 'button' : 'span'
+  const TimeTag = canEdit ? 'button' : 'span'
   const editProps = canEdit
     ? { type: 'button', onClick: () => setEditingEvent(true), 'aria-label': 'Edit event' }
     : {}
@@ -778,17 +810,25 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             {event.title}
             {isToday && <span className="today-pill">TODAY</span>}
           </TitleTag>
-          {isAdmin && !event.is_past && (
-            <button
-              className={`notify-btn manager-only ${isManager ? 'visible' : ''}`}
-              onClick={onNotify}
-              title="Send Telegram reminder"
-              tabIndex={isManager ? 0 : -1}
-              aria-hidden={!isManager}
+          <div className="event-header-actions">
+            <TimeTag
+              className={`event-time-pill ${canEdit ? 'editable' : ''}`}
+              {...editProps}
             >
-              <TelegramIcon />
-            </button>
-          )}
+              🕒 {formatDisplayTime(event.start_time || defaultStartTime(event.day_type))}
+            </TimeTag>
+            {isAdmin && !event.is_past && (
+              <button
+                className={`notify-btn manager-only ${isManager ? 'visible' : ''}`}
+                onClick={onNotify}
+                title="Send Telegram reminder"
+                tabIndex={isManager ? 0 : -1}
+                aria-hidden={!isManager}
+              >
+                <TelegramIcon />
+              </button>
+            )}
+          </div>
         </div>
         {editingEvent && (
           <div className="event-editor" ref={editorRef}>
@@ -800,7 +840,10 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             />
             <select
               value={editType}
-              onChange={e => setEditType(e.target.value)}
+              onChange={e => {
+                setEditType(e.target.value)
+                setEditTime(defaultStartTime(e.target.value === 'Bible Study' ? 'Friday' : e.target.value))
+              }}
               className="event-edit-input"
             >
               <option value="Sunday">Sunday Service</option>
@@ -816,6 +859,12 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
                 className="event-edit-input"
               />
             )}
+            <input
+              type="time"
+              value={editTime}
+              onChange={e => setEditTime(e.target.value)}
+              className="event-edit-input"
+            />
             <div className="event-editor-actions">
               <button className="action-btn confirm" onClick={saveEvent}>Save</button>
               <button className="action-btn undo" onClick={() => setEditingEvent(false)}>Cancel</button>
@@ -2660,6 +2709,7 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
   const [date, setDate] = useState(initialDate)
   const [type, setType] = useState(prefill ? initialType : 'Sunday')
   const [customTitle, setCustomTitle] = useState(prefill ? suggestionTitle : '')
+  const [startTime, setStartTime] = useState(normalizeSuggestedTime(prefill?.time) || defaultStartTime(prefill ? initialType : 'Sunday'))
   const preset = PRESET_TYPES.find(p => p.value === type) || PRESET_TYPES[0]
   const [computerCount, setComputerCount] = useState(preset.defaultRoles.filter(r => r === 'Computer').length || 1)
   const [cameraCount, setCameraCount] = useState(preset.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
@@ -2683,6 +2733,7 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
 
   const applyTypeDefaults = (newType) => {
     setType(newType)
+    setStartTime(defaultStartTime(newType))
     if (newType === 'Sunday') {
       setComputerCount(1)
       setCameraCount(2)
@@ -2708,6 +2759,7 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
           date,
           day_type: type,
           custom_title: type === 'Custom' ? customTitle.trim() : null,
+          start_time: startTime,
           roles,
           suggestion_id: prefill?.id,
         }),
@@ -2799,6 +2851,16 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
               />
             </label>
           )}
+
+          <label className="modal-field">
+            <span className="modal-label">Time</span>
+            <input
+              type="time"
+              value={startTime}
+              onChange={e => setStartTime(e.target.value)}
+              className="modal-input"
+            />
+          </label>
 
           <div className="modal-field">
             <span className="modal-label">Roles</span>
