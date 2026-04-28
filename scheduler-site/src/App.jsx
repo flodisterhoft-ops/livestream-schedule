@@ -1559,6 +1559,12 @@ const SCOPE_OPTIONS = [
   { value: 'all', label: 'All future' },
 ]
 
+const FLORIAN_CAPS = {
+  'Sunday:Computer': 1,
+  'Friday:Computer': 1,
+}
+const FLORIAN_TOTAL_CAP_PER_MONTH = 2
+
 function addMonths(date, months) {
   const d = new Date(date)
   d.setMonth(d.getMonth() + months)
@@ -1598,6 +1604,26 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose, confirming])
+
+  const [snapshots, setSnapshots] = useState([])
+  const loadSnapshots = useCallback(() => {
+    api('/scheduling-controls/snapshots').then(setSnapshots).catch(() => setSnapshots([]))
+  }, [])
+  useEffect(() => { loadSnapshots() }, [loadSnapshots])
+
+  const restoreSnapshot = async (snapshotId) => {
+    try {
+      const res = await api('/scheduling-controls/undo', {
+        method: 'POST',
+        body: JSON.stringify({ snapshot_id: snapshotId }),
+      })
+      showFlash(`Restored ${res.restored} assignments`)
+      loadSnapshots()
+      onClose()
+    } catch (e) {
+      showFlash(e.message, 'error')
+    }
+  }
 
   const lockedTotals = CONTROL_ROLES.reduce((acc, role) => {
     acc[role.key] = futureEvents.reduce((total, event) => {
@@ -1642,6 +1668,24 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
   }, [targets, initialTargets])
   const totalChanges = personDiff.reduce((sum, [, value]) => sum + Math.abs(value), 0) / 2
+
+  const monthsSpan = Math.max(futureMonths.size, 1)
+  const florianWarnings = useMemo(() => {
+    const warnings = []
+    const totalAcrossRoles = CONTROL_ROLES.reduce((sum, role) => sum + (targets[role.key]?.['Florian'] || 0), 0)
+    Object.entries(FLORIAN_CAPS).forEach(([roleKey, perMonthCap]) => {
+      const value = targets[roleKey]?.['Florian'] || 0
+      const allowed = perMonthCap * monthsSpan
+      if (value > allowed) {
+        warnings.push(`Florian ${roleKey.replace(':', ' ')}: ${value} target exceeds ${allowed} (cap ${perMonthCap}/month × ${monthsSpan})`)
+      }
+    })
+    const totalAllowed = FLORIAN_TOTAL_CAP_PER_MONTH * monthsSpan
+    if (totalAcrossRoles > totalAllowed) {
+      warnings.push(`Florian total: ${totalAcrossRoles} across roles exceeds ${totalAllowed} (cap ${FLORIAN_TOTAL_CAP_PER_MONTH}/month)`)
+    }
+    return warnings
+  }, [targets, monthsSpan])
 
   const isEligible = (member, role) => {
     const list = role.dayType === 'Sunday' ? member.sunday_roles || [] : member.friday_roles || []
@@ -1753,6 +1797,18 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
             </span>
           </div>
 
+          {florianWarnings.length > 0 && (
+            <div className="warning-banner">
+              <div className="warning-banner-title">Florian cap warnings</div>
+              <ul>
+                {florianWarnings.map(w => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+              <small>Apply still works but the scheduler will likely fall back to relaxed rules to satisfy these targets.</small>
+            </div>
+          )}
+
           <div className="schedule-control-table-wrap">
             <table className="schedule-control-table">
               <thead>
@@ -1822,6 +1878,29 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
               </tfoot>
             </table>
           </div>
+
+          {snapshots.length > 0 && (
+            <div className="snapshot-panel">
+              <div className="snapshot-panel-title">Recent applies</div>
+              <ul className="snapshot-list">
+                {snapshots.map(snap => (
+                  <li key={snap.id} className="snapshot-item">
+                    <div className="snapshot-meta">
+                      <strong>{snap.label || 'apply'}</strong>
+                      <span>{snap.size} change{snap.size === 1 ? '' : 's'} · {new Date(snap.created_at).toLocaleString()}{snap.created_by ? ` · ${snap.created_by}` : ''}</span>
+                    </div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => restoreSnapshot(snap.id)}
+                    >
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div className="modal-footer">
@@ -1842,6 +1921,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
           months={futureMonths.size}
           totalLocked={totalLocked}
           personDiff={personDiff}
+          warnings={florianWarnings}
           scopeLabel={SCOPE_OPTIONS.find(opt => opt.value === scope)?.label || ''}
           submitting={submitting}
           onCancel={() => setConfirming(false)}
@@ -1852,7 +1932,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
   )
 }
 
-function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, personDiff, scopeLabel, submitting, onCancel, onConfirm }) {
+function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, personDiff, warnings = [], scopeLabel, submitting, onCancel, onConfirm }) {
   return (
     <div className="modal-overlay confirm-overlay" role="dialog" aria-modal="true" aria-label="Confirm apply">
       <div className="modal-card confirm-card">
@@ -1872,6 +1952,15 @@ function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, pers
             <li>You can Undo from the toast for 30s after applying.</li>
           </ul>
 
+          {warnings.length > 0 && (
+            <div className="warning-banner">
+              <div className="warning-banner-title">Heads up</div>
+              <ul>
+                {warnings.map(w => <li key={w}>{w}</li>)}
+              </ul>
+            </div>
+          )}
+
           {personDiff.length > 0 && (
             <div className="diff-block">
               <div className="diff-title">Per person</div>
@@ -1887,8 +1976,8 @@ function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, pers
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onCancel} disabled={submitting}>Back</button>
-          <button className="btn btn-primary" onClick={onConfirm} disabled={submitting}>
-            {submitting ? 'Applying…' : 'Yes, apply'}
+          <button className={`btn ${warnings.length ? 'btn-warning' : 'btn-primary'}`} onClick={onConfirm} disabled={submitting}>
+            {submitting ? 'Applying…' : warnings.length ? 'Apply anyway' : 'Yes, apply'}
           </button>
         </div>
       </div>

@@ -764,6 +764,16 @@ def apply_scheduling_controls():
     return jsonify({"ok": True, "snapshot": snapshot_record, **result})
 
 
+@api_v2.route("/scheduling-controls/snapshots")
+def list_scheduling_snapshots():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+    snaps = SchedulingSnapshot.query.order_by(
+        SchedulingSnapshot.created_at.desc()
+    ).limit(20).all()
+    return jsonify([s.to_dict() for s in snaps])
+
+
 @api_v2.route("/scheduling-controls/undo", methods=["POST"])
 def undo_scheduling_controls():
     if not session.get("manager"):
