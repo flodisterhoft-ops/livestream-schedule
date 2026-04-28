@@ -371,16 +371,8 @@ export default function App() {
   // Calculate months for navigation
   const now = new Date()
   const today = toDateKey(now)
-  const currentYear = now.getFullYear()
   const currentMonth = toMonthKey(now)
-  const maxVisibleMonth = toMonthKey(new Date(now.getFullYear(), now.getMonth() + 3, 1))
-  const currentYearStart = `${currentYear}-01`
   const months = [...new Set(schedule.map(e => e.date.slice(0, 7)))]
-    .filter(m => {
-      const year = Number(m.slice(0, 4))
-      if (year < currentYear) return true
-      return m >= currentYearStart && m <= maxVisibleMonth
-    })
     .sort()
   const nextEventMonth = schedule
     .filter(e => e.date >= today)
