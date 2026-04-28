@@ -293,14 +293,14 @@ def do_action():
         assignment.history = h
 
     if action == "confirm":
-        if not (is_mgr or assignment.person == curr):
+        if not (is_mgr or assignment.person == curr or assignment.cover == curr):
             return jsonify({"error": "Unauthorized"}), 403
         assignment.status = "confirmed"
         push_history()
         db.session.commit()
 
     elif action == "decline":
-        if not (is_mgr or assignment.person == curr):
+        if not (is_mgr or assignment.person == curr or assignment.cover == curr):
             return jsonify({"error": "Unauthorized"}), 403
         assignment.status = "swap_needed"
         push_history()
@@ -335,6 +335,8 @@ def do_action():
                 print(f"Telegram error: {e}")
 
     elif action == "volunteer":
+        if not curr:
+            return jsonify({"error": "Unauthorized"}), 403
         if assignment.person != "Select Helper":
             return jsonify({"error": "Slot already filled"}), 400
         assignment.person = curr
@@ -343,6 +345,10 @@ def do_action():
         db.session.commit()
 
     elif action == "pickup":
+        if not curr or assignment.person == curr or assignment.cover == curr:
+            return jsonify({"error": "Unauthorized"}), 403
+        if assignment.status != "swap_needed":
+            return jsonify({"error": "Shift is not available for pickup"}), 400
         assignment.cover = curr
         assignment.status = "confirmed"
         push_history()
@@ -356,6 +362,8 @@ def do_action():
             print(f"Telegram error: {e}")
 
     elif action == "undo":
+        if not (is_mgr or assignment.person == curr or assignment.cover == curr):
+            return jsonify({"error": "Unauthorized"}), 403
         if assignment.cover:
             assignment.cover = None
             assignment.status = "swap_needed"

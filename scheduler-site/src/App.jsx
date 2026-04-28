@@ -338,9 +338,17 @@ export default function App() {
   const now = new Date()
   const today = toDateKey(now)
   const currentMonth = toMonthKey(now)
-  const months = [...new Set(schedule.map(e => e.date.slice(0, 7)))]
+  const scheduleForUser = user && !isAdmin
+    ? schedule
+        .map(event => ({
+          ...event,
+          assignments: (event.assignments || []).filter(a => a.person === user || a.cover === user),
+        }))
+        .filter(event => event.assignments.length > 0)
+    : schedule
+  const months = [...new Set(scheduleForUser.map(e => e.date.slice(0, 7)))]
     .sort()
-  const nextEventMonth = schedule
+  const nextEventMonth = scheduleForUser
     .filter(e => e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date))[0]?.date.slice(0, 7)
   const defaultMonth = nextEventMonth && months.includes(nextEventMonth)
@@ -350,12 +358,12 @@ export default function App() {
     ? selectedMonth
     : defaultMonth
   const pastMonths = new Set(
-    months.filter(m => !schedule.some(e => e.date.startsWith(m) && e.date >= today))
+    months.filter(m => !scheduleForUser.some(e => e.date.startsWith(m) && e.date >= today))
   )
 
   const filtered = activeMonth
-    ? schedule.filter(e => e.date.startsWith(activeMonth))
-    : schedule
+    ? scheduleForUser.filter(e => e.date.startsWith(activeMonth))
+    : scheduleForUser
   const visibleSchedule = activeMonth === currentMonth
     ? [
         ...filtered.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date)),
