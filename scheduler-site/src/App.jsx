@@ -2909,6 +2909,10 @@ function SuggestModal({ defaultName, onClose, onSubmitted, showFlash }) {
         </div>
 
         <div className="modal-body">
+          <p className="modal-help">
+            Suggest a livestream event if you know the date and time.
+          </p>
+
           {!lockedName && (
             <label className="modal-field">
               <span className="modal-label">Your name</span>
