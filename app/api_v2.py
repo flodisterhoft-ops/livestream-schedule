@@ -755,6 +755,107 @@ def update_team_member(member_id):
     return jsonify(member.to_dict())
 
 
+@api_v2.route("/team/apply-role-settings", methods=["POST"])
+def apply_team_role_settings():
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    data = request.json or {}
+    members = data.get("members", [])
+    removed_ids = set(data.get("removed_ids", []))
+    if not isinstance(members, list):
+        return jsonify({"error": "members must be a list"}), 400
+
+    created = []
+    updated = 0
+    removed = []
+    preference_or_cap_changed = False
+
+    try:
+        existing = {
+            member.id: member
+            for member in TeamMember.query.all()
+        }
+        existing_by_name = {
+            member.name.lower(): member
+            for member in TeamMember.query.all()
+        }
+
+        for member_id in removed_ids:
+            member = existing.get(int(member_id))
+            if member:
+                removed.append(member.name)
+                db.session.delete(member)
+
+        for item in members:
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            item_id = item.get("id")
+            sunday_roles = item.get("sunday_roles", [])
+            friday_roles = item.get("friday_roles", [])
+            role_preferences = item.get("role_preferences", {})
+            caps = item.get("caps")
+            if isinstance(caps, dict):
+                role_preferences = {**role_preferences, "_caps": caps}
+
+            member = None
+            if item_id and not str(item_id).startswith("new-"):
+                member = existing.get(int(item_id))
+            if not member:
+                member = existing_by_name.get(name.lower())
+            if member and member.id in removed_ids:
+                continue
+
+            if member:
+                if member.role_preferences != role_preferences:
+                    preference_or_cap_changed = True
+                member.name = name
+                member.sunday_roles = sunday_roles
+                member.friday_roles = friday_roles
+                member.role_preferences = role_preferences
+                member.active = item.get("active", True)
+                if "telegram_user_id" in item:
+                    member.telegram_user_id = item.get("telegram_user_id")
+                if "active_from" in item:
+                    member.active_from = datetime.date.fromisoformat(item["active_from"]) if item.get("active_from") else None
+                updated += 1
+            else:
+                member = TeamMember(name=name)
+                member.sunday_roles = sunday_roles
+                member.friday_roles = friday_roles
+                member.role_preferences = role_preferences
+                member.telegram_user_id = item.get("telegram_user_id")
+                member.active = item.get("active", True)
+                active_from = item.get("active_from")
+                member.active_from = datetime.date.fromisoformat(active_from) if active_from else vancouver_today()
+                db.session.add(member)
+                created.append(name)
+
+        db.session.flush()
+
+        from .scheduler_v2 import repair_future_assignments_for_roster
+        repair_result = repair_future_assignments_for_roster(
+            start_date=vancouver_today(),
+            refill_pending=bool(created or preference_or_cap_changed),
+        )
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({
+        "ok": True,
+        "created": created,
+        "updated": updated,
+        "removed": removed,
+        **repair_result,
+    })
+
+
 @api_v2.route("/team/<int:member_id>", methods=["DELETE"])
 def delete_team_member(member_id):
     """Remove a team member."""

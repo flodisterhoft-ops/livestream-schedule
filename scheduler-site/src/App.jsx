@@ -588,9 +588,11 @@ export default function App() {
         <RoleSettingsModal
           team={team}
           onClose={() => setShowRoleSettings(false)}
-          onSaved={() => {
+          onSaved={(result) => {
             loadTeam()
-            showFlash('User role settings saved')
+            loadSchedule()
+            const changed = result?.future_assignments_replaced || 0
+            showFlash(changed ? `User role settings saved — ${changed} future assignments updated` : 'User role settings saved')
           }}
           showFlash={showFlash}
         />
@@ -1443,17 +1445,23 @@ function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember, onYear
 }
 
 const ROLE_SETTING_DEFS = [
-  { key: 'Sunday:Computer', dayType: 'Sunday', role: 'Computer', label: 'S\uD83D\uDDA5\uFE0F' },
-  { key: 'Sunday:Camera 1', dayType: 'Sunday', role: 'Camera 1', label: 'S\uD83C\uDFA51' },
-  { key: 'Sunday:Camera 2', dayType: 'Sunday', role: 'Camera 2', label: 'S\uD83C\uDFA52' },
-  { key: 'Friday:Computer', dayType: 'Friday', role: 'Computer', label: 'F\uD83D\uDDA5\uFE0F' },
-  { key: 'Friday:Camera', dayType: 'Friday', role: 'Camera', label: 'F\uD83C\uDFA5' },
+  { key: 'Sunday:Computer', dayType: 'Sunday', role: 'Computer', label: 'Sunday Computer' },
+  { key: 'Sunday:Camera 1', dayType: 'Sunday', role: 'Camera 1', label: 'Sunday Camera 1' },
+  { key: 'Sunday:Camera 2', dayType: 'Sunday', role: 'Camera 2', label: 'Sunday Camera 2' },
+  { key: 'Friday:Computer', dayType: 'Friday', role: 'Computer', label: 'Friday Computer' },
+  { key: 'Friday:Camera', dayType: 'Friday', role: 'Camera', label: 'Friday Camera' },
 ]
 
 const ROLE_PREFERENCE_OPTIONS = [
   { value: 'less', label: 'Less' },
   { value: 'normal', label: 'Normal' },
   { value: 'more', label: 'More' },
+]
+
+const ROLE_CAP_DEFS = [
+  { key: 'sunday_per_month', label: 'Sunday shifts per month' },
+  { key: 'friday_per_month', label: 'Friday shifts per month' },
+  { key: 'total_per_month', label: 'Total shifts per month' },
 ]
 
 const defaultCapsForMember = (member) => ({
@@ -1464,6 +1472,7 @@ const defaultCapsForMember = (member) => ({
 
 const cloneMemberSettings = (member) => {
   const preferences = { ...(member.role_preferences || {}) }
+  delete preferences._caps
   return {
     ...member,
     sunday_roles: [...(member.sunday_roles || [])],
@@ -1471,14 +1480,33 @@ const cloneMemberSettings = (member) => {
     role_preferences: preferences,
     caps: {
       ...defaultCapsForMember(member),
-      ...(preferences._caps || {}),
+      ...((member.role_preferences || {})._caps || {}),
     },
+  }
+}
+
+const newMemberSettings = () => {
+  const id = `new-${Date.now()}`
+  const member = {
+    id,
+    name: '',
+    sunday_roles: ['Computer', 'Camera 1', 'Camera 2'],
+    friday_roles: ['Computer', 'Camera'],
+    role_preferences: {},
+    active: true,
+  }
+  return {
+    ...member,
+    caps: defaultCapsForMember(member),
   }
 }
 
 function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
   const overlayRef = useRef(null)
-  const [members, setMembers] = useState(() => team.filter(m => m.id).map(cloneMemberSettings))
+  const initialMembers = useMemo(() => team.filter(m => m.id).map(cloneMemberSettings), [team])
+  const [members, setMembers] = useState(() => initialMembers)
+  const [removedIds, setRemovedIds] = useState(() => new Set())
+  const [expandedId, setExpandedId] = useState(() => initialMembers[0]?.id || null)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -1487,8 +1515,14 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const visibleMembers = members.filter(member => !removedIds.has(member.id))
+
   const updateMember = (id, updater) => {
     setMembers(prev => prev.map(member => member.id === id ? updater(member) : member))
+  }
+
+  const setName = (member, name) => {
+    updateMember(member.id, current => ({ ...current, name }))
   }
 
   const toggleRole = (member, dayType, role) => {
@@ -1522,24 +1556,49 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
     }))
   }
 
+  const addUser = () => {
+    const member = newMemberSettings()
+    setMembers(prev => [...prev, member])
+    setExpandedId(member.id)
+  }
+
+  const removeUser = (member) => {
+    if (String(member.id).startsWith('new-')) {
+      setMembers(prev => prev.filter(item => item.id !== member.id))
+    } else {
+      setRemovedIds(prev => new Set([...prev, member.id]))
+    }
+    if (expandedId === member.id) setExpandedId(null)
+  }
+
   const save = async () => {
+    const invalid = visibleMembers.find(member => !member.name.trim())
+    if (invalid) {
+      showFlash('Every visible user needs a name', 'error')
+      setExpandedId(invalid.id)
+      return
+    }
+
     setSubmitting(true)
     try {
-      await Promise.all(members.map(member => {
-        const rolePreferences = {
-          ...(member.role_preferences || {}),
-          _caps: member.caps,
-        }
-        return api(`/team/${member.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({
+      const result = await api('/team/apply-role-settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          removed_ids: [...removedIds].filter(id => !String(id).startsWith('new-')),
+          members: visibleMembers.map(member => ({
+            id: member.id,
+            name: member.name.trim(),
             sunday_roles: member.sunday_roles,
             friday_roles: member.friday_roles,
-            role_preferences: rolePreferences,
-          }),
-        })
-      }))
-      onSaved()
+            role_preferences: member.role_preferences,
+            caps: member.caps,
+            active: member.active !== false,
+            telegram_user_id: member.telegram_user_id,
+            active_from: member.active_from,
+          })),
+        }),
+      })
+      onSaved(result)
       onClose()
     } catch (e) {
       showFlash(e.message, 'error')
@@ -1561,65 +1620,101 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
         <div className="modal-header">
           <div>
             <h2>User Role Settings</h2>
-            <p className="modal-subtitle">Eligibility, role preference, and monthly caps used for future generated schedules.</p>
+            <p className="modal-subtitle">Expand a user to edit roles, preferences, and caps. Save refills only future schedule slots that need to change.</p>
           </div>
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
         </div>
-        <div className="modal-body role-settings-body">
-          {members.map(member => (
-            <div key={member.id} className="role-settings-member">
-              <div className="role-settings-member-head">
-                <span className="team-avatar small">{member.name[0]}</span>
-                <strong>{member.name}</strong>
-              </div>
-              <div className="role-settings-grid">
-                {ROLE_SETTING_DEFS.map(def => {
-                  const field = def.dayType === 'Sunday' ? 'sunday_roles' : 'friday_roles'
-                  const selected = member[field].includes(def.role)
-                  const value = member.role_preferences?.[def.key] || 'normal'
-                  return (
-                    <div key={def.key} className={`role-setting-cell ${selected ? 'selected' : ''}`}>
-                      <label className="role-setting-toggle">
-                        <input type="checkbox" checked={selected} onChange={() => toggleRole(member, def.dayType, def.role)} />
-                        <span>{def.label}</span>
+        <div className="modal-body role-settings-body compact">
+          <div className="role-settings-list">
+            {visibleMembers.map(member => {
+              const expanded = expandedId === member.id
+              const roleCount = (member.sunday_roles?.length || 0) + (member.friday_roles?.length || 0)
+              return (
+                <div key={member.id} className={`role-settings-member compact ${expanded ? 'expanded' : ''}`}>
+                  <button type="button" className="role-settings-member-summary" onClick={() => setExpandedId(expanded ? null : member.id)}>
+                    <span className="team-avatar small">{(member.name || '?')[0]}</span>
+                    <strong>{member.name || 'New user'}</strong>
+                    <span className="role-settings-summary-meta">{roleCount} roles</span>
+                    <span className="role-settings-chevron">{expanded ? '\u25B2' : '\u25BC'}</span>
+                  </button>
+
+                  {expanded && (
+                    <div className="role-settings-panel">
+                      <label className="modal-field compact-name-field">
+                        <span className="modal-label">Name</span>
+                        <input
+                          type="text"
+                          value={member.name}
+                          onChange={e => setName(member, e.target.value)}
+                          className="modal-input"
+                          placeholder="Team member name"
+                        />
                       </label>
-                      <div className="segmented preference-segmented mini">
-                        {ROLE_PREFERENCE_OPTIONS.map(opt => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            className={`segment ${value === opt.value ? 'active' : ''}`}
-                            onClick={() => setPreference(member, def.key, opt.value)}
-                            disabled={!selected}
-                          >
-                            {opt.label}
-                          </button>
+
+                      <div className="role-settings-rows">
+                        {ROLE_SETTING_DEFS.map(def => {
+                          const field = def.dayType === 'Sunday' ? 'sunday_roles' : 'friday_roles'
+                          const selected = member[field].includes(def.role)
+                          const value = member.role_preferences?.[def.key] || 'normal'
+                          return (
+                            <div key={def.key} className={`role-setting-row ${selected ? 'selected' : ''}`}>
+                              <label className="role-setting-name">
+                                <input type="checkbox" checked={selected} onChange={() => toggleRole(member, def.dayType, def.role)} />
+                                <span>{def.label}</span>
+                              </label>
+                              <div className="segmented preference-segmented inline">
+                                {ROLE_PREFERENCE_OPTIONS.map(opt => (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    className={`segment ${value === opt.value ? 'active' : ''}`}
+                                    onClick={() => setPreference(member, def.key, opt.value)}
+                                    disabled={!selected}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <div className="role-settings-caps">
+                        <span className="modal-label">Monthly caps</span>
+                        {ROLE_CAP_DEFS.map(def => (
+                          <div key={def.key} className="cap-control expanded">
+                            <span>{def.label}</span>
+                            <button type="button" onClick={() => setCap(member, def.key, -1)} disabled={(member.caps?.[def.key] || 0) <= 0}>-</button>
+                            <strong>{member.caps?.[def.key] ?? 0}</strong>
+                            <button type="button" onClick={() => setCap(member, def.key, 1)}>+</button>
+                          </div>
                         ))}
                       </div>
+
+                      <button type="button" className="btn btn-danger btn-sm remove-user-inline" onClick={() => removeUser(member)}>
+                        Remove user from future schedule
+                      </button>
                     </div>
-                  )
-                })}
-              </div>
-              <div className="cap-row">
-                <span className="modal-label">Monthly caps</span>
-                {[
-                  ['sunday_per_month', 'S/mo'],
-                  ['friday_per_month', 'F/mo'],
-                  ['total_per_month', 'Total/mo'],
-                ].map(([key, label]) => (
-                  <div key={key} className="cap-control">
-                    <span>{label}</span>
-                    <button type="button" onClick={() => setCap(member, key, -1)} disabled={(member.caps?.[key] || 0) <= 0}>-</button>
-                    <strong>{member.caps?.[key] ?? 0}</strong>
-                    <button type="button" onClick={() => setCap(member, key, 1)}>+</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <button type="button" className="action-choice compact add-user-row" onClick={addUser}>
+            <span className="action-choice-icon">+</span>
+            <span>
+              <strong>Add new user</strong>
+              <small>Add roles, preferences, and caps here before saving.</small>
+            </span>
+          </button>
         </div>
         <div className="modal-footer">
-          <span className="footer-hint">Uncheck a role to exclude that person from it.</span>
+          <span className="footer-hint">
+            {removedIds.size ? `${removedIds.size} user${removedIds.size === 1 ? '' : 's'} marked for removal. ` : ''}
+            Save updates future assignments while preserving confirmed/locked valid shifts.
+          </span>
           <div className="footer-actions">
             <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
             <button className="btn btn-primary" onClick={save} disabled={submitting}>{submitting ? 'Saving…' : 'Save settings'}</button>
