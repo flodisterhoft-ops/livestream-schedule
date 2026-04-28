@@ -64,6 +64,8 @@ EXTRA_SHIFT_PRIORITY = {
     "Marvin": 2,
 }
 
+EXTRA_SHIFT_ANNUAL_BONUS = 1.0
+
 
 def _default_friday_roles(name, roles):
     if "Computer" in roles or "Camera" in roles:
@@ -132,7 +134,15 @@ def _monthly_total_target(name, date_obj, roster):
             return florian_target
         remaining = [person for person in active_names if person != "Florian"]
         if remaining:
-            return (total_slots - florian_target) / len(remaining)
+            base_target = (total_slots - florian_target) / len(remaining)
+            priority_names = [person for person in remaining if person in EXTRA_SHIFT_PRIORITY]
+            normal_names = [person for person in remaining if person not in EXTRA_SHIFT_PRIORITY]
+            monthly_bonus = EXTRA_SHIFT_ANNUAL_BONUS / 12.0
+            if name in priority_names:
+                return base_target + monthly_bonus
+            if normal_names:
+                return base_target - ((monthly_bonus * len(priority_names)) / len(normal_names))
+            return base_target
     return total_slots / len(active_names)
 
 
@@ -317,12 +327,12 @@ def _schedule_priority(name, role, day_type, role_tracking, overall, roster, dat
 
     return (
         round(_month_counts(name, date_obj.year, date_obj.month, overall)["total"] - _monthly_total_target(name, date_obj, roster), 8),
-        _extra_shift_rank(name),
         deficit,                    # Primary: fairness deficit
         -days_since,                # Secondary: prefer longer gap (negative = lower)
         _week_of_month(date_obj),   # Tertiary: rotate season/week placement over years
         ov.get("lifetime", 0),      # Tertiary: fewer lifetime assignments
         ov.get("total", 0),         # Quaternary: fewer total assignments
+        _extra_shift_rank(name),
     )
 
 
