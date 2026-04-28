@@ -160,14 +160,14 @@ body {
 .manager-control-stack {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
   align-items: center;
 }
 
 .schedule-controls-btn {
   width: 46px;
-  height: 26px;
-  border-radius: var(--radius-sm);
+  height: 46px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-card);
   color: var(--text-secondary);
@@ -175,17 +175,35 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 1rem;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  font-size: 1.25rem;
+  line-height: 1;
+  animation: gearDrop 0.34s cubic-bezier(.2,.8,.2,1) both;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.2s ease, color 0.18s ease;
 }
 
 .schedule-controls-btn:hover {
   background: var(--accent-light);
   border-color: var(--accent);
+  color: var(--accent);
+}
+
+.schedule-controls-btn:hover .schedule-controls-icon {
+  transform: rotate(60deg);
 }
 
 .schedule-controls-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.94);
+}
+
+.schedule-controls-icon {
+  display: inline-block;
+  transition: transform 0.45s cubic-bezier(.2,.8,.2,1);
+}
+
+@keyframes gearDrop {
+  0% { opacity: 0; transform: translateY(-14px) scale(0.55) rotate(-90deg); }
+  55% { opacity: 1; transform: translateY(3px) scale(1.06) rotate(10deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
 }
 
 .user-chip {
@@ -1726,6 +1744,121 @@ body {
 
 .scheduling-card {
   max-width: 760px;
+}
+
+.modal-subtitle {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.modal-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.control-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.balance-status {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.balance-status.balanced {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.balance-status.unbalanced {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.control-th-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.role-delta {
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.role-delta.ok { color: var(--success); }
+.role-delta.over { color: var(--danger); }
+.role-delta.under { color: var(--warning); }
+
+.role-delta em {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.person-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.team-avatar.small {
+  width: 24px;
+  height: 24px;
+  font-size: 0.78rem;
+}
+
+.target-control.has-value {
+  background: var(--accent-light);
+  border-radius: var(--radius-pill);
+  padding: 0 4px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.footer-hint {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.footer-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.confirm-overlay {
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.confirm-card {
+  max-width: 420px;
 }
 
 .schedule-control-table-wrap {

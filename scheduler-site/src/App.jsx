@@ -416,12 +416,13 @@ export default function App() {
               </button>
               {isManager && (
                 <button
+                  key="schedule-controls"
                   className="schedule-controls-btn"
                   onClick={() => setShowSchedulingControls(true)}
                   title="Scheduling Controls"
                   aria-label="Scheduling Controls"
                 >
-                  {'\u2699\uFE0F'}
+                  <span className="schedule-controls-icon">{'\u2699\uFE0F'}</span>
                 </button>
               )}
             </div>
@@ -1518,16 +1519,19 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
   const todayKey = toDateKey(new Date())
   const activeTeam = team.filter(member => member.id && member.active !== false)
   const overlayRef = useRef(null)
-  const [targets, setTargets] = useState(() => buildSchedulingTargets(schedule, activeTeam, todayKey))
+  const initialTargets = useRef(buildSchedulingTargets(schedule, activeTeam, todayKey))
+  const [targets, setTargets] = useState(initialTargets.current)
   const [submitting, setSubmitting] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e) => { if (e.key === 'Escape') { confirming ? setConfirming(false) : onClose() } }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, confirming])
 
   const futureEvents = schedule.filter(event => event.date >= todayKey && ['Sunday', 'Friday'].includes(event.day_type))
+  const futureMonths = new Set(futureEvents.map(event => event.date.slice(0, 7)))
   const slotTotals = CONTROL_ROLES.reduce((acc, role) => {
     acc[role.key] = futureEvents.reduce((total, event) => {
       if (event.day_type !== role.dayType) return total
@@ -1535,6 +1539,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
     }, 0)
     return acc
   }, {})
+  const totalSlots = CONTROL_ROLES.reduce((sum, role) => sum + (slotTotals[role.key] || 0), 0)
 
   const getValue = (roleKey, name) => targets[roleKey]?.[name] || 0
   const roleTotal = (roleKey) => Object.values(targets[roleKey] || {}).reduce((sum, value) => sum + value, 0)
@@ -1543,6 +1548,13 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
     return acc
   }, {})
   const balanced = CONTROL_ROLES.every(role => delta[role.key] === 0)
+  const totalChanges = CONTROL_ROLES.reduce((sum, role) => {
+    return sum + (initialTargets.current[role.key]
+      ? Object.keys(targets[role.key] || {}).reduce((d, name) => {
+          return d + Math.abs((targets[role.key][name] || 0) - (initialTargets.current[role.key][name] || 0))
+        }, 0)
+      : 0)
+  }, 0) / 2
 
   const isEligible = (member, role) => {
     const list = role.dayType === 'Sunday' ? member.sunday_roles || [] : member.friday_roles || []
@@ -1559,8 +1571,38 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
     }))
   }
 
-  const submit = async () => {
+  const resetToCurrent = () => {
+    setTargets(initialTargets.current)
+  }
+
+  const distributeEvenly = () => {
+    setTargets(prev => {
+      const next = { ...prev }
+      CONTROL_ROLES.forEach(role => {
+        const eligibleNames = activeTeam.filter(m => isEligible(m, role)).map(m => m.name)
+        const total = slotTotals[role.key] || 0
+        const baseline = eligibleNames.length ? Math.floor(total / eligibleNames.length) : 0
+        const remainder = eligibleNames.length ? total - baseline * eligibleNames.length : 0
+        const distribution = eligibleNames.reduce((acc, name, idx) => {
+          acc[name] = baseline + (idx < remainder ? 1 : 0)
+          return acc
+        }, {})
+        const fullRow = (next[role.key] && Object.keys(next[role.key])) || []
+        fullRow.forEach(name => {
+          if (!(name in distribution)) distribution[name] = 0
+        })
+        next[role.key] = distribution
+      })
+      return next
+    })
+  }
+
+  const handleApply = async () => {
     if (!balanced) { showFlash('Balance every role before saving', 'error'); return }
+    setConfirming(true)
+  }
+
+  const performApply = async () => {
     setSubmitting(true)
     try {
       const result = await api('/scheduling-controls/apply', {
@@ -1572,6 +1614,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
       showFlash(e.message, 'error')
     } finally {
       setSubmitting(false)
+      setConfirming(false)
     }
   }
 
@@ -1586,49 +1629,79 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
     >
       <div className="modal-card scheduling-card">
         <div className="modal-header">
-          <h2>Scheduling Controls</h2>
+          <div>
+            <h2>Scheduling Controls</h2>
+            <p className="modal-subtitle">
+              Edits balance and apply only to {totalSlots} future regular slots across {futureMonths.size} month{futureMonths.size === 1 ? '' : 's'}. Past events stay untouched.
+            </p>
+          </div>
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
         </div>
+
         <div className="modal-body">
-          <p className="modal-help">
-            Adjust target counts for the generated future schedule. Totals must match before saving.
-          </p>
+          <div className="control-toolbar">
+            <button className="btn btn-ghost btn-sm" onClick={resetToCurrent} type="button">Reset to current</button>
+            <button className="btn btn-outline btn-sm" onClick={distributeEvenly} type="button">Distribute evenly</button>
+            <span className={`balance-status ${balanced ? 'balanced' : 'unbalanced'}`}>
+              {balanced ? 'Balanced' : `${CONTROL_ROLES.filter(r => delta[r.key] !== 0).length} role${CONTROL_ROLES.filter(r => delta[r.key] !== 0).length === 1 ? '' : 's'} need attention`}
+            </span>
+          </div>
+
           <div className="schedule-control-table-wrap">
             <table className="schedule-control-table">
               <thead>
                 <tr>
                   <th>Person</th>
                   {CONTROL_ROLES.map(role => (
-                    <th key={role.key}>{role.label}</th>
+                    <th key={role.key}>
+                      <div className="control-th-stack">
+                        <span>{role.label}</span>
+                        <span className={`role-delta ${delta[role.key] === 0 ? 'ok' : delta[role.key] > 0 ? 'over' : 'under'}`}>
+                          {delta[role.key] === 0
+                            ? `${slotTotals[role.key] || 0}`
+                            : `${roleTotal(role.key)} / ${slotTotals[role.key] || 0}`}
+                          {delta[role.key] !== 0 && (
+                            <em>{delta[role.key] > 0 ? `Remove ${delta[role.key]}` : `Add ${Math.abs(delta[role.key])}`}</em>
+                          )}
+                        </span>
+                      </div>
+                    </th>
                   ))}
                   <th>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {activeTeam.map(member => (
-                  <tr key={member.id}>
-                    <td>{member.name}</td>
-                    {CONTROL_ROLES.map(role => {
-                      const eligible = isEligible(member, role)
-                      return (
-                        <td key={role.key}>
-                          {eligible ? (
-                            <div className="target-control">
-                              <button type="button" onClick={() => updateTarget(role.key, member.name, -1)} disabled={getValue(role.key, member.name) <= 0}>-</button>
-                              <span>{getValue(role.key, member.name)}</span>
-                              <button type="button" onClick={() => updateTarget(role.key, member.name, 1)} disabled={getValue(role.key, member.name) >= (slotTotals[role.key] || 0)}>+</button>
-                            </div>
-                          ) : (
-                            <span className="not-eligible">-</span>
-                          )}
-                        </td>
-                      )
-                    })}
-                    <td className="row-total">
-                      {CONTROL_ROLES.reduce((sum, role) => sum + getValue(role.key, member.name), 0)}
-                    </td>
-                  </tr>
-                ))}
+                {activeTeam.map(member => {
+                  const personTotal = CONTROL_ROLES.reduce((sum, role) => sum + getValue(role.key, member.name), 0)
+                  return (
+                    <tr key={member.id}>
+                      <td>
+                        <div className="person-cell">
+                          <span className="team-avatar small">{member.name[0]}</span>
+                          <span>{member.name}</span>
+                        </div>
+                      </td>
+                      {CONTROL_ROLES.map(role => {
+                        const eligible = isEligible(member, role)
+                        const val = getValue(role.key, member.name)
+                        return (
+                          <td key={role.key}>
+                            {eligible ? (
+                              <div className={`target-control ${val > 0 ? 'has-value' : ''}`}>
+                                <button type="button" onClick={() => updateTarget(role.key, member.name, -1)} disabled={val <= 0} aria-label={`Decrease ${role.label}`}>-</button>
+                                <span>{val}</span>
+                                <button type="button" onClick={() => updateTarget(role.key, member.name, 1)} disabled={val >= (slotTotals[role.key] || 0)} aria-label={`Increase ${role.label}`}>+</button>
+                              </div>
+                            ) : (
+                              <span className="not-eligible" title="Not eligible">-</span>
+                            )}
+                          </td>
+                        )
+                      })}
+                      <td className="row-total">{personTotal}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
               <tfoot>
                 <tr>
@@ -1644,10 +1717,54 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
             </table>
           </div>
         </div>
+
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit} disabled={submitting || !balanced}>
-            {submitting ? 'Applying…' : 'Apply to future schedule'}
+          <span className="footer-hint">{totalChanges > 0 ? `${totalChanges} change${totalChanges === 1 ? '' : 's'}` : 'No changes yet'}</span>
+          <div className="footer-actions">
+            <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleApply} disabled={submitting || !balanced || totalChanges === 0}>
+              {submitting ? 'Applying…' : 'Apply to future schedule'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {confirming && (
+        <ConfirmApplyModal
+          totalSlots={totalSlots}
+          totalChanges={totalChanges}
+          months={futureMonths.size}
+          submitting={submitting}
+          onCancel={() => setConfirming(false)}
+          onConfirm={performApply}
+        />
+      )}
+    </div>
+  )
+}
+
+function ConfirmApplyModal({ totalSlots, totalChanges, months, submitting, onCancel, onConfirm }) {
+  return (
+    <div className="modal-overlay confirm-overlay" role="dialog" aria-modal="true" aria-label="Confirm apply">
+      <div className="modal-card confirm-card">
+        <div className="modal-header">
+          <h2>Apply targets?</h2>
+        </div>
+        <div className="modal-body">
+          <p className="modal-help">
+            This rewrites <strong>{totalSlots}</strong> future regular slots across <strong>{months}</strong> month{months === 1 ? '' : 's'} based on your target distribution.
+          </p>
+          <ul className="modal-list">
+            <li>{totalChanges} planned change{totalChanges === 1 ? '' : 's'} from current distribution.</li>
+            <li>Past events are untouched.</li>
+            <li>Custom events (baptisms, etc.) stay unchanged.</li>
+            <li>Florian gap and cap rules still apply when possible.</li>
+          </ul>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onCancel} disabled={submitting}>Back</button>
+          <button className="btn btn-primary" onClick={onConfirm} disabled={submitting}>
+            {submitting ? 'Applying…' : 'Yes, apply'}
           </button>
         </div>
       </div>
