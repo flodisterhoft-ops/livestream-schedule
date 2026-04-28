@@ -256,6 +256,34 @@ body {
   animation: iconSwap 0.32s cubic-bezier(.2,.8,.2,1) both;
 }
 
+.add-event-btn {
+  width: auto;
+  min-width: 112px;
+  padding: 0 12px;
+  color: var(--accent);
+  border-color: rgba(59, 130, 246, 0.35);
+  background: var(--accent-light);
+}
+
+.manager-btn-label {
+  font-size: 0.76rem;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.1px;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .add-event-btn {
+    min-width: 96px;
+    padding: 0 9px;
+  }
+
+  .manager-btn-label {
+    font-size: 0.68rem;
+  }
+}
+
 @keyframes iconSwap {
   0% { opacity: 0; transform: scale(0.5) rotate(-30deg); }
   60% { opacity: 1; transform: scale(1.12) rotate(6deg); }
@@ -1613,6 +1641,102 @@ body {
   font-size: 0.82rem;
   color: var(--text-secondary);
   white-space: pre-wrap;
+}
+
+.action-choice-card {
+  max-width: 460px;
+}
+
+.action-choice {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+
+.action-choice:hover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.action-choice:active {
+  transform: scale(0.98);
+}
+
+.action-choice-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-light);
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.action-choice strong,
+.action-choice small {
+  display: block;
+}
+
+.action-choice strong {
+  font-size: 0.92rem;
+}
+
+.action-choice small {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.member-role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.member-role-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.member-role-row.selected {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: var(--accent-light);
+}
+
+.member-role-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.member-role-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.preference-segmented {
+  grid-template-columns: repeat(3, 1fr);
+  background: rgba(255, 255, 255, 0.65);
 }
 
 .counter-grid {

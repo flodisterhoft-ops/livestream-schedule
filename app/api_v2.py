@@ -666,8 +666,7 @@ def add_team_member():
     member.active = data.get("active", True)
 
     active_from = data.get("active_from")
-    if active_from:
-        member.active_from = datetime.date.fromisoformat(active_from)
+    member.active_from = datetime.date.fromisoformat(active_from) if active_from else vancouver_today()
 
     db.session.add(member)
     db.session.commit()

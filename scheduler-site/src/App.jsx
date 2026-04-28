@@ -89,6 +89,8 @@ export default function App() {
   const [headerStuck, setHeaderStuck] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [showSuggest, setShowSuggest] = useState(false)
+  const [showAdminAddMenu, setShowAdminAddMenu] = useState(false)
+  const [showAddMember, setShowAddMember] = useState(false)
   const [createPrefill, setCreatePrefill] = useState(null)
   const [pendingSuggestId, setPendingSuggestId] = useState(null)
 
@@ -230,6 +232,26 @@ export default function App() {
     }
   }
 
+  const ensureManager = async () => {
+    if (isManager) return true
+    return toggleManager()
+  }
+
+  const openAdminCreateEvent = async () => {
+    const ok = await ensureManager()
+    if (!ok) return
+    setShowAdminAddMenu(false)
+    setCreatePrefill(null)
+    setShowCreate(true)
+  }
+
+  const openAdminAddMember = async () => {
+    const ok = await ensureManager()
+    if (!ok) return
+    setShowAdminAddMenu(false)
+    setShowAddMember(true)
+  }
+
   // When opened from a Telegram suggestion link, fetch & prefill once auth resolved.
   useEffect(() => {
     if (loading || !pendingSuggestId) return
@@ -351,21 +373,25 @@ export default function App() {
           )}
         </div>
         <div className="header-actions">
-          <button
-            className="manager-btn"
-            onClick={() => {
-              if (isManager) {
-                setCreatePrefill(null)
-                setShowCreate(true)
-              } else {
-                setShowSuggest(true)
-              }
-            }}
-            title={isManager ? 'New event' : 'Suggest a date'}
-            aria-label={isManager ? 'Create event' : 'Suggest a date'}
-          >
-            <span className="manager-btn-icon">{'+'}</span>
-          </button>
+          {isAdmin ? (
+            <button
+              className="manager-btn add-event-btn"
+              onClick={() => setShowAdminAddMenu(true)}
+              title="Add new event or user"
+              aria-label="Add new event or user"
+            >
+              <span className="manager-btn-label">Add New Event</span>
+            </button>
+          ) : (
+            <button
+              className="manager-btn"
+              onClick={() => setShowSuggest(true)}
+              title="Suggest a date"
+              aria-label="Suggest a date"
+            >
+              <span className="manager-btn-icon">{'+'}</span>
+            </button>
+          )}
           {isAdmin && (
             <button
               className={`manager-btn ${isManager ? 'active' : ''}`}
@@ -412,6 +438,23 @@ export default function App() {
             setCreatePrefill(null)
             loadSchedule()
             showFlash('Event created')
+          }}
+          showFlash={showFlash}
+        />
+      )}
+      {showAdminAddMenu && (
+        <AdminAddMenu
+          onClose={() => setShowAdminAddMenu(false)}
+          onAddEvent={openAdminCreateEvent}
+          onAddMember={openAdminAddMember}
+        />
+      )}
+      {showAddMember && (
+        <AddMemberModal
+          onClose={() => setShowAddMember(false)}
+          onCreated={() => {
+            setShowAddMember(false)
+            loadTeam()
           }}
           showFlash={showFlash}
         />
@@ -949,6 +992,7 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
   const [newSundayRoles, setNewSundayRoles] = useState(['Computer', 'Camera 1', 'Camera 2'])
   const [newFridayRoles, setNewFridayRoles] = useState(['Computer', 'Camera'])
   const [newRolePreferences, setNewRolePreferences] = useState({})
+  const todayKey = toDateKey(new Date())
 
   const ALL_SUNDAY_ROLES = ['Computer', 'Camera 1', 'Camera 2']
   const ALL_FRIDAY_ROLES = ['Computer', 'Camera']
@@ -985,6 +1029,7 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
           sunday_roles: newSundayRoles,
           friday_roles: newFridayRoles,
           role_preferences: newRolePreferences,
+          active_from: todayKey,
         }),
       })
       showFlash(`${newName} added to team!`)
@@ -1138,6 +1183,203 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
             )}
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function AdminAddMenu({ onClose, onAddEvent, onAddMember }) {
+  const overlayRef = useRef(null)
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add"
+    >
+      <div className="modal-card action-choice-card">
+        <div className="modal-header">
+          <h2>What do you want to add?</h2>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
+        </div>
+        <div className="modal-body">
+          <button className="action-choice" onClick={onAddEvent}>
+            <span className="action-choice-icon">{'\uD83D\uDCC5'}</span>
+            <span>
+              <strong>Add new event</strong>
+              <small>Create a service, Bible study, baptism, thanksgiving, or custom event.</small>
+            </span>
+          </button>
+          <button className="action-choice" onClick={onAddMember}>
+            <span className="action-choice-icon">{'\uD83D\uDC64'}</span>
+            <span>
+              <strong>Add new user</strong>
+              <small>Add a team member and choose role preferences for fair scheduling.</small>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AddMemberModal({ onClose, onCreated, showFlash }) {
+  const [name, setName] = useState('')
+  const [sundayRoles, setSundayRoles] = useState(['Computer', 'Camera 1', 'Camera 2'])
+  const [fridayRoles, setFridayRoles] = useState(['Computer', 'Camera'])
+  const [rolePreferences, setRolePreferences] = useState({})
+  const [submitting, setSubmitting] = useState(false)
+  const overlayRef = useRef(null)
+  const todayKey = toDateKey(new Date())
+  const sundayRoleOptions = ['Computer', 'Camera 1', 'Camera 2']
+  const fridayRoleOptions = ['Computer', 'Camera']
+  const preferenceOptions = [
+    { value: 'less', label: 'Less' },
+    { value: 'normal', label: 'Medium' },
+    { value: 'more', label: 'More' },
+  ]
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const preferenceKey = (dayType, role) => `${dayType}:${role}`
+
+  const setPreference = (dayType, role, value) => {
+    setRolePreferences(prev => ({
+      ...prev,
+      [preferenceKey(dayType, role)]: value,
+    }))
+  }
+
+  const toggleRole = (role, list, setter) => {
+    if (list.includes(role)) setter(list.filter(r => r !== role))
+    else setter([...list, role])
+  }
+
+  const submit = async () => {
+    if (!name.trim()) { showFlash('Enter a name', 'error'); return }
+    if (sundayRoles.length === 0 && fridayRoles.length === 0) {
+      showFlash('Choose at least one role', 'error')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await api('/team', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: name.trim(),
+          sunday_roles: sundayRoles,
+          friday_roles: fridayRoles,
+          role_preferences: rolePreferences,
+          active_from: todayKey,
+        }),
+      })
+      showFlash(`${name.trim()} added to team!`)
+      onCreated()
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const renderRoleRow = (dayType, role, selected, toggle) => (
+    <div key={`${dayType}:${role}`} className={`member-role-row ${selected ? 'selected' : ''}`}>
+      <label>
+        <input type="checkbox" checked={selected} onChange={toggle} />
+        <span>{ROLE_ICONS[role]} {role}</span>
+      </label>
+      {selected && (
+        <div className="segmented preference-segmented">
+          {preferenceOptions.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`segment ${((rolePreferences[preferenceKey(dayType, role)] || 'normal') === opt.value) ? 'active' : ''}`}
+              onClick={() => setPreference(dayType, role, opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add user"
+    >
+      <div className="modal-card">
+        <div className="modal-header">
+          <h2>Add New User</h2>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
+        </div>
+        <div className="modal-body">
+          <label className="modal-field">
+            <span className="modal-label">Name</span>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="New team member"
+              className="modal-input"
+              autoFocus
+            />
+          </label>
+
+          <div className="modal-field">
+            <span className="modal-label">Sunday roles</span>
+            <div className="member-role-list">
+              {sundayRoleOptions.map(role => renderRoleRow(
+                'Sunday',
+                role,
+                sundayRoles.includes(role),
+                () => toggleRole(role, sundayRoles, setSundayRoles)
+              ))}
+            </div>
+          </div>
+
+          <div className="modal-field">
+            <span className="modal-label">Friday roles</span>
+            <div className="member-role-list">
+              {fridayRoleOptions.map(role => renderRoleRow(
+                'Friday',
+                role,
+                fridayRoles.includes(role),
+                () => toggleRole(role, fridayRoles, setFridayRoles)
+              ))}
+            </div>
+          </div>
+
+          <p className="modal-help">
+            Less, Medium, and More control how strongly the scheduler prefers this person for each role on future generated schedules.
+          </p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={submitting}>
+            {submitting ? 'Adding…' : 'Add user'}
+          </button>
+        </div>
       </div>
     </div>
   )
