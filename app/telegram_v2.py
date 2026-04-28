@@ -674,6 +674,105 @@ def format_monthly_schedule(year, month):
     return "\n".join(lines)
 
 
+def _weekly_schedule_anchor(today=None):
+    today = today or vancouver_today()
+    monday = today - datetime.timedelta(days=today.weekday())
+    sunday = monday + datetime.timedelta(days=6)
+    monday_events = Event.query.filter(Event.date == monday).all()
+    has_monday_event = bool(monday_events)
+    send_date = monday if has_monday_event else monday + datetime.timedelta(days=1)
+    return monday, sunday, send_date
+
+
+def _weekly_schedule_events(today=None):
+    monday, sunday, _send_date = _weekly_schedule_anchor(today)
+    events = Event.query.filter(
+        Event.date >= monday,
+        Event.date <= sunday,
+    ).order_by(Event.date).all()
+    friday = next((event for event in events if event.day_type == "Friday"), None)
+    sunday_event = next((event for event in events if _is_sunday_event(event)), None)
+    extras = [
+        event for event in events
+        if event not in (friday, sunday_event)
+        and event.day_type not in ("Friday", "Sunday")
+    ]
+    return monday, sunday, friday, sunday_event, extras
+
+
+def _assignment_line(assignment, role_label=None):
+    worker = _worker_name(assignment)
+    if not worker or worker in ("TBD", "Select Helper"):
+        worker = "TBD"
+    label = role_label or assignment.role
+    icon = "🎥" if "Camera" in assignment.role else ROLE_EMOJI.get(assignment.role, "👤")
+    return f"{icon} {label}: {worker}"
+
+
+def format_weekly_schedule(today=None):
+    monday, _sunday, friday, sunday_event, extras = _weekly_schedule_events(today)
+    lines = ["📅 <b>Livestream schedule this week</b>", ""]
+
+    for event in extras:
+        lines.append(f"<b>{_event_title(event)} — {event.date.strftime('%A')}</b>")
+        for assignment in event.assignments:
+            lines.append(_assignment_line(assignment))
+        lines.append("")
+
+    lines.append("<b>Friday Bible Study</b>")
+    if friday:
+        for assignment in friday.assignments:
+            lines.append(_assignment_line(assignment))
+    else:
+        lines.append("<i>No Bible Study scheduled.</i>")
+    lines.append("")
+
+    lines.append("<b>Sunday Service</b>")
+    if sunday_event:
+        for assignment in sunday_event.assignments:
+            lines.append(_assignment_line(assignment))
+    else:
+        lines.append("<i>No Sunday Service scheduled.</i>")
+
+    return "\n".join(lines).strip()
+
+
+def _weekly_schedule_already_sent(monday):
+    key = f"weekly_schedule:{monday.isoformat()}"
+    return InteractionLog.query.filter_by(
+        action="weekly_schedule_sent",
+        event_date=monday,
+        details=key,
+    ).first() is not None
+
+
+def send_weekly_schedule(chat_id=None, force=False, today=None):
+    today = today or vancouver_today()
+    monday, sunday, send_date = _weekly_schedule_anchor(today)
+    if not force and today != send_date:
+        return 0
+    if _weekly_schedule_already_sent(monday):
+        return 0
+    events_exist = Event.query.filter(Event.date >= monday, Event.date <= sunday).first() is not None
+    if not events_exist:
+        return 0
+
+    text = format_weekly_schedule(today)
+    buttons = _make_inline_keyboard([[_schedule_button("📅 View Schedule")]])
+    msg_id = send_message(text, chat_id=chat_id or TELEGRAM_CHAT_ID, reply_markup=buttons)
+    if not msg_id:
+        return 0
+
+    db.session.add(InteractionLog(
+        action="weekly_schedule_sent",
+        person_name="group",
+        event_date=monday,
+        details=f"weekly_schedule:{monday.isoformat()}",
+    ))
+    db.session.commit()
+    return 1
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  High-level Actions
 # ═══════════════════════════════════════════════════════════════════
