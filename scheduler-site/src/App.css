@@ -2131,6 +2131,74 @@ body {
   padding-top: 4px;
 }
 
+.lock-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.lock-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.lock-btn:active {
+  transform: scale(0.94);
+}
+
+.lock-btn.on {
+  background: var(--warning-light);
+  color: #b45309;
+  border-color: #f59e0b80;
+}
+
+.assignment-row.pinned {
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.assignment-row.recently-changed {
+  animation: rowFlash 1.6s ease-out;
+}
+
+@keyframes rowFlash {
+  0% { background: rgba(59, 130, 246, 0.18); }
+  100% { background: transparent; }
+}
+
+.preset-item .snapshot-meta {
+  gap: 4px;
+}
+
+.preset-thumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.preset-thumb-chip {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.preset-thumb-chip.muted {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
 @media (max-width: 540px) {
   .scheduling-card .modal-body {
     padding: 12px 14px;

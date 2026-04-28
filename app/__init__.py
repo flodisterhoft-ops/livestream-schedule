@@ -231,6 +231,9 @@ def create_app(config_class='config.Config'):
         if 'telegram_message_id' not in cols:
             db.session.execute(text('ALTER TABLE assignment ADD COLUMN telegram_message_id INTEGER'))
             db.session.commit()
+        if 'locked' not in cols:
+            db.session.execute(text('ALTER TABLE assignment ADD COLUMN locked BOOLEAN DEFAULT 0 NOT NULL'))
+            db.session.commit()
 
         team_member_cols = [c['name'] for c in insp.get_columns('team_member')]
         if '_role_preferences_json' not in team_member_cols:

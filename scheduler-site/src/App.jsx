@@ -33,6 +33,24 @@ const toMonthKey = (date) => {
   return `${year}-${month}`
 }
 
+const timeAgo = (input) => {
+  if (!input) return ''
+  const then = new Date(input).getTime()
+  if (Number.isNaN(then)) return ''
+  const diffSeconds = Math.floor((Date.now() - then) / 1000)
+  if (diffSeconds < 5) return 'just now'
+  if (diffSeconds < 60) return `${diffSeconds}s ago`
+  const minutes = Math.floor(diffSeconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return `${weeks}w ago`
+  return new Date(input).toLocaleDateString()
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  API Helpers
 // ═══════════════════════════════════════════════════════════════
@@ -95,6 +113,7 @@ export default function App() {
   const [showSchedulingControls, setShowSchedulingControls] = useState(false)
   const [createPrefill, setCreatePrefill] = useState(null)
   const [pendingSuggestId, setPendingSuggestId] = useState(null)
+  const [recentlyChanged, setRecentlyChanged] = useState(() => new Set())
 
   useEffect(() => {
     const onScroll = () => setHeaderStuck(window.scrollY > 4)
@@ -472,6 +491,7 @@ export default function App() {
         showFlash={showFlash}
         loadSchedule={loadSchedule}
         team={team}
+        recentlyChanged={recentlyChanged}
       />
 
       {showCreate && (
@@ -524,9 +544,17 @@ export default function App() {
           schedule={schedule}
           team={team}
           onClose={() => setShowSchedulingControls(false)}
-          onApplied={(result) => {
+          onApplied={(result, changedIds) => {
             setShowSchedulingControls(false)
             loadSchedule()
+            if (changedIds && changedIds.length) {
+              const ids = new Set(changedIds)
+              setRecentlyChanged(ids)
+              setTimeout(() => setRecentlyChanged(curr => {
+                if (curr === ids) return new Set()
+                return curr
+              }), 12000)
+            }
             const tbd = result.tbd_assignments || 0
             const locked = result.confirmed_locked || 0
             const lockedNote = locked ? ` · ${locked} locked` : ''
@@ -565,7 +593,7 @@ export default function App() {
 //  Schedule Tab
 // ═══════════════════════════════════════════════════════════════
 
-function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team }) {
+function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, recentlyChanged }) {
   const navRef = useRef(null)
   const [indicator, setIndicator] = useState(null)
   useEffect(() => {
@@ -615,6 +643,19 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
       })
       loadSchedule()
       showFlash('Event updated')
+    } catch (e) {
+      showFlash(e.message, 'error')
+    }
+  }
+
+  const handleToggleLock = async (assignmentId, nextLocked) => {
+    try {
+      await api(`/assignment/${assignmentId}/lock`, {
+        method: 'POST',
+        body: JSON.stringify({ locked: nextLocked }),
+      })
+      loadSchedule()
+      showFlash(nextLocked ? 'Assignment locked' : 'Assignment unlocked')
     } catch (e) {
       showFlash(e.message, 'error')
     }
@@ -703,7 +744,9 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
             onNotify={() => handleNotify(event.date)}
             onAssign={handleAssign}
             onEventUpdate={handleEventUpdate}
+            onToggleLock={handleToggleLock}
             teamNames={teamNames}
+            recentlyChanged={recentlyChanged}
           />
         ))}
       </div>
@@ -715,7 +758,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
 //  Event Card
 // ═══════════════════════════════════════════════════════════════
 
-function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, teamNames }) {
+function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, onToggleLock, teamNames, recentlyChanged }) {
   const [editingEvent, setEditingEvent] = useState(false)
   const [editType, setEditType] = useState(event.day_type === 'Sunday' ? 'Sunday' : event.day_type === 'Friday' ? 'Bible Study' : 'Other')
   const [editTitle, setEditTitle] = useState(event.custom_title || event.title || '')
@@ -844,8 +887,10 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               isManager={isManager}
               doAction={doAction}
               onAssign={onAssign}
+              onToggleLock={onToggleLock}
               teamNames={teamNames}
               isPast={event.is_past}
+              isRecentlyChanged={!!(recentlyChanged && recentlyChanged.has && recentlyChanged.has(a.id))}
             />
           ))}
         </div>
@@ -858,7 +903,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
 //  Assignment Row
 // ═══════════════════════════════════════════════════════════════
 
-function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, teamNames, isPast }) {
+function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, onToggleLock, teamNames, isPast, isRecentlyChanged }) {
   const [showNames, setShowNames] = useState(false)
   const [menuPos, setMenuPos] = useState(null)
   const triggerRef = useRef(null)
@@ -928,7 +973,7 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
     <span className={isConfirmed ? 'person-confirmed' : ''}>{worker}</span>
   )
   return (
-    <div className={`assignment-row ${a.status === 'swap_needed' ? 'swap-needed' : ''} ${isConfirmed ? 'confirmed' : ''} ${isMe ? 'is-me' : ''}`}>
+    <div className={`assignment-row ${a.status === 'swap_needed' ? 'swap-needed' : ''} ${isConfirmed ? 'confirmed' : ''} ${isMe ? 'is-me' : ''} ${a.locked ? 'pinned' : ''} ${isRecentlyChanged ? 'recently-changed' : ''}`}>
       <div className="assignment-left">
         <span className={`role-icon ${roleClass}`} aria-hidden="true">{icon}</span>
         {isManager ? (
@@ -978,6 +1023,19 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, tea
       <div className="assignment-right">
         {!isPast && (
           <>
+            {isManager && !isUnassigned && onToggleLock && (
+              <button
+                type="button"
+                className={`lock-btn ${a.locked ? 'on' : ''}`}
+                onClick={() => onToggleLock(a.id, !a.locked)}
+                title={a.locked ? 'Unpin from rebalance' : 'Pin from rebalance'}
+                aria-pressed={!!a.locked}
+                aria-label={a.locked ? 'Unpin assignment' : 'Pin assignment'}
+              >
+                {a.locked ? '\uD83D\uDD12' : '\uD83D\uDD13'}
+              </button>
+            )}
+
             {user && isUnassigned && !isManager && (
               <button className="action-btn volunteer" onClick={() => doAction('volunteer', a.id)}>
                 Volunteer
@@ -1773,7 +1831,8 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
         try { await api('/scheduling-controls/refresh-reminders', { method: 'POST' }) }
         catch (e) { showFlash(`Apply succeeded but reminders failed: ${e.message}`, 'warning') }
       }
-      onApplied(result)
+      const changedIds = (previewChanges || []).map(c => c.assignment_id).filter(Boolean)
+      onApplied(result, changedIds)
     } catch (e) {
       showFlash(e.message, 'error')
     } finally {
@@ -1980,18 +2039,39 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
               <div className="modal-help" style={{ marginTop: 4 }}>No saved presets yet.</div>
             ) : (
               <ul className="snapshot-list">
-                {presets.map(preset => (
-                  <li key={preset.id} className="snapshot-item">
-                    <div className="snapshot-meta">
-                      <strong>{preset.name}</strong>
-                      <span>{preset.created_by ? `by ${preset.created_by} · ` : ''}{preset.created_at ? new Date(preset.created_at).toLocaleDateString() : ''}</span>
-                    </div>
-                    <div className="footer-actions">
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => loadPreset(preset)}>Load</button>
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => deletePreset(preset.id)}>Delete</button>
-                    </div>
-                  </li>
-                ))}
+                {presets.map(preset => {
+                  const peopleTotals = {}
+                  CONTROL_ROLES.forEach(role => {
+                    const counts = preset.targets?.[role.key] || {}
+                    Object.entries(counts).forEach(([n, v]) => {
+                      const num = Number(v) || 0
+                      if (num > 0) peopleTotals[n] = (peopleTotals[n] || 0) + num
+                    })
+                  })
+                  const top = Object.entries(peopleTotals).sort((a, b) => b[1] - a[1]).slice(0, 4)
+                  return (
+                    <li key={preset.id} className="snapshot-item preset-item">
+                      <div className="snapshot-meta">
+                        <strong>{preset.name}</strong>
+                        <span>{preset.created_by ? `by ${preset.created_by} · ` : ''}{timeAgo(preset.created_at)}</span>
+                        {top.length > 0 && (
+                          <div className="preset-thumb">
+                            {top.map(([name, count]) => (
+                              <span key={name} className="preset-thumb-chip">{name} {count}</span>
+                            ))}
+                            {Object.keys(peopleTotals).length > top.length && (
+                              <span className="preset-thumb-chip muted">+{Object.keys(peopleTotals).length - top.length}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="footer-actions">
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => loadPreset(preset)}>Load</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => deletePreset(preset.id)}>Delete</button>
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>
@@ -2013,7 +2093,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
                   <li key={snap.id} className="snapshot-item">
                     <div className="snapshot-meta">
                       <strong>{snap.label || 'apply'}</strong>
-                      <span>{snap.size} change{snap.size === 1 ? '' : 's'} · {new Date(snap.created_at).toLocaleString()}{snap.created_by ? ` · ${snap.created_by}` : ''}</span>
+                      <span>{snap.size} change{snap.size === 1 ? '' : 's'} · {timeAgo(snap.created_at)}{snap.created_by ? ` · ${snap.created_by}` : ''}</span>
                     </div>
                     <button
                       className="btn btn-ghost btn-sm"

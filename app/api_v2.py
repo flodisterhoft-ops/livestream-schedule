@@ -185,6 +185,7 @@ def get_schedule():
                 "cover": a.cover,
                 "swapped_with": a.swapped_with,
                 "history": a.history,
+                "locked": bool(getattr(a, "locked", False)),
             })
 
         title = event.custom_title
@@ -615,6 +616,25 @@ def update_assignment(assignment_id):
         else:
             return jsonify({"error": "Unauthorized"}), 403
 
+    return jsonify(_assignment_to_dict(assignment))
+
+
+@api_v2.route("/assignment/<int:assignment_id>/lock", methods=["POST"])
+def toggle_assignment_lock(assignment_id):
+    """Manager pin: lock or unlock a single assignment from automated rebalancing."""
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    assignment = Assignment.query.get(assignment_id)
+    if not assignment:
+        return jsonify({"error": "Not found"}), 404
+
+    data = request.json or {}
+    new_value = data.get("locked")
+    if new_value is None:
+        new_value = not bool(getattr(assignment, "locked", False))
+    assignment.locked = bool(new_value)
+    db.session.commit()
     return jsonify(_assignment_to_dict(assignment))
 
 
@@ -1180,6 +1200,7 @@ def _assignment_to_dict(assignment):
         "cover": assignment.cover,
         "swapped_with": assignment.swapped_with,
         "history": assignment.history,
+        "locked": bool(getattr(assignment, "locked", False)),
     }
 
 

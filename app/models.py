@@ -88,6 +88,7 @@ class Assignment(db.Model):
     swapped_with = db.Column(db.String(50))
     _history_json = db.Column(db.Text, default="[]")
     telegram_message_id = db.Column(db.Integer)  # Track Telegram msg for edit/delete
+    locked = db.Column(db.Boolean, default=False, nullable=False)  # Manager pin: never auto-replace
 
     @property
     def history(self):

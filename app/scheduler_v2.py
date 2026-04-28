@@ -621,8 +621,8 @@ def rebalance_future_after_member_removal(removed_name, start_date=None):
 
             _increment_expected(pool, pool_role, event.date, role_tracking, roster, exclude=assigned_today, day_type=day_type)
 
-            # Lock: keep confirmed future assignments unless they belong to the removed person
-            if assignment.status == "confirmed" and not references_removed:
+            # Lock: keep confirmed or pinned future assignments unless they belong to the removed person
+            if (assignment.status == "confirmed" or getattr(assignment, "locked", False)) and not references_removed:
                 locked += 1
                 if worker and worker in roster and worker not in ("TBD", "Select Helper"):
                     assigned_today.append(worker)
@@ -696,18 +696,25 @@ def rebalance_future_to_targets(targets, start_date=None, end_date=None, lock_co
     # Pre-decrement remaining for confirmed/locked future assignments so they
     # don't double-spend the user's targeted counts.
     locked_count = 0
-    if lock_confirmed:
-        for event in events:
-            for assignment in event.assignments:
-                if assignment.status != "confirmed":
-                    continue
-                day_type = _assignment_schedule_type(event, assignment.role)
-                pool_role = _assignment_pool_role(day_type, assignment.role)
-                tracking_key = _tracking_role(day_type, pool_role)
-                worker = assignment.cover or assignment.person
-                if worker and worker in remaining.get(tracking_key, {}):
-                    remaining[tracking_key][worker] = max(0, remaining[tracking_key][worker] - 1)
-                locked_count += 1
+
+    def _is_locked(a):
+        if getattr(a, "locked", False):
+            return True
+        if lock_confirmed and a.status == "confirmed":
+            return True
+        return False
+
+    for event in events:
+        for assignment in event.assignments:
+            if not _is_locked(assignment):
+                continue
+            day_type = _assignment_schedule_type(event, assignment.role)
+            pool_role = _assignment_pool_role(day_type, assignment.role)
+            tracking_key = _tracking_role(day_type, pool_role)
+            worker = assignment.cover or assignment.person
+            if worker and worker in remaining.get(tracking_key, {}):
+                remaining[tracking_key][worker] = max(0, remaining[tracking_key][worker] - 1)
+            locked_count += 1
 
     role_tracking, overall = _build_history(roster, end_before=start_date)
     updated = 0
@@ -721,7 +728,7 @@ def rebalance_future_to_targets(targets, start_date=None, end_date=None, lock_co
             pool_role = _assignment_pool_role(day_type, assignment.role)
             tracking_key = _tracking_role(day_type, pool_role)
 
-            if lock_confirmed and assignment.status == "confirmed":
+            if _is_locked(assignment):
                 worker = assignment.cover or assignment.person
                 if worker and worker not in ("TBD", "Select Helper"):
                     assigned_today.append(worker)
