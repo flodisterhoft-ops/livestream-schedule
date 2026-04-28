@@ -1082,7 +1082,12 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, onT
             )}
 
             {a.status === 'confirmed' && (isMe || isManager) && !isUnassigned && (
-              <div className="status-badge confirmed">{'\u2713'}</div>
+              <>
+                <div className="status-badge confirmed" title="Confirmed">{'\u2713'}</div>
+                <button className="action-btn undo" onClick={() => doAction('undo', a.id)}>
+                  Undo
+                </button>
+              </>
             )}
 
             {user && a.status === 'swap_needed' && !isMe && !isUnassigned && (
