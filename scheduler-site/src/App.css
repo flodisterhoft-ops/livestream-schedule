@@ -1970,7 +1970,7 @@ body {
   border-collapse: collapse;
   font-size: 0.68rem;
   line-height: 1.1;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .year-overview-table th,
@@ -1980,8 +1980,7 @@ body {
   border-right: 1px solid var(--border-light);
   text-align: center;
   white-space: nowrap;
-  width: 9%;
-  max-width: 9%;
+  width: 1%;
   overflow: hidden;
 }
 
@@ -1998,18 +1997,18 @@ body {
   text-align: left;
   font-weight: 800;
   z-index: 1;
-  width: 44px;
-  max-width: 44px;
+  width: 1%;
+  max-width: max-content;
   min-width: 0;
-  padding-left: 3px;
-  padding-right: 3px;
+  padding-left: 2px;
+  padding-right: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .year-overview-table th:first-child,
 .year-overview-table td:first-child {
-  width: 44px;
+  width: 1%;
 }
 
 .year-overview-table th:last-child,
