@@ -731,6 +731,7 @@ def repair_future_assignments_for_roster(start_date=None, refill_pending=False):
     replaced = 0
     tbd = 0
     kept = 0
+    snapshot = []
     touched_events = set()
 
     def needs_replacement(assignment, event, assigned_today):
@@ -773,6 +774,15 @@ def repair_future_assignments_for_roster(start_date=None, refill_pending=False):
             if replacement == "TBD":
                 replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
 
+            snapshot.append({
+                "id": assignment.id,
+                "person": assignment.person,
+                "cover": assignment.cover,
+                "status": assignment.status,
+                "swapped_with": assignment.swapped_with,
+                "locked": bool(getattr(assignment, "locked", False)),
+            })
+
             assignment.person = replacement
             assignment.cover = None
             assignment.swapped_with = None
@@ -794,6 +804,7 @@ def repair_future_assignments_for_roster(start_date=None, refill_pending=False):
         "tbd_assignments": tbd,
         "kept_assignments": kept,
         "refill_pending": bool(refill_pending),
+        "snapshot": snapshot,
     }
 
 

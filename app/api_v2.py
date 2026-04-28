@@ -847,6 +847,17 @@ def apply_team_role_settings():
             start_date=vancouver_today(),
             refill_pending=bool(created or preference_or_cap_changed),
         )
+        snapshot = repair_result.pop("snapshot", [])
+        snapshot_record = None
+        if snapshot:
+            snap = SchedulingSnapshot(
+                created_by=session.get("user_name") or "manager",
+                label="team-role-settings",
+            )
+            snap.snapshot = snapshot
+            db.session.add(snap)
+            db.session.flush()
+            snapshot_record = snap.to_dict()
         db.session.commit()
     except ValueError as e:
         db.session.rollback()
@@ -860,6 +871,7 @@ def apply_team_role_settings():
         "created": created,
         "updated": updated,
         "removed": removed,
+        "snapshot": snapshot_record,
         **repair_result,
     })
 
