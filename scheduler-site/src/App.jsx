@@ -1679,7 +1679,12 @@ function YearOverviewModal({ schedule, team, onClose }) {
   const years = [...new Set(schedule.map(event => event.date.slice(0, 4)))].sort()
   const currentYear = String(new Date().getFullYear())
   const [year, setYear] = useState(years.includes(currentYear) ? currentYear : years[years.length - 1])
-  const names = useMemo(() => team.filter(member => member.active !== false).map(member => member.name).sort(), [team])
+  const names = useMemo(() => (
+    team
+      .filter(member => member.active !== false)
+      .map(member => member.name)
+      .sort((a, b) => (a === 'Florian' ? -1 : b === 'Florian' ? 1 : a.localeCompare(b)))
+  ), [team])
   const yearEvents = useMemo(() => schedule.filter(event => event.date.startsWith(year) && ['Sunday', 'Friday'].includes(event.day_type)), [schedule, year])
   const months = useMemo(() => [...new Set(yearEvents.map(event => event.date.slice(0, 7)))].sort(), [yearEvents])
 

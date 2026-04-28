@@ -1968,19 +1968,21 @@ body {
   width: 100%;
   min-width: 0;
   border-collapse: collapse;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   line-height: 1.1;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
 .year-overview-table th,
 .year-overview-table td {
-  padding: 4px 2px;
+  padding: 4px 1px;
   border-bottom: 1px solid var(--border-light);
   border-right: 1px solid var(--border-light);
   text-align: center;
   white-space: nowrap;
-  width: 1%;
+  width: 9%;
+  max-width: 9%;
+  overflow: hidden;
 }
 
 .year-overview-table th:last-child,
@@ -1996,17 +1998,24 @@ body {
   text-align: left;
   font-weight: 800;
   z-index: 1;
-  width: 1%;
-  max-width: max-content;
+  width: 44px;
+  max-width: 44px;
   min-width: 0;
-  padding-left: 5px;
-  padding-right: 5px;
+  padding-left: 3px;
+  padding-right: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.year-overview-table th:first-child {
-  width: 1%;
+.year-overview-table th:first-child,
+.year-overview-table td:first-child {
+  width: 44px;
+}
+
+.year-overview-table th:last-child,
+.year-overview-table td:last-child {
+  background: rgba(15, 23, 42, 0.045);
+  font-weight: 900;
 }
 
 .overview-total-row td {
