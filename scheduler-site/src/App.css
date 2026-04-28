@@ -1598,6 +1598,19 @@ body {
   }
 }
 
+.modal-overlay:has(.year-overview-card),
+.modal-overlay:has(.role-settings-card) {
+  align-items: center;
+  padding: 4px;
+}
+
+@media (min-width: 540px) {
+  .modal-overlay:has(.year-overview-card),
+  .modal-overlay:has(.role-settings-card) {
+    padding: 8px;
+  }
+}
+
 .modal-card {
   width: 100%;
   max-width: 520px;
@@ -1708,10 +1721,18 @@ body {
 
 .year-overview-card,
 .role-settings-card {
-  width: calc(100vw - 8px);
-  max-width: calc(100vw - 8px);
-  height: calc(100vh - 8px);
-  max-height: calc(100vh - 8px);
+  width: 100%;
+  max-width: none;
+  height: calc(100dvh - 8px);
+  max-height: calc(100dvh - 8px);
+}
+
+@media (min-width: 540px) {
+  .year-overview-card,
+  .role-settings-card {
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
 }
 
 .role-settings-body,
