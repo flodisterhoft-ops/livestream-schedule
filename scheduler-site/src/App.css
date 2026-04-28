@@ -157,6 +157,17 @@ body {
   align-items: flex-start;
 }
 
+.header-actions.admin-actions {
+  display: grid;
+  grid-template-columns: 46px 46px;
+  grid-auto-rows: 46px;
+  gap: 8px;
+  position: absolute;
+  top: 14px;
+  right: 0;
+  z-index: 5;
+}
+
 .manager-control-stack {
   display: flex;
   flex-direction: column;

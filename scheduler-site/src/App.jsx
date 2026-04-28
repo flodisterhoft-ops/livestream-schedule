@@ -412,27 +412,33 @@ export default function App() {
               >
                 <span className="manager-btn-icon">{'+'}</span>
               </button>
-              <div className="manager-control-stack">
-                <button
-                  className={`manager-btn ${isManager ? 'active' : ''}`}
-                  onClick={toggleManager}
-                  title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
-                  aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
-                  aria-pressed={isManager}
-                >
-                  <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
-                    {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
-                  </span>
-                </button>
-                <button
-                  className="manager-btn overview-btn"
-                  onClick={openYearOverview}
-                  title="Year overview"
-                  aria-label="Year overview"
-                >
-                  <span className="manager-btn-icon">{'\uD83D\uDCCA'}</span>
-                </button>
-              </div>
+              <button
+                className={`manager-btn ${isManager ? 'active' : ''}`}
+                onClick={toggleManager}
+                title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+                aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+                aria-pressed={isManager}
+              >
+                <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
+                  {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
+                </span>
+              </button>
+              <button
+                className="manager-btn settings-btn"
+                onClick={openRoleSettings}
+                title="Scheduling settings"
+                aria-label="Scheduling settings"
+              >
+                <span className="manager-btn-icon">{'\u2699\uFE0F'}</span>
+              </button>
+              <button
+                className="manager-btn overview-btn"
+                onClick={openYearOverview}
+                title="Year overview"
+                aria-label="Year overview"
+              >
+                <span className="manager-btn-icon">{'\uD83D\uDCCA'}</span>
+              </button>
             </>
           ) : (
             <>
@@ -1316,15 +1322,8 @@ function AdminAddMenu({ onClose, onAddEvent, onYearOverview, onRoleSettings }) {
             </span>
           </button>
           <div className="action-choice-section">
-            <button className="action-choice compact" onClick={onYearOverview}>
-              <span className="action-choice-icon">{'\uD83D\uDCCA'}</span>
-              <span>
-                <strong>Year overview</strong>
-                <small>See 2026 totals by person, role, and month.</small>
-              </span>
-            </button>
             <button className="action-choice compact" onClick={onRoleSettings}>
-              <span className="action-choice-icon">{'\uD83D\uDD27'}</span>
+              <span className="action-choice-icon">{'\u2699\uFE0F'}</span>
               <span>
                 <strong>Scheduling settings</strong>
                 <small>Edit users, role eligibility, preferences, and monthly caps.</small>
