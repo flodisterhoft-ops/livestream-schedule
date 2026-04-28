@@ -1271,7 +1271,7 @@ SUGGESTION_TYPES = {"Baptism", "Thanksgiving", "Samaritan Aid Mission Conference
 def create_suggestion():
     """Anyone can submit a suggestion for a new event."""
     data = request.json or {}
-    name = (data.get("suggester_name") or "").strip()
+    name = (session.get("user_name") or data.get("suggester_name") or "").strip()
     event_type = (data.get("event_type") or "").strip()
     custom_title = (data.get("custom_title") or "").strip() or None
     date_str = (data.get("date") or "").strip()

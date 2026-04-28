@@ -2852,6 +2852,7 @@ function SuggestModal({ defaultName, onClose, onSubmitted, showFlash }) {
   const today = new Date()
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   const [name, setName] = useState(defaultName || '')
+  const lockedName = Boolean(defaultName)
   const [eventType, setEventType] = useState(SUGGEST_TYPES[0])
   const [customTitle, setCustomTitle] = useState('')
   const [date, setDate] = useState(todayKey)
@@ -2867,7 +2868,8 @@ function SuggestModal({ defaultName, onClose, onSubmitted, showFlash }) {
   }, [onClose])
 
   const submit = async () => {
-    if (!name.trim()) { showFlash('Please enter your name', 'error'); return }
+    const suggesterName = (defaultName || name).trim()
+    if (!suggesterName) { showFlash('Please enter your name', 'error'); return }
     if (eventType === 'Other' && !customTitle.trim()) { showFlash('Please enter a title', 'error'); return }
     if (!date) { showFlash('Please pick a date', 'error'); return }
     setSubmitting(true)
@@ -2875,7 +2877,7 @@ function SuggestModal({ defaultName, onClose, onSubmitted, showFlash }) {
       await api('/suggestions', {
         method: 'POST',
         body: JSON.stringify({
-          suggester_name: name.trim(),
+          suggester_name: suggesterName,
           event_type: eventType,
           custom_title: eventType === 'Other' ? customTitle.trim() : null,
           date,
@@ -2911,17 +2913,19 @@ function SuggestModal({ defaultName, onClose, onSubmitted, showFlash }) {
             Suggest a livestream event. The admin will receive a Telegram notification and can turn it into a scheduled event.
           </p>
 
-          <label className="modal-field">
-            <span className="modal-label">Your name</span>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="modal-input"
-              placeholder="Enter your name"
-              autoFocus={!defaultName}
-            />
-          </label>
+          {!lockedName && (
+            <label className="modal-field">
+              <span className="modal-label">Your name</span>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="modal-input"
+                placeholder="Enter your name"
+                autoFocus
+              />
+            </label>
+          )}
 
           <div className="modal-field">
             <span className="modal-label">Type of event</span>
