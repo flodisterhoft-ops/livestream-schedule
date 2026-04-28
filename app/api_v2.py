@@ -1101,6 +1101,36 @@ def telegram_notify():
     return jsonify({"error": "Failed to send"}), 500
 
 
+@api_v2.route("/telegram/refresh-event-message", methods=["POST"])
+def telegram_refresh_event_message():
+    """Refresh an existing Telegram event message (buttons + statuses) for an event."""
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    data = request.json or {}
+    date_str = data.get("date")
+    if date_str:
+        try:
+            d = datetime.date.fromisoformat(date_str)
+        except ValueError:
+            return jsonify({"error": "Invalid date"}), 400
+        event = Event.query.filter_by(date=d).first()
+        if not event:
+            return jsonify({"error": "Event not found"}), 404
+    else:
+        event = (
+            Event.query
+            .filter(Event.telegram_message_id.isnot(None))
+            .order_by(Event.date.desc())
+            .first()
+        )
+        if not event:
+            return jsonify({"error": "No event message found to refresh"}), 404
+
+    tg.refresh_event_telegram(event)
+    return jsonify({"ok": True, "date": event.date.isoformat(), "message_id": event.telegram_message_id})
+
+
 @api_v2.route("/telegram/setup-webhook", methods=["POST"])
 def setup_webhook():
     """Set up the Telegram webhook."""
