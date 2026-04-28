@@ -1660,9 +1660,19 @@ body {
   max-width: 920px;
 }
 
+.year-overview-card {
+  width: calc(100vw - 12px);
+  max-width: calc(100vw - 12px);
+}
+
 .role-settings-body,
 .year-overview-body {
   gap: 16px;
+}
+
+.year-overview-body {
+  padding: 10px;
+  gap: 10px;
 }
 
 .role-settings-body.compact {
@@ -1956,16 +1966,20 @@ body {
 
 .year-overview-table {
   width: 100%;
-  min-width: 700px;
+  min-width: 0;
   border-collapse: collapse;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  table-layout: auto;
 }
 
 .year-overview-table th,
 .year-overview-table td {
-  padding: 8px 8px;
+  padding: 4px 3px;
   border-bottom: 1px solid var(--border-light);
   text-align: center;
+  white-space: nowrap;
+  width: 1%;
 }
 
 .year-overview-table th:first-child,
@@ -1976,6 +1990,11 @@ body {
   text-align: left;
   font-weight: 800;
   z-index: 1;
+  width: 64px;
+  max-width: 74px;
+  min-width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .overview-total-row td {
