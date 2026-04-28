@@ -21,10 +21,10 @@ from .utils import vancouver_today, is_available
 SUNDAY_CAP_PER_MONTH = 2          # Max Sunday assignments per person per month
 FRIDAY_LEADER_CAP_PER_MONTH = 2   # Max Friday leader assignments per month
 MONTH_TOTAL_CAP = 4               # Max total assignments per person per month
-FLORIAN_MONTH_TOTAL_CAP = 2
+FLORIAN_MONTH_TOTAL_CAP = 3
 SUNDAY_MIN_GAP_DAYS = 8           # Min days between consecutive Sundays
-SERVICE_MIN_GAP_DAYS = 3
-FRIDAY_MIN_GAP_DAYS = 8
+SERVICE_MIN_GAP_DAYS = 0
+FRIDAY_MIN_GAP_DAYS = 0
 
 
 # ── Team configuration (default, used when TeamMember table is empty) ────
@@ -40,7 +40,7 @@ DEFAULT_ROSTER = {
 
 # Florian-specific caps
 FLORIAN_SUNDAY_CAP = 1
-FLORIAN_FRIDAY_CAP = 1   # Max 2 Fridays/month with a gap between assignments
+FLORIAN_FRIDAY_CAP = 2   # Max 2 Fridays/month with a gap between assignments
 
 ROLE_PREFERENCE_WEIGHTS = {
     "less": 1.0,
@@ -52,10 +52,16 @@ DEFAULT_ROLE_PREFERENCES = {
     "Florian": {"Sunday:Computer": "more", "Friday:Computer": "more"},
     "Andy": {"Sunday:Computer": "less", "Sunday:Camera 1": "more", "Sunday:Camera 2": "normal"},
     "Marvin": {"Sunday:Computer": "more", "Sunday:Camera 1": "less", "Sunday:Camera 2": "less", "Friday:Computer": "more"},
-    "Patric": {"Sunday:Computer": "less", "Sunday:Camera 1": "more", "Sunday:Camera 2": "normal"},
+    "Patric": {"Sunday:Computer": "less", "Sunday:Camera 1": "more", "Sunday:Camera 2": "normal", "Friday:Computer": "less", "Friday:Camera": "more"},
     "Rene": {"Sunday:Computer": "more", "Sunday:Camera 1": "less", "Sunday:Camera 2": "less", "Friday:Computer": "more"},
     "Stefan": {"Sunday:Computer": "more", "Sunday:Camera 1": "less", "Sunday:Camera 2": "less", "Friday:Computer": "more"},
     "Viktor": {"Sunday:Camera 2": "more", "Friday:Camera": "normal"},
+}
+
+EXTRA_SHIFT_PRIORITY = {
+    "Rene": 0,
+    "Stefan": 1,
+    "Marvin": 2,
 }
 
 
@@ -94,6 +100,44 @@ def _role_weight(name, day_type, role, roster):
     preferences = roster.get(name, {}).get("role_preferences", {})
     level = preferences.get(_tracking_role(day_type, role), preferences.get(role, "normal"))
     return ROLE_PREFERENCE_WEIGHTS.get(level, ROLE_PREFERENCE_WEIGHTS["normal"])
+
+
+def _month_slot_count(year, month):
+    days = calendar.monthrange(year, month)[1]
+    total = 0
+    for day in range(1, days + 1):
+        weekday = datetime.date(year, month, day).weekday()
+        if weekday == 6:
+            total += 3
+        elif weekday == 4:
+            total += 2
+    return total
+
+
+def _monthly_total_target(name, date_obj, roster):
+    days = calendar.monthrange(date_obj.year, date_obj.month)[1]
+    month_end = datetime.date(date_obj.year, date_obj.month, days)
+    active_names = [
+        person
+        for person, config in roster.items()
+        if (config.get("sunday_roles") or config.get("friday_roles"))
+        and _person_is_active(person, month_end, roster)
+    ]
+    if not active_names:
+        return 0.0
+    total_slots = _month_slot_count(date_obj.year, date_obj.month)
+    if "Florian" in active_names:
+        florian_target = min(2.0, float(total_slots))
+        if name == "Florian":
+            return florian_target
+        remaining = [person for person in active_names if person != "Florian"]
+        if remaining:
+            return (total_slots - florian_target) / len(remaining)
+    return total_slots / len(active_names)
+
+
+def _extra_shift_rank(name):
+    return EXTRA_SHIFT_PRIORITY.get(name, len(EXTRA_SHIFT_PRIORITY))
 
 
 def get_roster():
@@ -265,20 +309,6 @@ def _schedule_priority(name, role, day_type, role_tracking, overall, roster, dat
     if name == "Florian" and day_type in ("Sunday", "Friday") and role == "Computer":
         deficit -= 8.0
 
-    preserve_upcoming_sunday = 0
-    if day_type == "Friday":
-        upcoming_sunday = date_obj + datetime.timedelta(days=2)
-        sunday_roles = roster.get(name, {}).get("sunday_roles", [])
-        if (
-            upcoming_sunday.weekday() == 6
-            and sunday_roles
-            and is_available(name, upcoming_sunday)
-            and _person_is_active(name, upcoming_sunday, roster)
-            and _check_sunday_gap(name, upcoming_sunday, overall)
-            and _check_strict_person_caps(name, upcoming_sunday, "Sunday", overall)
-        ):
-            preserve_upcoming_sunday = 1
-
     last_date = ov.get("last_date")
     if last_date:
         days_since = (date_obj - last_date).days
@@ -286,7 +316,8 @@ def _schedule_priority(name, role, day_type, role_tracking, overall, roster, dat
         days_since = 9999  # Never worked = highest priority
 
     return (
-        preserve_upcoming_sunday,      # Prefer Friday workers who are not needed for upcoming Sunday
+        round(_month_counts(name, date_obj.year, date_obj.month, overall)["total"] - _monthly_total_target(name, date_obj, roster), 8),
+        _extra_shift_rank(name),
         deficit,                    # Primary: fairness deficit
         -days_since,                # Secondary: prefer longer gap (negative = lower)
         _week_of_month(date_obj),   # Tertiary: rotate season/week placement over years
@@ -302,26 +333,39 @@ def _month_counts(name, year, month, overall):
     return mc
 
 
-def _check_caps(name, date_obj, day_type, overall):
+def _cap_value(caps, key, fallback):
+    try:
+        value = int(caps.get(key, fallback))
+    except (TypeError, ValueError):
+        value = fallback
+    return max(0, value)
+
+
+def _person_month_caps(name, roster):
+    preferences = roster.get(name, {}).get("role_preferences", {})
+    caps = preferences.get("_caps") if isinstance(preferences, dict) else None
+    if not isinstance(caps, dict):
+        caps = {}
+    return {
+        "custom": bool(caps),
+        "total": _cap_value(caps, "total_per_month", FLORIAN_MONTH_TOTAL_CAP if name == "Florian" else MONTH_TOTAL_CAP),
+        "sun": _cap_value(caps, "sunday_per_month", FLORIAN_SUNDAY_CAP if name == "Florian" else SUNDAY_CAP_PER_MONTH),
+        "fri": _cap_value(caps, "friday_per_month", FLORIAN_FRIDAY_CAP if name == "Florian" else FRIDAY_LEADER_CAP_PER_MONTH),
+    }
+
+def _check_caps(name, date_obj, day_type, overall, roster):
     """Check if person is within monthly caps."""
     mc = _month_counts(name, date_obj.year, date_obj.month, overall)
+    caps = _person_month_caps(name, roster)
 
-    # Total cap
-    total_cap = FLORIAN_MONTH_TOTAL_CAP if name == "Florian" else MONTH_TOTAL_CAP
-    if mc["total"] >= total_cap:
+    if mc["total"] >= caps["total"]:
         return False
 
-    # Sunday cap
-    if day_type == "Sunday":
-        cap = FLORIAN_SUNDAY_CAP if name == "Florian" else SUNDAY_CAP_PER_MONTH
-        if mc["sun"] >= cap:
-            return False
+    if day_type == "Sunday" and mc["sun"] >= caps["sun"]:
+        return False
 
-    # Friday cap
-    if day_type == "Friday":
-        cap = FLORIAN_FRIDAY_CAP if name == "Florian" else FRIDAY_LEADER_CAP_PER_MONTH
-        if mc["fri"] >= cap:
-            return False
+    if day_type == "Friday" and mc["fri"] >= caps["fri"]:
+        return False
 
     return True
 
@@ -336,6 +380,8 @@ def _check_sunday_gap(name, date_obj, overall):
 
 
 def _check_friday_gap(name, date_obj, overall):
+    if FRIDAY_MIN_GAP_DAYS <= 0:
+        return True
     ov = overall.get(name, {})
     last_fri = ov.get("last_fri_date")
     if last_fri and (date_obj - last_fri).days < FRIDAY_MIN_GAP_DAYS:
@@ -344,6 +390,8 @@ def _check_friday_gap(name, date_obj, overall):
 
 
 def _check_service_gap(name, date_obj, overall):
+    if SERVICE_MIN_GAP_DAYS <= 0:
+        return True
     ov = overall.get(name, {})
     last_service = ov.get("last_service_date") or ov.get("last_date")
     if last_service and (date_obj - last_service).days < SERVICE_MIN_GAP_DAYS:
@@ -351,15 +399,16 @@ def _check_service_gap(name, date_obj, overall):
     return True
 
 
-def _check_strict_person_caps(name, date_obj, day_type, overall):
-    if name != "Florian":
+def _check_strict_person_caps(name, date_obj, day_type, overall, roster):
+    caps = _person_month_caps(name, roster)
+    if name != "Florian" and not caps["custom"]:
         return True
     mc = _month_counts(name, date_obj.year, date_obj.month, overall)
-    if mc["total"] >= FLORIAN_MONTH_TOTAL_CAP:
+    if mc["total"] >= caps["total"]:
         return False
-    if day_type == "Sunday" and mc["sun"] >= FLORIAN_SUNDAY_CAP:
+    if day_type == "Sunday" and mc["sun"] >= caps["sun"]:
         return False
-    if day_type == "Friday" and mc["fri"] >= FLORIAN_FRIDAY_CAP:
+    if day_type == "Friday" and mc["fri"] >= caps["fri"]:
         return False
     return True
 
@@ -390,14 +439,14 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
     # Step 2: Apply caps and gap rules
     constrained = [
         p for p in valid
-        if _check_caps(p, date_obj, day_type, overall)
+        if _check_caps(p, date_obj, day_type, overall, roster)
     ]
 
     # Step 3: Relax gap rule if nobody passes
     if not constrained and day_type == "Sunday":
         constrained = [
             p for p in valid
-            if _check_strict_person_caps(p, date_obj, day_type, overall)
+            if _check_strict_person_caps(p, date_obj, day_type, overall, roster)
         ]
 
     # Step 4: If still nobody, relax all caps
@@ -410,7 +459,7 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
             and _check_service_gap(p, date_obj, overall)
             and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
             and (day_type != "Friday" or _check_friday_gap(p, date_obj, overall))
-            and _check_strict_person_caps(p, date_obj, day_type, overall)
+            and _check_strict_person_caps(p, date_obj, day_type, overall, roster)
         ]
     if not constrained:
         return "TBD"
@@ -427,6 +476,9 @@ def _select_relaxed(pool, role, date_obj, day_type, role_tracking, overall, rost
         if p not in exclude
         and is_available(p, date_obj)
         and _person_is_active(p, date_obj, roster)
+        and _check_service_gap(p, date_obj, overall)
+        and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
+        and (day_type != "Friday" or _check_friday_gap(p, date_obj, overall))
     ]
     if not candidates:
         return "TBD"
@@ -618,13 +670,14 @@ def rebalance_future_after_member_removal(removed_name, start_date=None):
                 assignment.person == removed_name
                 or assignment.cover == removed_name
             )
+            is_worker_assigned = worker and worker not in ("TBD", "Select Helper")
 
             _increment_expected(pool, pool_role, event.date, role_tracking, roster, exclude=assigned_today, day_type=day_type)
 
             # Lock: keep confirmed or pinned future assignments unless they belong to the removed person
-            if (assignment.status == "confirmed" or getattr(assignment, "locked", False)) and not references_removed:
+            if (assignment.status == "confirmed" or getattr(assignment, "locked", False)) and not references_removed and is_worker_assigned:
                 locked += 1
-                if worker and worker in roster and worker not in ("TBD", "Select Helper"):
+                if worker in roster:
                     assigned_today.append(worker)
                     _record_assignment(worker, pool_role, event.date, day_type, role_tracking, overall)
                 continue
@@ -646,7 +699,7 @@ def rebalance_future_after_member_removal(removed_name, start_date=None):
                 else:
                     assigned_today.append(replacement)
                     _record_assignment(replacement, pool_role, event.date, day_type, role_tracking, overall)
-            elif worker and worker in roster and worker not in ("TBD", "Select Helper"):
+            elif is_worker_assigned and worker in roster:
                 assigned_today.append(worker)
                 _record_assignment(worker, pool_role, event.date, day_type, role_tracking, overall)
 
@@ -698,6 +751,9 @@ def rebalance_future_to_targets(targets, start_date=None, end_date=None, lock_co
     locked_count = 0
 
     def _is_locked(a):
+        worker = a.cover or a.person
+        if not worker or worker in ("TBD", "Select Helper"):
+            return False
         if getattr(a, "locked", False):
             return True
         if lock_confirmed and a.status == "confirmed":
@@ -712,8 +768,12 @@ def rebalance_future_to_targets(targets, start_date=None, end_date=None, lock_co
             pool_role = _assignment_pool_role(day_type, assignment.role)
             tracking_key = _tracking_role(day_type, pool_role)
             worker = assignment.cover or assignment.person
-            if worker and worker in remaining.get(tracking_key, {}):
-                remaining[tracking_key][worker] = max(0, remaining[tracking_key][worker] - 1)
+            role_remaining = remaining.get(tracking_key, {})
+            if worker not in role_remaining:
+                raise ValueError(f"{worker} has a locked {tracking_key} assignment but no target count")
+            if role_remaining[worker] <= 0:
+                raise ValueError(f"{worker} has more locked {tracking_key} assignments than the target allows")
+            role_remaining[worker] -= 1
             locked_count += 1
 
     role_tracking, overall = _build_history(roster, end_before=start_date)
@@ -751,6 +811,7 @@ def rebalance_future_to_targets(targets, start_date=None, end_date=None, lock_co
                 "cover": assignment.cover,
                 "status": assignment.status,
                 "swapped_with": assignment.swapped_with,
+                "locked": bool(getattr(assignment, "locked", False)),
             })
 
             assignment.person = replacement

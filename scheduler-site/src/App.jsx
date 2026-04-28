@@ -111,6 +111,8 @@ export default function App() {
   const [showAddMember, setShowAddMember] = useState(false)
   const [showRemoveMember, setShowRemoveMember] = useState(false)
   const [showSchedulingControls, setShowSchedulingControls] = useState(false)
+  const [showRoleSettings, setShowRoleSettings] = useState(false)
+  const [showYearOverview, setShowYearOverview] = useState(false)
   const [createPrefill, setCreatePrefill] = useState(null)
   const [pendingSuggestId, setPendingSuggestId] = useState(null)
   const [recentlyChanged, setRecentlyChanged] = useState(() => new Set())
@@ -280,6 +282,27 @@ export default function App() {
     setShowRemoveMember(true)
   }
 
+  const openSchedulingControls = async () => {
+    const ok = await ensureManager()
+    if (!ok) return
+    setShowAdminAddMenu(false)
+    setShowSchedulingControls(true)
+  }
+
+  const openRoleSettings = async () => {
+    const ok = await ensureManager()
+    if (!ok) return
+    setShowAdminAddMenu(false)
+    setShowRoleSettings(true)
+  }
+
+  const openYearOverview = async () => {
+    const ok = await ensureManager()
+    if (!ok) return
+    setShowAdminAddMenu(false)
+    setShowYearOverview(true)
+  }
+
   // When opened from a Telegram suggestion link, fetch & prefill once auth resolved.
   useEffect(() => {
     if (loading || !pendingSuggestId) return
@@ -445,30 +468,17 @@ export default function App() {
             </button>
           )}
           {isAdmin && (
-            <div className="manager-control-stack">
-              <button
-                className={`manager-btn ${isManager ? 'active' : ''}`}
-                onClick={toggleManager}
-                title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
-                aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
-                aria-pressed={isManager}
-              >
-                <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
-                  {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
-                </span>
-              </button>
-              {isManager && (
-                <button
-                  key="schedule-controls"
-                  className="schedule-controls-btn"
-                  onClick={() => setShowSchedulingControls(true)}
-                  title="Scheduling Controls"
-                  aria-label="Scheduling Controls"
-                >
-                  <span className="schedule-controls-icon">{'\u2699\uFE0F'}</span>
-                </button>
-              )}
-            </div>
+            <button
+              className={`manager-btn ${isManager ? 'active' : ''}`}
+              onClick={toggleManager}
+              title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+              aria-label={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
+              aria-pressed={isManager}
+            >
+              <span className="manager-btn-icon" key={isManager ? 'on' : 'off'}>
+                {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
+              </span>
+            </button>
           )}
           {!user && hasSavedAuth && (
             <button className="icon-btn" onClick={restoreSavedLogin} title="Restore Admin">
@@ -514,6 +524,9 @@ export default function App() {
           onAddEvent={openAdminCreateEvent}
           onAddMember={openAdminAddMember}
           onRemoveMember={openAdminRemoveMember}
+          onYearOverview={openYearOverview}
+          onRoleSettings={openRoleSettings}
+          onSchedulingControls={openSchedulingControls}
         />
       )}
       {showAddMember && (
@@ -544,6 +557,11 @@ export default function App() {
           schedule={schedule}
           team={team}
           onClose={() => setShowSchedulingControls(false)}
+          onRestored={(result) => {
+            setShowSchedulingControls(false)
+            loadSchedule()
+            showFlash(`Restored ${result.restored} assignments`)
+          }}
           onApplied={(result, changedIds) => {
             setShowSchedulingControls(false)
             loadSchedule()
@@ -572,6 +590,24 @@ export default function App() {
             }
           }}
           showFlash={showFlash}
+        />
+      )}
+      {showRoleSettings && (
+        <RoleSettingsModal
+          team={team}
+          onClose={() => setShowRoleSettings(false)}
+          onSaved={() => {
+            loadTeam()
+            showFlash('User role settings saved')
+          }}
+          showFlash={showFlash}
+        />
+      )}
+      {showYearOverview && (
+        <YearOverviewModal
+          schedule={schedule}
+          team={team}
+          onClose={() => setShowYearOverview(false)}
         />
       )}
       {showSuggest && (
@@ -1333,7 +1369,7 @@ function TeamTab({ team, isManager, loadTeam, showFlash }) {
   )
 }
 
-function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember }) {
+function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember, onYearOverview, onRoleSettings, onSchedulingControls }) {
   const overlayRef = useRef(null)
 
   useEffect(() => {
@@ -1380,12 +1416,349 @@ function AdminAddMenu({ onClose, onAddEvent, onAddMember, onRemoveMember }) {
               </span>
             </button>
           </div>
+          <div className="action-choice-section">
+            <button className="action-choice compact" onClick={onYearOverview}>
+              <span className="action-choice-icon">{'\uD83D\uDCCA'}</span>
+              <span>
+                <strong>Year overview</strong>
+                <small>See 2026 totals by person, role, and month.</small>
+              </span>
+            </button>
+            <button className="action-choice compact" onClick={onRoleSettings}>
+              <span className="action-choice-icon">{'\uD83E\uDDEE'}</span>
+              <span>
+                <strong>User role settings</strong>
+                <small>Edit role eligibility, preferences, and monthly caps.</small>
+              </span>
+            </button>
+            <button className="action-choice compact" onClick={onSchedulingControls}>
+              <span className="action-choice-icon">{'\u2699\uFE0F'}</span>
+              <span>
+                <strong>Scheduling controls</strong>
+                <small>Preview, rebalance, apply, and undo schedule changes.</small>
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
+const ROLE_SETTING_DEFS = [
+  { key: 'Sunday:Computer', dayType: 'Sunday', role: 'Computer', label: 'S\uD83D\uDDA5\uFE0F' },
+  { key: 'Sunday:Camera 1', dayType: 'Sunday', role: 'Camera 1', label: 'S\uD83C\uDFA51' },
+  { key: 'Sunday:Camera 2', dayType: 'Sunday', role: 'Camera 2', label: 'S\uD83C\uDFA52' },
+  { key: 'Friday:Computer', dayType: 'Friday', role: 'Computer', label: 'F\uD83D\uDDA5\uFE0F' },
+  { key: 'Friday:Camera', dayType: 'Friday', role: 'Camera', label: 'F\uD83C\uDFA5' },
+]
+
+const ROLE_PREFERENCE_OPTIONS = [
+  { value: 'less', label: 'Less' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'more', label: 'More' },
+]
+
+const defaultCapsForMember = (member) => ({
+  sunday_per_month: member.name === 'Florian' ? 1 : 2,
+  friday_per_month: member.name === 'Florian' ? 2 : 2,
+  total_per_month: member.name === 'Florian' ? 3 : 4,
+})
+
+const cloneMemberSettings = (member) => {
+  const preferences = { ...(member.role_preferences || {}) }
+  return {
+    ...member,
+    sunday_roles: [...(member.sunday_roles || [])],
+    friday_roles: [...(member.friday_roles || [])],
+    role_preferences: preferences,
+    caps: {
+      ...defaultCapsForMember(member),
+      ...(preferences._caps || {}),
+    },
+  }
+}
+
+function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
+  const overlayRef = useRef(null)
+  const [members, setMembers] = useState(() => team.filter(m => m.id).map(cloneMemberSettings))
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const updateMember = (id, updater) => {
+    setMembers(prev => prev.map(member => member.id === id ? updater(member) : member))
+  }
+
+  const toggleRole = (member, dayType, role) => {
+    const field = dayType === 'Sunday' ? 'sunday_roles' : 'friday_roles'
+    updateMember(member.id, current => {
+      const selected = current[field].includes(role)
+      return {
+        ...current,
+        [field]: selected ? current[field].filter(r => r !== role) : [...current[field], role],
+      }
+    })
+  }
+
+  const setPreference = (member, key, value) => {
+    updateMember(member.id, current => ({
+      ...current,
+      role_preferences: {
+        ...current.role_preferences,
+        [key]: value,
+      },
+    }))
+  }
+
+  const setCap = (member, key, delta) => {
+    updateMember(member.id, current => ({
+      ...current,
+      caps: {
+        ...current.caps,
+        [key]: Math.max(0, Number(current.caps?.[key] || 0) + delta),
+      },
+    }))
+  }
+
+  const save = async () => {
+    setSubmitting(true)
+    try {
+      await Promise.all(members.map(member => {
+        const rolePreferences = {
+          ...(member.role_preferences || {}),
+          _caps: member.caps,
+        }
+        return api(`/team/${member.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            sunday_roles: member.sunday_roles,
+            friday_roles: member.friday_roles,
+            role_preferences: rolePreferences,
+          }),
+        })
+      }))
+      onSaved()
+      onClose()
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="User role settings"
+    >
+      <div className="modal-card role-settings-card">
+        <div className="modal-header">
+          <div>
+            <h2>User Role Settings</h2>
+            <p className="modal-subtitle">Eligibility, role preference, and monthly caps used for future generated schedules.</p>
+          </div>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
+        </div>
+        <div className="modal-body role-settings-body">
+          {members.map(member => (
+            <div key={member.id} className="role-settings-member">
+              <div className="role-settings-member-head">
+                <span className="team-avatar small">{member.name[0]}</span>
+                <strong>{member.name}</strong>
+              </div>
+              <div className="role-settings-grid">
+                {ROLE_SETTING_DEFS.map(def => {
+                  const field = def.dayType === 'Sunday' ? 'sunday_roles' : 'friday_roles'
+                  const selected = member[field].includes(def.role)
+                  const value = member.role_preferences?.[def.key] || 'normal'
+                  return (
+                    <div key={def.key} className={`role-setting-cell ${selected ? 'selected' : ''}`}>
+                      <label className="role-setting-toggle">
+                        <input type="checkbox" checked={selected} onChange={() => toggleRole(member, def.dayType, def.role)} />
+                        <span>{def.label}</span>
+                      </label>
+                      <div className="segmented preference-segmented mini">
+                        {ROLE_PREFERENCE_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            className={`segment ${value === opt.value ? 'active' : ''}`}
+                            onClick={() => setPreference(member, def.key, opt.value)}
+                            disabled={!selected}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="cap-row">
+                <span className="modal-label">Monthly caps</span>
+                {[
+                  ['sunday_per_month', 'S/mo'],
+                  ['friday_per_month', 'F/mo'],
+                  ['total_per_month', 'Total/mo'],
+                ].map(([key, label]) => (
+                  <div key={key} className="cap-control">
+                    <span>{label}</span>
+                    <button type="button" onClick={() => setCap(member, key, -1)} disabled={(member.caps?.[key] || 0) <= 0}>-</button>
+                    <strong>{member.caps?.[key] ?? 0}</strong>
+                    <button type="button" onClick={() => setCap(member, key, 1)}>+</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="modal-footer">
+          <span className="footer-hint">Uncheck a role to exclude that person from it.</span>
+          <div className="footer-actions">
+            <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+            <button className="btn btn-primary" onClick={save} disabled={submitting}>{submitting ? 'Saving…' : 'Save settings'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const OVERVIEW_ROWS = [
+  { key: 'S\uD83D\uDDA5', label: 'S\uD83D\uDDA5\uFE0F' },
+  { key: 'S\uD83C\uDFA51', label: 'S\uD83C\uDFA51' },
+  { key: 'S\uD83C\uDFA52', label: 'S\uD83C\uDFA52' },
+  { key: 'S\u03A3', label: 'S\u03A3' },
+  { key: 'F\uD83D\uDDA5', label: 'F\uD83D\uDDA5\uFE0F' },
+  { key: 'F\uD83C\uDFA5', label: 'F\uD83C\uDFA5' },
+  { key: 'F\u03A3', label: 'F\u03A3' },
+  { key: '\u03A3', label: '\u03A3' },
+]
+
+const emptyOverviewCounts = (names) => names.reduce((acc, name) => {
+  acc[name] = { 'S\uD83D\uDDA5': 0, 'S\uD83C\uDFA51': 0, 'S\uD83C\uDFA52': 0, 'S\u03A3': 0, 'F\uD83D\uDDA5': 0, 'F\uD83C\uDFA5': 0, 'F\u03A3': 0, '\u03A3': 0 }
+  return acc
+}, {})
+
+const buildOverviewCounts = (events, names) => {
+  const counts = emptyOverviewCounts(names)
+  events.forEach(event => {
+    ;(event.assignments || []).forEach(assignment => {
+      const worker = assignment.cover || assignment.person
+      if (!worker || worker === 'TBD' || worker === 'Select Helper') return
+      if (!counts[worker]) counts[worker] = emptyOverviewCounts([worker])[worker]
+      let key = null
+      if (event.day_type === 'Sunday' && assignment.role === 'Computer') key = 'S\uD83D\uDDA5'
+      if (event.day_type === 'Sunday' && assignment.role === 'Camera 1') key = 'S\uD83C\uDFA51'
+      if (event.day_type === 'Sunday' && assignment.role === 'Camera 2') key = 'S\uD83C\uDFA52'
+      if (event.day_type === 'Friday' && assignment.role === 'Computer') key = 'F\uD83D\uDDA5'
+      if (event.day_type === 'Friday' && assignment.role === 'Camera') key = 'F\uD83C\uDFA5'
+      if (!key) return
+      counts[worker][key] += 1
+      if (key.startsWith('S')) counts[worker]['S\u03A3'] += 1
+      if (key.startsWith('F')) counts[worker]['F\u03A3'] += 1
+      counts[worker]['\u03A3'] += 1
+    })
+  })
+  return counts
+}
+
+function OverviewMatrix({ title, events, names }) {
+  const counts = useMemo(() => buildOverviewCounts(events, names), [events, names])
+  return (
+    <div className="overview-section">
+      <div className="snapshot-panel-title">{title}</div>
+      <div className="year-overview-table-wrap">
+        <table className="year-overview-table">
+          <thead>
+            <tr>
+              <th>Role</th>
+              {names.map(name => <th key={name}>{name}</th>)}
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {OVERVIEW_ROWS.map(row => {
+              const total = names.reduce((sum, name) => sum + (counts[name]?.[row.key] || 0), 0)
+              return (
+                <tr key={row.key} className={row.key.includes('\u03A3') ? 'overview-total-row' : ''}>
+                  <td>{row.label}</td>
+                  {names.map(name => <td key={name}>{counts[name]?.[row.key] || 0}</td>)}
+                  <td>{total}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function YearOverviewModal({ schedule, team, onClose }) {
+  const overlayRef = useRef(null)
+  const years = [...new Set(schedule.map(event => event.date.slice(0, 4)))].sort()
+  const currentYear = String(new Date().getFullYear())
+  const [year, setYear] = useState(years.includes(currentYear) ? currentYear : years[years.length - 1])
+  const names = useMemo(() => team.filter(member => member.active !== false).map(member => member.name).sort(), [team])
+  const yearEvents = useMemo(() => schedule.filter(event => event.date.startsWith(year) && ['Sunday', 'Friday'].includes(event.day_type)), [schedule, year])
+  const months = useMemo(() => [...new Set(yearEvents.map(event => event.date.slice(0, 7)))].sort(), [yearEvents])
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Year overview"
+    >
+      <div className="modal-card year-overview-card">
+        <div className="modal-header">
+          <div>
+            <h2>Year Overview</h2>
+            <p className="modal-subtitle">Full-year totals first, then month-by-month breakdown.</p>
+          </div>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
+        </div>
+        <div className="modal-body year-overview-body">
+          <div className="role-focus-bar" role="tablist" aria-label="Year">
+            {years.map(y => (
+              <button key={y} type="button" className={`role-focus-tab ${year === y ? 'active' : ''}`} onClick={() => setYear(y)}>{y}</button>
+            ))}
+          </div>
+          <OverviewMatrix title={`${year} totals`} events={yearEvents} names={names} />
+          {months.map(month => (
+            <OverviewMatrix
+              key={month}
+              title={new Date(`${month}-15`).toLocaleString('en', { month: 'long', year: 'numeric' })}
+              events={yearEvents.filter(event => event.date.startsWith(month))}
+              names={names}
+            />
+          ))}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 function AddMemberModal({ onClose, onCreated, showFlash }) {
   const [name, setName] = useState('')
   const [sundayRoles, setSundayRoles] = useState(['Computer', 'Camera 1', 'Camera 2'])
@@ -1617,11 +1990,20 @@ const SCOPE_OPTIONS = [
   { value: 'all', label: 'All future' },
 ]
 
-const FLORIAN_CAPS = {
-  'Sunday:Computer': 1,
-  'Friday:Computer': 1,
+const getMemberCaps = (member) => {
+  const prefs = member?.role_preferences || {}
+  const saved = prefs?._caps && typeof prefs._caps === 'object' ? prefs._caps : {}
+  return {
+    ...defaultCapsForMember(member || { name: '' }),
+    ...saved,
+    _custom: Boolean(prefs?._caps),
+  }
 }
-const FLORIAN_TOTAL_CAP_PER_MONTH = 2
+
+const isProtectedAssignment = (assignment) => {
+  const worker = assignment.cover || assignment.person
+  return Boolean(worker && worker !== 'TBD' && worker !== 'Select Helper' && (assignment.locked || assignment.status === 'confirmed'))
+}
 
 function addMonths(date, months) {
   const d = new Date(date)
@@ -1629,9 +2011,9 @@ function addMonths(date, months) {
   return d
 }
 
-function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash }) {
+function SchedulingControlsModal({ schedule, team, onClose, onApplied, onRestored, showFlash }) {
   const todayKey = toDateKey(new Date())
-  const activeTeam = team.filter(member => member.id && member.active !== false)
+  const activeTeam = team.filter(member => member.name && member.active !== false)
   const overlayRef = useRef(null)
   const [scope, setScope] = useState('3m')
   const endDateKey = useMemo(() => {
@@ -1684,9 +2066,13 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
         method: 'POST',
         body: JSON.stringify({ snapshot_id: snapshotId }),
       })
-      showFlash(`Restored ${res.restored} assignments`)
       loadSnapshots()
-      onClose()
+      if (onRestored) {
+        onRestored(res)
+      } else {
+        showFlash(`Restored ${res.restored} assignments`)
+        onClose()
+      }
     } catch (e) {
       showFlash(e.message, 'error')
     }
@@ -1695,7 +2081,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
   const lockedTotals = CONTROL_ROLES.reduce((acc, role) => {
     acc[role.key] = futureEvents.reduce((total, event) => {
       if (event.day_type !== role.dayType) return total
-      return total + (event.assignments || []).filter(a => role.roles.includes(a.role) && a.status === 'confirmed').length
+      return total + (event.assignments || []).filter(a => role.roles.includes(a.role) && isProtectedAssignment(a)).length
     }, 0)
     return acc
   }, {})
@@ -1737,22 +2123,36 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
   const totalChanges = personDiff.reduce((sum, [, value]) => sum + Math.abs(value), 0) / 2
 
   const monthsSpan = Math.max(futureMonths.size, 1)
-  const florianWarnings = useMemo(() => {
+  const capWarnings = useMemo(() => {
     const warnings = []
-    const totalAcrossRoles = CONTROL_ROLES.reduce((sum, role) => sum + (targets[role.key]?.['Florian'] || 0), 0)
-    Object.entries(FLORIAN_CAPS).forEach(([roleKey, perMonthCap]) => {
-      const value = targets[roleKey]?.['Florian'] || 0
-      const allowed = perMonthCap * monthsSpan
-      if (value > allowed) {
-        warnings.push(`Florian ${roleKey.replace(':', ' ')}: ${value} target exceeds ${allowed} (cap ${perMonthCap}/month × ${monthsSpan})`)
+    activeTeam.forEach(member => {
+      const caps = getMemberCaps(member)
+      if (!caps._custom) return
+
+      const sundayTotal = CONTROL_ROLES
+        .filter(role => role.dayType === 'Sunday')
+        .reduce((sum, role) => sum + (targets[role.key]?.[member.name] || 0), 0)
+      const fridayTotal = CONTROL_ROLES
+        .filter(role => role.dayType === 'Friday')
+        .reduce((sum, role) => sum + (targets[role.key]?.[member.name] || 0), 0)
+      const totalAcrossRoles = sundayTotal + fridayTotal
+
+      const allowedSunday = (Number(caps.sunday_per_month) || 0) * monthsSpan
+      const allowedFriday = (Number(caps.friday_per_month) || 0) * monthsSpan
+      const allowedTotal = (Number(caps.total_per_month) || 0) * monthsSpan
+
+      if (sundayTotal > allowedSunday) {
+        warnings.push(`${member.name} Sunday total: ${sundayTotal} exceeds ${allowedSunday} (cap ${caps.sunday_per_month}/month × ${monthsSpan})`)
+      }
+      if (fridayTotal > allowedFriday) {
+        warnings.push(`${member.name} Friday total: ${fridayTotal} exceeds ${allowedFriday} (cap ${caps.friday_per_month}/month × ${monthsSpan})`)
+      }
+      if (totalAcrossRoles > allowedTotal) {
+        warnings.push(`${member.name} total: ${totalAcrossRoles} exceeds ${allowedTotal} (cap ${caps.total_per_month}/month × ${monthsSpan})`)
       }
     })
-    const totalAllowed = FLORIAN_TOTAL_CAP_PER_MONTH * monthsSpan
-    if (totalAcrossRoles > totalAllowed) {
-      warnings.push(`Florian total: ${totalAcrossRoles} across roles exceeds ${totalAllowed} (cap ${FLORIAN_TOTAL_CAP_PER_MONTH}/month)`)
-    }
     return warnings
-  }, [targets, monthsSpan])
+  }, [targets, monthsSpan, activeTeam])
 
   const isEligible = (member, role) => {
     const list = role.dayType === 'Sunday' ? member.sunday_roles || [] : member.friday_roles || []
@@ -1808,11 +2208,11 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
         }),
       })
       setPreviewChanges(preview.changes || [])
+      setConfirming(true)
     } catch (e) {
       showFlash(e.message, 'error')
     } finally {
       setPreviewing(false)
-      setConfirming(true)
     }
   }
 
@@ -1897,7 +2297,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
             <h2>Scheduling Controls</h2>
             <p className="modal-subtitle">
               {totalSlots} future slots across {futureMonths.size} month{futureMonths.size === 1 ? '' : 's'}
-              {totalLocked > 0 ? ` · ${totalLocked} locked (confirmed)` : ''}. Past events stay untouched.
+              {totalLocked > 0 ? ` · ${totalLocked} locked/confirmed` : ''}. Past events stay untouched.
             </p>
           </div>
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
@@ -1926,11 +2326,11 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
             </span>
           </div>
 
-          {florianWarnings.length > 0 && (
+          {capWarnings.length > 0 && (
             <div className="warning-banner">
-              <div className="warning-banner-title">Florian cap warnings</div>
+              <div className="warning-banner-title">Cap warnings</div>
               <ul>
-                {florianWarnings.map(w => (
+                {capWarnings.map(w => (
                   <li key={w}>{w}</li>
                 ))}
               </ul>
@@ -1985,7 +2385,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
                 {activeTeam.map(member => {
                   const personTotal = CONTROL_ROLES.reduce((sum, role) => sum + getValue(role.key, member.name), 0)
                   return (
-                    <tr key={member.id}>
+                    <tr key={member.id || member.name}>
                       <td>
                         <div className="person-cell">
                           <span className="team-avatar small">{member.name[0]}</span>
@@ -2127,7 +2527,7 @@ function SchedulingControlsModal({ schedule, team, onClose, onApplied, showFlash
           months={futureMonths.size}
           totalLocked={totalLocked}
           personDiff={personDiff}
-          warnings={florianWarnings}
+          warnings={capWarnings}
           scopeLabel={SCOPE_OPTIONS.find(opt => opt.value === scope)?.label || ''}
           previewChanges={previewChanges}
           submitting={submitting}
@@ -2156,7 +2556,7 @@ function ConfirmApplyModal({ totalSlots, totalChanges, months, totalLocked, pers
           <ul className="modal-list">
             <li>{totalChanges} change{totalChanges === 1 ? '' : 's'} compared to current distribution.</li>
             {previewCount !== null && <li>Preview: {previewCount} actual event-level change{previewCount === 1 ? '' : 's'}.</li>}
-            {totalLocked > 0 && <li>{totalLocked} confirmed assignment{totalLocked === 1 ? '' : 's'} stay locked and untouched.</li>}
+            {totalLocked > 0 && <li>{totalLocked} locked/confirmed assignment{totalLocked === 1 ? '' : 's'} stay untouched.</li>}
             <li>Past events untouched. Custom events (baptisms, etc.) untouched.</li>
             <li>Florian caps and gap rules still apply where possible.</li>
             <li>You can Undo from the toast for 30s after applying.</li>

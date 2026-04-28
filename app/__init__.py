@@ -90,33 +90,28 @@ def sync_team_scheduling_defaults():
         db.session.commit()
 
 
-def ensure_schedule_horizon(months_ahead=3, top_up_threshold_days=31):
-    """Keep the schedule filled about 3 months forward.
-
-    - On fresh DB: generates the full rolling horizon month-by-month.
-    - On existing DB: only generates new months if the last scheduled event
-      is less than `top_up_threshold_days` in the future.
-    """
+def ensure_schedule_horizon():
+    """Keep the schedule generated through the end of the active schedule year."""
     from .models import Event
     from .scheduler_v2 import generate_month_v2
     from .utils import vancouver_today
 
     today = vancouver_today()
-    target_end = today + datetime.timedelta(days=31 * months_ahead)
+    target_year = today.year + 1 if today.month == 12 else today.year
+    target_end = datetime.date(target_year, 12, 31)
+    while target_end.weekday() not in (4, 6):
+        target_end -= datetime.timedelta(days=1)
 
     last_event = Event.query.order_by(Event.date.desc()).first()
     last_date = last_event.date if last_event else today
 
-    # Only top up if we have less than `top_up_threshold_days` of schedule ahead
-    days_remaining = (last_date - today).days
-    if days_remaining >= top_up_threshold_days and last_event is not None:
-        print(f"[Horizon] Schedule extends {days_remaining} days ahead — no top-up needed")
+    if last_event is not None and last_date >= target_end:
+        print(f"[Horizon] Schedule already generated through {last_date.isoformat()} — no top-up needed")
         return
 
     print(f"[Horizon] Generating schedule up to {target_end.isoformat()} "
-          f"(currently {days_remaining} days ahead)")
+          f"(currently through {last_date.isoformat()})")
 
-    # Walk month-by-month from (last month we have) to target_end
     cursor_year = last_date.year
     cursor_month = last_date.month
     end_year, end_month = target_end.year, target_end.month
@@ -232,7 +227,7 @@ def create_app(config_class='config.Config'):
             db.session.execute(text('ALTER TABLE assignment ADD COLUMN telegram_message_id INTEGER'))
             db.session.commit()
         if 'locked' not in cols:
-            db.session.execute(text('ALTER TABLE assignment ADD COLUMN locked BOOLEAN DEFAULT 0 NOT NULL'))
+            db.session.execute(text('ALTER TABLE assignment ADD COLUMN locked BOOLEAN DEFAULT false NOT NULL'))
             db.session.commit()
 
         team_member_cols = [c['name'] for c in insp.get_columns('team_member')]
@@ -262,7 +257,7 @@ def create_app(config_class='config.Config'):
         # Apply one-time corrective fixes on existing deployments.
         apply_data_hotfixes()
 
-        # Keep a rolling 3-month schedule ahead; top up when less than 1 month remains.
+        # Keep the schedule generated through the active schedule year.
         ensure_schedule_horizon()
 
     # ── Start the daily-reminder scheduler (9 AM Vancouver time) ──
@@ -363,7 +358,7 @@ def _start_daily_scheduler(app):
                 print(f"[Scheduler] Deadline sweep failed: {e}")
 
     def _fire_horizon_topup():
-        """Daily check: if schedule runs out in less than 1 month, generate more."""
+        """Daily check: keep the schedule generated through the active schedule year."""
         with app.app_context():
             try:
                 ensure_schedule_horizon()

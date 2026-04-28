@@ -7,6 +7,7 @@ venv/
 instance/
 .idea/
 .vscode/
+.ssh/
 *.db
 *.db.backup-*
 .scheduler.lock

@@ -23,6 +23,31 @@ from . import telegram_v2 as tg
 api_v2 = Blueprint('api_v2', __name__, url_prefix='/api/v2')
 
 
+def _optional_iso_date(value, field_name):
+    if not value:
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be YYYY-MM-DD")
+
+
+def _optional_bool(value, field_name):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ("true", "1", "yes", "on"):
+            return True
+        if normalized in ("false", "0", "no", "off"):
+            return False
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    raise ValueError(f"{field_name} must be a boolean")
+
+
 def _auth_serializer():
     return URLSafeSerializer(current_app.secret_key, salt="v2-auth")
 
@@ -611,7 +636,7 @@ def update_assignment(assignment_id):
             assignment.person = new_person
             assignment.cover = None
             assignment.swapped_with = None
-            assignment.status = "confirmed" if assignment.person == "Select Helper" else "pending"
+            assignment.status = "pending"
             db.session.commit()
         else:
             return jsonify({"error": "Unauthorized"}), 403
@@ -630,7 +655,10 @@ def toggle_assignment_lock(assignment_id):
         return jsonify({"error": "Not found"}), 404
 
     data = request.json or {}
-    new_value = data.get("locked")
+    try:
+        new_value = _optional_bool(data.get("locked"), "locked")
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     if new_value is None:
         new_value = not bool(getattr(assignment, "locked", False))
     assignment.locked = bool(new_value)
@@ -754,10 +782,9 @@ def apply_scheduling_controls():
 
     data = request.json or {}
     targets = data.get("targets", {})
-    end_date_str = data.get("end_date")
-    end_date = datetime.date.fromisoformat(end_date_str) if end_date_str else None
 
     try:
+        end_date = _optional_iso_date(data.get("end_date"), "end_date")
         from .scheduler_v2 import rebalance_future_to_targets
         result = rebalance_future_to_targets(
             targets,
@@ -804,10 +831,9 @@ def preview_scheduling_controls():
 
     data = request.json or {}
     targets = data.get("targets", {})
-    end_date_str = data.get("end_date")
-    end_date = datetime.date.fromisoformat(end_date_str) if end_date_str else None
 
     try:
+        end_date = _optional_iso_date(data.get("end_date"), "end_date")
         from .scheduler_v2 import preview_future_targets
         preview = preview_future_targets(
             targets,
@@ -893,9 +919,14 @@ def undo_scheduling_controls():
 
     data = request.json or {}
     snapshot_id = data.get("snapshot_id")
+    if snapshot_id is not None:
+        try:
+            snapshot_id = int(snapshot_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "snapshot_id must be an integer"}), 400
     snap = (
-        SchedulingSnapshot.query.get(int(snapshot_id))
-        if snapshot_id
+        SchedulingSnapshot.query.get(snapshot_id)
+        if snapshot_id is not None
         else SchedulingSnapshot.query.order_by(SchedulingSnapshot.created_at.desc()).first()
     )
     if not snap:
@@ -910,6 +941,8 @@ def undo_scheduling_controls():
         assignment.cover = item.get("cover")
         assignment.status = item.get("status") or "pending"
         assignment.swapped_with = item.get("swapped_with")
+        if "locked" in item:
+            assignment.locked = bool(item.get("locked"))
         assignment.telegram_message_id = None
         restored += 1
 
