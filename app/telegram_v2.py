@@ -35,7 +35,7 @@ BASE_API = "https://api.telegram.org/bot"
 
 # ── Emoji maps ───────────────────────────────────────────────────────
 ROLE_EMOJI = {
-    "Computer": "�",
+    "Computer": "\U0001F4BB",
     "Camera 1": "📹",
     "Camera 2": "📹",
     "Camera": "📹",
@@ -44,7 +44,7 @@ ROLE_EMOJI = {
 }
 
 # Friday Bible Study: first person gets computer icon, second gets hands icon
-FRIDAY_ICONS = ["�", "�"]
+FRIDAY_ICONS = ["\U0001F4BB", "\U0001F4F9"]
 
 # Short display names for roles
 ROLE_SHORT = {
@@ -706,7 +706,7 @@ def _assignment_line(assignment, role_label=None):
     if not worker or worker in ("TBD", "Select Helper"):
         worker = "TBD"
     label = role_label or assignment.role
-    icon = "📹" if "Camera" in assignment.role else ROLE_EMOJI.get(assignment.role, "👤")
+    icon = "\U0001F4F9" if "Camera" in assignment.role else ROLE_EMOJI.get(assignment.role, "\U0001F464")
     return f"{icon} {label}: {worker}"
 
 

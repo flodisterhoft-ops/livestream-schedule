@@ -6,10 +6,10 @@ const AUTH_TOKEN_KEY = 'livestreamV2AuthToken'
 const TELEGRAM_LOGIN_KEYS = ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date', 'hash']
 
 const ROLE_ICONS = {
-  Computer: '💻',
-  'Camera 1': '\uD83C\uDFA5',
-  'Camera 2': '\uD83C\uDFA5',
-  Camera: '\uD83C\uDFA5',
+  Computer: '\uD83D\uDCBB',
+  'Camera 1': '\uD83D\uDCF9',
+  'Camera 2': '\uD83D\uDCF9',
+  Camera: '\uD83D\uDCF9',
   Leader: '\uD83D\uDCD6',
   Helper: '\uD83E\uDD1D',
 }
