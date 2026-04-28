@@ -326,6 +326,27 @@ body {
   animation: iconSwap 0.32s cubic-bezier(.2,.8,.2,1) both;
 }
 
+.manager-btn.add-btn .manager-btn-icon {
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.manager-btn.settings-btn .manager-btn-icon {
+  font-size: 1.4rem;
+  transition: transform 0.7s cubic-bezier(.2,.8,.2,1);
+  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.18));
+}
+
+.manager-btn.settings-btn:hover .manager-btn-icon {
+  transform: rotate(90deg);
+}
+
+.manager-btn.settings-btn:active .manager-btn-icon {
+  transform: rotate(360deg);
+  transition-duration: 0.5s;
+}
+
 @keyframes iconSwap {
   0% { opacity: 0; transform: scale(0.5) rotate(-30deg); }
   60% { opacity: 1; transform: scale(1.12) rotate(6deg); }
@@ -1671,7 +1692,8 @@ body {
   max-width: 920px;
 }
 
-.year-overview-card {
+.year-overview-card,
+.role-settings-card {
   width: calc(100vw - 8px);
   max-width: calc(100vw - 8px);
   height: calc(100vh - 8px);
@@ -1813,11 +1835,16 @@ body {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   background: var(--bg-card);
-  padding: 7px 8px;
+  padding: 4px 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-height: 36px;
+}
+
+.role-setting-row .role-setting-name {
+  font-size: 0.85rem;
 }
 
 .role-setting-row.selected {
@@ -1877,10 +1904,10 @@ body {
   z-index: 1;
   border: 0;
   border-radius: var(--radius-pill);
-  padding: 6px 10px;
+  padding: 3px 10px;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 800;
   cursor: pointer;
   transition: color 0.2s ease;
@@ -1925,25 +1952,49 @@ body {
 }
 
 .role-settings-caps {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
+  align-items: stretch;
+}
+
+.role-settings-caps .modal-label {
+  grid-column: 1 / -1;
+  margin-bottom: -2px;
 }
 
 .cap-control.expanded {
   border-radius: var(--radius-sm);
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+}
+
+.cap-control.expanded > span {
+  color: var(--text-secondary);
+  font-weight: 700;
+  text-align: left;
+}
+
+.cap-control.expanded strong {
+  min-width: 18px;
+  text-align: center;
 }
 
 .cap-control button {
-  width: 26px;
-  height: 26px;
-  border-radius: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
   cursor: pointer;
   font-weight: 800;
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
 .cap-control button:disabled {

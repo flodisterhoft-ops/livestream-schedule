@@ -405,10 +405,10 @@ export default function App() {
           {isAdmin ? (
             <>
               <button
-                className="manager-btn"
-                onClick={() => setShowAdminAddMenu(true)}
-                title="Manager tools"
-                aria-label="Manager tools"
+                className="manager-btn add-btn"
+                onClick={openAdminCreateEvent}
+                title="Add new event"
+                aria-label="Add new event"
               >
                 <span className="manager-btn-icon">{'+'}</span>
               </button>
@@ -443,7 +443,7 @@ export default function App() {
           ) : (
             <>
               <button
-                className="manager-btn"
+                className="manager-btn add-btn"
                 onClick={() => setShowSuggest(true)}
                 title="Suggest a date"
                 aria-label="Suggest a date"
@@ -496,14 +496,6 @@ export default function App() {
             showFlash('Event created')
           }}
           showFlash={showFlash}
-        />
-      )}
-      {showAdminAddMenu && (
-        <AdminAddMenu
-          onClose={() => setShowAdminAddMenu(false)}
-          onAddEvent={openAdminCreateEvent}
-          onYearOverview={openYearOverview}
-          onRoleSettings={openRoleSettings}
         />
       )}
       {showRoleSettings && (
@@ -1351,9 +1343,9 @@ const ROLE_PREFERENCE_OPTIONS = [
 ]
 
 const ROLE_CAP_DEFS = [
-  { key: 'sunday_per_month', label: 'Sunday shifts per month' },
-  { key: 'friday_per_month', label: 'Friday shifts per month' },
-  { key: 'total_per_month', label: 'Total shifts per month' },
+  { key: 'sunday_per_month', label: 'Sundays / mo' },
+  { key: 'friday_per_month', label: 'Fridays / mo' },
+  { key: 'total_per_month', label: 'Total / mo' },
 ]
 
 const defaultCapsForMember = (member) => ({
@@ -1511,7 +1503,7 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
       <div className="modal-card role-settings-card">
         <div className="modal-header">
           <div>
-            <h2>{'\uD83D\uDD27'} Scheduling Settings</h2>
+            <h2>{'\u2699\uFE0F'} Scheduling Settings</h2>
             <p className="modal-subtitle">Expand a user to edit roles, preferences, caps, or add/remove users. Save refills only future schedule slots that need to change.</p>
           </div>
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
