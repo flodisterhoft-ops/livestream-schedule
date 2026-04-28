@@ -252,29 +252,18 @@ export default function App() {
     }
   }
 
-  const ensureManager = async () => {
-    if (isManager) return true
-    return toggleManager()
-  }
-
-  const openAdminCreateEvent = async () => {
-    const ok = await ensureManager()
-    if (!ok) return
+  const openAdminCreateEvent = () => {
     setShowAdminAddMenu(false)
     setCreatePrefill(null)
     setShowCreate(true)
   }
 
-  const openRoleSettings = async () => {
-    const ok = await ensureManager()
-    if (!ok) return
+  const openRoleSettings = () => {
     setShowAdminAddMenu(false)
     setShowRoleSettings(true)
   }
 
-  const openYearOverview = async () => {
-    const ok = await ensureManager()
-    if (!ok) return
+  const openYearOverview = () => {
     setShowAdminAddMenu(false)
     setShowYearOverview(true)
   }
@@ -291,8 +280,9 @@ export default function App() {
     const run = async () => {
       try {
         if (!isManager) {
-          const ok = await toggleManager()
-          if (!ok) return
+          showFlash('Turn on manager mode first to open suggestion requests.', 'error')
+          setPendingSuggestId(null)
+          return
         }
         const s = await api(`/suggestions/${pendingSuggestId}`)
         if (cancelled) return
