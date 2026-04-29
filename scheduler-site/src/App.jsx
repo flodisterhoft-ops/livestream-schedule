@@ -568,7 +568,10 @@ export default function App() {
 
 function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, recentlyChanged }) {
   const navRef = useRef(null)
+  const filterRef = useRef(null)
   const [indicator, setIndicator] = useState(null)
+  const [selectedPerson, setSelectedPerson] = useState('')
+  const [filterOpen, setFilterOpen] = useState(false)
   useEffect(() => {
     const measure = () => {
       const nav = navRef.current
@@ -637,6 +640,28 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
   const teamNames = team.length > 0
     ? team.map(m => m.name).sort()
     : ['Andy', 'Florian', 'Marvin', 'Patric', 'Rene', 'Stefan', 'Viktor', 'TBD']
+  const filterNames = teamNames.filter(n => n && n !== 'TBD' && n !== 'Select Helper')
+  const filteredSchedule = selectedPerson
+    ? schedule.filter(event => event.assignments.some(a => a.person === selectedPerson || a.cover === selectedPerson))
+    : schedule
+  const selectedPersonCount = filteredSchedule.length
+
+  useEffect(() => {
+    if (!filterOpen) return
+    const handlePointer = (e) => {
+      if (filterRef.current?.contains(e.target)) return
+      setFilterOpen(false)
+    }
+    const handleKey = (e) => { if (e.key === 'Escape') setFilterOpen(false) }
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('touchstart', handlePointer)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('touchstart', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [filterOpen])
 
   const currentYear = new Date().getFullYear()
   const yearList = [...new Set(months.map(m => m.slice(0, 4)))].sort()
@@ -698,15 +723,61 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
         {monthsForActiveYear.map(renderMonthPill)}
       </div>
 
-      {/* Events */}
-      <div className="events-list">
-        {schedule.length === 0 && (
-          <div className="empty-state">
-            <p>No events for this month.</p>
-            {isManager && <p>Generate one or use Telegram to add an event.</p>}
+      <div className="person-filter" ref={filterRef}>
+        <button
+          type="button"
+          className={`person-filter-trigger ${selectedPerson ? 'active' : ''}`}
+          onClick={() => setFilterOpen(v => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={filterOpen}
+        >
+          <span className="person-filter-icon">{'\uD83D\uDC64'}</span>
+          <span className="person-filter-text">
+            {selectedPerson ? selectedPerson : 'All team members'}
+          </span>
+          <span className="person-filter-count">
+            {selectedPerson ? `${selectedPersonCount} shift${selectedPersonCount === 1 ? '' : 's'}` : 'Filter by name'}
+          </span>
+          <span className={`person-filter-chevron ${filterOpen ? 'open' : ''}`}>{'\u203A'}</span>
+        </button>
+        {filterOpen && (
+          <div className="person-filter-menu" role="listbox" aria-label="Filter schedule by name">
+            <button
+              type="button"
+              className={`person-filter-option ${selectedPerson === '' ? 'selected' : ''}`}
+              onClick={() => { setSelectedPerson(''); setFilterOpen(false) }}
+              role="option"
+              aria-selected={selectedPerson === ''}
+            >
+              <span>{'\u2728'} All team members</span>
+              {selectedPerson === '' && <span className="person-filter-check">{'\u2713'}</span>}
+            </button>
+            {filterNames.map(name => (
+              <button
+                key={name}
+                type="button"
+                className={`person-filter-option ${selectedPerson === name ? 'selected' : ''}`}
+                onClick={() => { setSelectedPerson(name); setFilterOpen(false) }}
+                role="option"
+                aria-selected={selectedPerson === name}
+              >
+                <span>{name}</span>
+                {selectedPerson === name && <span className="person-filter-check">{'\u2713'}</span>}
+              </button>
+            ))}
           </div>
         )}
-        {schedule.map(event => (
+      </div>
+
+      {/* Events */}
+      <div className="events-list">
+        {filteredSchedule.length === 0 && (
+          <div className="empty-state">
+            <p>{selectedPerson ? `No shifts for ${selectedPerson} this month.` : 'No events for this month.'}</p>
+            {isManager && !selectedPerson && <p>Generate one or use Telegram to add an event.</p>}
+          </div>
+        )}
+        {filteredSchedule.map(event => (
           <EventCard
             key={event.date}
             event={event}
