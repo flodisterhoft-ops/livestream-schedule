@@ -133,7 +133,6 @@ export default function App() {
   const [flash, setFlash] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState(null)
   const [hasSavedAuth, setHasSavedAuth] = useState(false)
-  const [headerStuck, setHeaderStuck] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [showSuggest, setShowSuggest] = useState(false)
   const [showAdminAddMenu, setShowAdminAddMenu] = useState(false)
@@ -143,12 +142,6 @@ export default function App() {
   const [pendingSuggestId, setPendingSuggestId] = useState(null)
   const [recentlyChanged, setRecentlyChanged] = useState(() => new Set())
 
-  useEffect(() => {
-    const onScroll = () => setHeaderStuck(window.scrollY > 4)
-    window.addEventListener('scroll', onScroll, { passive: true })
-    onScroll()
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
 
   // ── Init ──────────────────────────────────────────────────
   useEffect(() => {
@@ -420,7 +413,7 @@ export default function App() {
       )}
 
       {/* Header */}
-      <header className={`app-header ${headerStuck ? 'is-stuck' : ''}`}>
+      <header className="app-header">
         <div className="header-titles">
           <h1 className="app-title">Livestream Schedule</h1>
           {user && (
@@ -572,7 +565,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
   const [indicator, setIndicator] = useState(null)
   const [selectedPerson, setSelectedPerson] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
-  const [viewMode, setViewMode] = useState('cards')
+  const [viewMode, setViewMode] = useState('calendar')
   useEffect(() => {
     const measure = () => {
       const nav = navRef.current
@@ -833,10 +826,15 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
 function MonthCalendar({ activeMonth, events, selectedPerson }) {
   const todayKey = toDateKey(new Date())
   const monthDate = activeMonth ? new Date(activeMonth + '-15T12:00:00') : new Date()
-  const monthLabel = monthDate.toLocaleString('en', { month: 'long', year: 'numeric' })
+  const monthLabel = monthDate.toLocaleString('en', { month: 'long' }).toUpperCase()
+  const yearLabel = monthDate.getFullYear()
   const eventsByDate = useMemo(() => {
     const map = new Map()
-    events.forEach(event => map.set(event.date, event))
+    events.forEach(event => {
+      const dateEvents = map.get(event.date) || []
+      dateEvents.push(event)
+      map.set(event.date, dateEvents)
+    })
     return map
   }, [events])
   const days = useMemo(() => {
@@ -854,56 +852,81 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
     }
     return result
   }, [activeMonth])
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const weeks = useMemo(() => {
+    const result = []
+    for (let i = 0; i < days.length; i += 7) result.push(days.slice(i, i + 7))
+    return result
+  }, [days])
+  const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
   return (
     <div className="calendar-view">
       <div className="calendar-view-header">
-        <div>
-          <span className="calendar-eyebrow">{selectedPerson || 'Everyone'}</span>
-          <h2>{monthLabel}</h2>
-        </div>
-        <span className="calendar-summary">{events.length} service day{events.length === 1 ? '' : 's'}</span>
+        <span className="calendar-eyebrow">{selectedPerson || yearLabel}</span>
+        <h2>{monthLabel}</h2>
       </div>
       <div className="calendar-weekdays">
-        {weekdays.map(day => <span key={day}>{day}</span>)}
+        {weekdays.map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
       </div>
       <div className="calendar-grid">
-        {days.map(day => {
-          const dateKey = toDateKey(day)
-          const event = eventsByDate.get(dateKey)
-          const isOutside = activeMonth && !dateKey.startsWith(activeMonth)
-          const assignments = event
-            ? event.assignments.filter(a => !selectedPerson || a.person === selectedPerson || a.cover === selectedPerson)
-            : []
-          return (
-            <div
-              key={dateKey}
-              className={`calendar-day ${isOutside ? 'outside' : ''} ${dateKey === todayKey ? 'today' : ''} ${event ? 'has-event' : ''}`}
-            >
-              <div className="calendar-day-number">{day.getDate()}</div>
-              {event && (
-                <div className="calendar-event">
-                  <div className="calendar-event-title">{event.day_type === 'Friday' ? 'Bible Study' : event.title}</div>
-                  <div className="calendar-event-time">{formatDisplayTime(event.start_time || defaultStartTime(event.day_type))}</div>
-                  <div className="calendar-assignments">
-                    {assignments.map(a => {
-                      const worker = a.cover || a.person
-                      const baseRole = a.role.replace(/\s+\d+$/, '')
-                      const icon = ROLE_ICONS[a.role] || ROLE_ICONS[baseRole] || '\uD83D\uDC64'
+        {weeks.map((week, weekIndex) => (
+          <div className="calendar-week-row" key={`week-${weekIndex}`}>
+            {week.map(day => {
+              const dateKey = toDateKey(day)
+              const dayEvents = eventsByDate.get(dateKey) || []
+              const isOutside = activeMonth && !dateKey.startsWith(activeMonth)
+              const dayClasses = [
+                'calendar-day',
+                isOutside ? 'outside' : '',
+                day.getDay() === 0 ? 'sunday' : '',
+                day.getDay() === 6 ? 'saturday' : '',
+                dateKey === todayKey ? 'today' : '',
+                dayEvents.length ? 'has-event' : '',
+              ].filter(Boolean).join(' ')
+              return (
+                <div key={dateKey} className={dayClasses}>
+                  <div className="calendar-day-number">{day.getDate()}</div>
+                  <div className="calendar-day-events">
+                    {dayEvents.map(event => {
+                      const assignments = event.assignments.filter(a => !selectedPerson || a.person === selectedPerson || a.cover === selectedPerson)
+                      const eventKind = event.day_type === 'Friday' ? 'friday' : event.day_type === 'Sunday' ? 'sunday' : 'custom'
                       return (
-                        <div key={a.id} className={`calendar-assignment ${a.status === 'swap_needed' ? 'needs-cover' : ''} ${selectedPerson && worker === selectedPerson ? 'filtered-person' : ''}`}>
-                          <span>{icon}</span>
-                          <span>{selectedPerson ? a.role : worker}</span>
+                        <div className="calendar-event" key={`${event.date}-${event.title}-${event.day_type}`}>
+                          <div className={`calendar-chip calendar-event-chip ${eventKind}`}>
+                            <span className="calendar-chip-text">{event.day_type === 'Friday' ? 'Bible Study' : event.title}</span>
+                          </div>
+                          <div className="calendar-chip calendar-time-chip">
+                            <span className="calendar-chip-text">{formatDisplayTime(event.start_time || defaultStartTime(event.day_type))}</span>
+                          </div>
+                          {assignments.slice(0, 4).map(a => {
+                            const worker = a.cover || a.person
+                            const baseRole = a.role.replace(/\s+\d+$/, '')
+                            const icon = ROLE_ICONS[a.role] || ROLE_ICONS[baseRole] || '\uD83D\uDC64'
+                            const assignmentClasses = [
+                              'calendar-chip',
+                              'calendar-assignment',
+                              a.status === 'swap_needed' ? 'needs-cover' : '',
+                              selectedPerson && worker === selectedPerson ? 'filtered-person' : '',
+                            ].filter(Boolean).join(' ')
+                            return (
+                              <div key={a.id} className={assignmentClasses}>
+                                <span className="calendar-role-icon">{icon}</span>
+                                <span className="calendar-chip-text">{selectedPerson ? a.role : (worker || 'Unassigned')}</span>
+                              </div>
+                            )
+                          })}
+                          {assignments.length > 4 && (
+                            <div className="calendar-chip calendar-more-chip">+{assignments.length - 4} more</div>
+                          )}
                         </div>
                       )
                     })}
                   </div>
                 </div>
-              )}
-            </div>
-          )
-        })}
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )
