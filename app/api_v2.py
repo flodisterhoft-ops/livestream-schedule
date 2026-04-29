@@ -10,9 +10,10 @@ import os
 import hashlib
 import hmac
 import time
+import html
 from itsdangerous import BadSignature, URLSafeSerializer
 from flask import Blueprint, request, jsonify, session, current_app
-from .models import Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion, SchedulingSnapshot, SchedulingPreset
+from .models import Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion, SchedulingSnapshot, SchedulingPreset, InteractionLog
 from .extensions import db
 from .utils import (
     ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats,
@@ -170,6 +171,19 @@ def telegram_login():
     member = _team_member_from_telegram(data)
     if not member:
         return jsonify({"error": "Telegram user is not linked to the team"}), 403
+    telegram_user_id = str(data.get("id", "")).strip()
+    first_name = (data.get("first_name") or "").strip()
+    username = (data.get("username") or "").strip()
+    suffix = f" (@{html.escape(username)})" if username else ""
+    tg._notify_admin_text(f"👀 <b>Schedule opened</b>\n{html.escape(member.name)}{suffix}")
+    db.session.add(InteractionLog(
+        telegram_user_id=telegram_user_id,
+        first_name=first_name,
+        action="schedule_opened",
+        person_name=member.name,
+        details="telegram_login_url",
+    ))
+    db.session.commit()
     return _auth_response(member.name)
 
 
