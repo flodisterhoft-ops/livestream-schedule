@@ -888,9 +888,6 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                           <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={event.day_type === 'Friday' ? 'Bible Study' : event.title}>
                             <span className="calendar-chip-text">{event.day_type === 'Friday' ? 'Bible Study' : event.title}</span>
                           </div>
-                          <div className="calendar-chip calendar-time-chip">
-                            <span className="calendar-chip-text">{formatDisplayTime(event.start_time || defaultStartTime(event.day_type))}</span>
-                          </div>
                           {assignments.slice(0, 4).map(a => {
                             const worker = a.cover || a.person
                             const baseRole = a.role.replace(/\s+\d+$/, '')

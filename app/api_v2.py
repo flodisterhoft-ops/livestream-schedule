@@ -175,7 +175,8 @@ def telegram_login():
     first_name = (data.get("first_name") or "").strip()
     username = (data.get("username") or "").strip()
     suffix = f" (@{html.escape(username)})" if username else ""
-    tg._notify_admin_text(f"👀 <b>Schedule opened</b>\n{html.escape(member.name)}{suffix}")
+    if member.name != "Florian":
+        tg._notify_admin_text(f"👀 <b>Schedule opened</b>\n{html.escape(member.name)}{suffix}")
     db.session.add(InteractionLog(
         telegram_user_id=telegram_user_id,
         first_name=first_name,
