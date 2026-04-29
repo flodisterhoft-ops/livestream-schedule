@@ -821,23 +821,20 @@ body {
 .person-filter {
   position: relative;
   z-index: 20;
-  margin: -6px 0 18px;
+  margin: -8px 0 14px;
 }
 
 .person-filter-trigger {
   width: 100%;
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 4px;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--radius-pill);
   background: linear-gradient(135deg, var(--bg-card), #f8fbff);
   color: var(--text);
   box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  text-align: left;
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease,
@@ -845,7 +842,8 @@ body {
 }
 
 .person-filter-trigger:hover,
-.person-filter-trigger.active {
+.person-filter-trigger.active,
+.person-filter-trigger.calendar-active {
   border-color: #bfdbfe;
   box-shadow: 0 8px 18px rgba(59, 130, 246, 0.12);
 }
@@ -854,21 +852,36 @@ body {
   transform: translateY(1px);
 }
 
+.person-filter-main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
 .person-filter-icon {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: var(--accent-light);
   color: var(--accent);
-  font-size: 1rem;
+  font-size: 0.84rem;
 }
 
 .person-filter-text {
   min-width: 0;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   font-weight: 750;
   white-space: nowrap;
   overflow: hidden;
@@ -876,11 +889,11 @@ body {
 }
 
 .person-filter-count {
-  padding: 4px 9px;
+  padding: 3px 8px;
   border-radius: var(--radius-pill);
   background: var(--bg-hover);
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -892,7 +905,7 @@ body {
 
 .person-filter-chevron {
   color: var(--text-muted);
-  font-size: 1.3rem;
+  font-size: 1.05rem;
   line-height: 1;
   transform: rotate(90deg);
   transition: transform 0.2s ease, color 0.2s ease;
@@ -901,6 +914,29 @@ body {
 .person-filter-chevron.open {
   color: var(--accent);
   transform: rotate(-90deg);
+}
+
+.person-calendar-toggle {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.person-calendar-toggle:hover,
+.person-calendar-toggle.active {
+  background: var(--accent);
+  color: white;
+  transform: translateY(-1px);
 }
 
 .person-filter-menu {
@@ -956,6 +992,162 @@ body {
   background: var(--accent);
   color: white;
   font-size: 0.75rem;
+}
+
+.calendar-view {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: cardIn 0.32s cubic-bezier(.2,.8,.2,1) both;
+}
+
+.calendar-view-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.calendar-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.calendar-view-header h2 {
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1.1;
+}
+
+.calendar-summary {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 750;
+  box-shadow: var(--shadow-sm);
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding: 8px 8px 6px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.calendar-weekdays span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border-light);
+}
+
+.calendar-day {
+  min-height: 84px;
+  padding: 6px 5px;
+  background: var(--bg-card);
+}
+
+.calendar-day.outside {
+  background: #f8fafc;
+  color: var(--text-muted);
+}
+
+.calendar-day.today {
+  box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.34);
+}
+
+.calendar-day.has-event {
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.calendar-day-number {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.calendar-day.today .calendar-day-number {
+  background: var(--accent);
+  color: white;
+}
+
+.calendar-event {
+  margin-top: 4px;
+}
+
+.calendar-event-title {
+  color: var(--text);
+  font-size: 0.7rem;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.calendar-event-time {
+  margin-top: 1px;
+  color: var(--accent);
+  font-size: 0.64rem;
+  font-weight: 750;
+}
+
+.calendar-assignments {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 5px;
+}
+
+.calendar-assignment {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 2px 4px;
+  border-radius: 7px;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 750;
+  line-height: 1.15;
+}
+
+.calendar-assignment span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-assignment.needs-cover {
+  background: var(--danger-light);
+  color: var(--danger);
 }
 
 .year-nav {

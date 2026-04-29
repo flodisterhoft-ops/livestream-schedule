@@ -572,6 +572,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
   const [indicator, setIndicator] = useState(null)
   const [selectedPerson, setSelectedPerson] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
+  const [viewMode, setViewMode] = useState('cards')
   useEffect(() => {
     const measure = () => {
       const nav = navRef.current
@@ -724,22 +725,33 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
       </div>
 
       <div className="person-filter" ref={filterRef}>
-        <button
-          type="button"
-          className={`person-filter-trigger ${selectedPerson ? 'active' : ''}`}
-          onClick={() => setFilterOpen(v => !v)}
-          aria-haspopup="listbox"
-          aria-expanded={filterOpen}
-        >
-          <span className="person-filter-icon">{'\uD83D\uDC64'}</span>
-          <span className="person-filter-text">
-            {selectedPerson ? selectedPerson : 'All team members'}
-          </span>
-          <span className="person-filter-count">
-            {selectedPerson ? `${selectedPersonCount} shift${selectedPersonCount === 1 ? '' : 's'}` : 'Filter by name'}
-          </span>
-          <span className={`person-filter-chevron ${filterOpen ? 'open' : ''}`}>{'\u203A'}</span>
-        </button>
+        <div className={`person-filter-trigger ${selectedPerson ? 'active' : ''} ${viewMode === 'calendar' ? 'calendar-active' : ''}`}>
+          <button
+            type="button"
+            className="person-filter-main"
+            onClick={() => setFilterOpen(v => !v)}
+            aria-haspopup="listbox"
+            aria-expanded={filterOpen}
+          >
+            <span className="person-filter-icon">{'\uD83D\uDC64'}</span>
+            <span className="person-filter-text">
+              {selectedPerson ? selectedPerson : 'All team members'}
+            </span>
+            <span className="person-filter-count">
+              {selectedPerson ? `${selectedPersonCount} shift${selectedPersonCount === 1 ? '' : 's'}` : 'Filter'}
+            </span>
+            <span className={`person-filter-chevron ${filterOpen ? 'open' : ''}`}>{'\u203A'}</span>
+          </button>
+          <button
+            type="button"
+            className={`person-calendar-toggle ${viewMode === 'calendar' ? 'active' : ''}`}
+            onClick={() => setViewMode(viewMode === 'calendar' ? 'cards' : 'calendar')}
+            aria-label={viewMode === 'calendar' ? 'Show schedule cards' : 'Show calendar'}
+            aria-pressed={viewMode === 'calendar'}
+          >
+            {viewMode === 'calendar' ? '\uD83D\uDCCB' : '\uD83D\uDCC5'}
+          </button>
+        </div>
         {filterOpen && (
           <div className="person-filter-menu" role="listbox" aria-label="Filter schedule by name">
             <button
@@ -769,30 +781,112 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
         )}
       </div>
 
-      {/* Events */}
-      <div className="events-list">
-        {filteredSchedule.length === 0 && (
-          <div className="empty-state">
-            <p>{selectedPerson ? `No shifts for ${selectedPerson} this month.` : 'No events for this month.'}</p>
-            {isManager && !selectedPerson && <p>Generate one or use Telegram to add an event.</p>}
-          </div>
-        )}
-        {filteredSchedule.map(event => (
-          <EventCard
-            key={event.date}
-            event={event}
-            user={user}
-            isAdmin={isAdmin}
-            isManager={isManager}
-            doAction={doAction}
-            onNotify={() => handleNotify(event.date)}
-            onAssign={handleAssign}
-            onEventUpdate={handleEventUpdate}
-            onToggleLock={handleToggleLock}
-            teamNames={teamNames}
-            recentlyChanged={recentlyChanged}
-          />
-        ))}
+      {viewMode === 'calendar' ? (
+        <MonthCalendar activeMonth={activeMonth} events={filteredSchedule} selectedPerson={selectedPerson} />
+      ) : (
+        <div className="events-list">
+          {filteredSchedule.length === 0 && (
+            <div className="empty-state">
+              <p>{selectedPerson ? `No shifts for ${selectedPerson} this month.` : 'No events for this month.'}</p>
+              {isManager && !selectedPerson && <p>Generate one or use Telegram to add an event.</p>}
+            </div>
+          )}
+          {filteredSchedule.map(event => (
+            <EventCard
+              key={event.date}
+              event={event}
+              user={user}
+              isAdmin={isAdmin}
+              isManager={isManager}
+              doAction={doAction}
+              onNotify={() => handleNotify(event.date)}
+              onAssign={handleAssign}
+              onEventUpdate={handleEventUpdate}
+              onToggleLock={handleToggleLock}
+              teamNames={teamNames}
+              recentlyChanged={recentlyChanged}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MonthCalendar({ activeMonth, events, selectedPerson }) {
+  const todayKey = toDateKey(new Date())
+  const monthDate = activeMonth ? new Date(activeMonth + '-15T12:00:00') : new Date()
+  const monthLabel = monthDate.toLocaleString('en', { month: 'long', year: 'numeric' })
+  const eventsByDate = useMemo(() => {
+    const map = new Map()
+    events.forEach(event => map.set(event.date, event))
+    return map
+  }, [events])
+  const days = useMemo(() => {
+    if (!activeMonth) return []
+    const [year, month] = activeMonth.split('-').map(Number)
+    const first = new Date(year, month - 1, 1, 12)
+    const last = new Date(year, month, 0, 12)
+    const start = new Date(first)
+    start.setDate(first.getDate() - first.getDay())
+    const end = new Date(last)
+    end.setDate(last.getDate() + (6 - last.getDay()))
+    const result = []
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      result.push(new Date(d))
+    }
+    return result
+  }, [activeMonth])
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  return (
+    <div className="calendar-view">
+      <div className="calendar-view-header">
+        <div>
+          <span className="calendar-eyebrow">{selectedPerson || 'Everyone'}</span>
+          <h2>{monthLabel}</h2>
+        </div>
+        <span className="calendar-summary">{events.length} service day{events.length === 1 ? '' : 's'}</span>
+      </div>
+      <div className="calendar-weekdays">
+        {weekdays.map(day => <span key={day}>{day}</span>)}
+      </div>
+      <div className="calendar-grid">
+        {days.map(day => {
+          const dateKey = toDateKey(day)
+          const event = eventsByDate.get(dateKey)
+          const isOutside = activeMonth && !dateKey.startsWith(activeMonth)
+          const assignments = event
+            ? event.assignments.filter(a => !selectedPerson || a.person === selectedPerson || a.cover === selectedPerson)
+            : []
+          return (
+            <div
+              key={dateKey}
+              className={`calendar-day ${isOutside ? 'outside' : ''} ${dateKey === todayKey ? 'today' : ''} ${event ? 'has-event' : ''}`}
+            >
+              <div className="calendar-day-number">{day.getDate()}</div>
+              {event && (
+                <div className="calendar-event">
+                  <div className="calendar-event-title">{event.day_type === 'Friday' ? 'Bible Study' : event.title}</div>
+                  <div className="calendar-event-time">{formatDisplayTime(event.start_time || defaultStartTime(event.day_type))}</div>
+                  <div className="calendar-assignments">
+                    {assignments.map(a => {
+                      const worker = a.cover || a.person
+                      const baseRole = a.role.replace(/\s+\d+$/, '')
+                      const icon = ROLE_ICONS[a.role] || ROLE_ICONS[baseRole] || '\uD83D\uDC64'
+                      return (
+                        <div key={a.id} className={`calendar-assignment ${a.status === 'swap_needed' ? 'needs-cover' : ''}`}>
+                          <span>{icon}</span>
+                          <span>{selectedPerson ? a.role : worker}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
