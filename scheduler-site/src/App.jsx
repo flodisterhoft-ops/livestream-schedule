@@ -728,33 +728,31 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
       </div>
 
       <div className="person-filter" ref={filterRef}>
-        <div className={`person-filter-trigger ${selectedPerson ? 'active' : ''} ${viewMode === 'calendar' ? 'calendar-active' : ''}`}>
-          <button
-            type="button"
-            className="person-filter-main"
-            onClick={() => setFilterOpen(v => !v)}
-            aria-haspopup="listbox"
-            aria-expanded={filterOpen}
-          >
-            <span className="person-filter-icon">{'\uD83D\uDC64'}</span>
-            <span className="person-filter-text">
-              {selectedPerson ? selectedPerson : 'All team members'}
-            </span>
-            <span className="person-filter-count">
-              {selectedPerson ? `${selectedPersonCount} shift${selectedPersonCount === 1 ? '' : 's'}` : 'Filter'}
-            </span>
-            <span className={`person-filter-chevron ${filterOpen ? 'open' : ''}`}>{'\u203A'}</span>
-          </button>
-          <button
-            type="button"
-            className={`person-calendar-toggle ${viewMode === 'calendar' ? 'active' : ''}`}
-            onClick={() => setViewMode(viewMode === 'calendar' ? 'cards' : 'calendar')}
-            aria-label={viewMode === 'calendar' ? 'Show schedule cards' : 'Show calendar'}
-            aria-pressed={viewMode === 'calendar'}
-          >
-            {viewMode === 'calendar' ? '\uD83D\uDCCB' : '\uD83D\uDCC5'}
-          </button>
-        </div>
+        <button
+          type="button"
+          className={`person-filter-trigger ${selectedPerson ? 'active' : ''}`}
+          onClick={() => setFilterOpen(v => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={filterOpen}
+        >
+          <span className="person-filter-icon">{'\uD83D\uDC64'}</span>
+          <span className="person-filter-text">
+            {selectedPerson ? selectedPerson : 'All team members'}
+          </span>
+          <span className="person-filter-count">
+            {selectedPerson ? `${selectedPersonCount} shift${selectedPersonCount === 1 ? '' : 's'}` : 'Filter'}
+          </span>
+          <span className={`person-filter-chevron ${filterOpen ? 'open' : ''}`}>{'\u203A'}</span>
+        </button>
+        <button
+          type="button"
+          className={`person-calendar-toggle ${viewMode === 'calendar' ? 'active' : ''}`}
+          onClick={() => setViewMode(viewMode === 'calendar' ? 'cards' : 'calendar')}
+          aria-label={viewMode === 'calendar' ? 'Show schedule cards' : 'Show calendar'}
+          aria-pressed={viewMode === 'calendar'}
+        >
+          {viewMode === 'calendar' ? '\uD83D\uDCCB' : '\uD83D\uDCC5'}
+        </button>
         {filterOpen && (
           <div className="person-filter-menu" role="listbox" aria-label="Filter schedule by name">
             <button
