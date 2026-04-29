@@ -642,6 +642,16 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
     ? team.map(m => m.name).sort()
     : ['Andy', 'Florian', 'Marvin', 'Patric', 'Rene', 'Stefan', 'Viktor', 'TBD']
   const filterNames = teamNames.filter(n => n && n !== 'TBD' && n !== 'Select Helper')
+  const personShiftCounts = useMemo(() => {
+    const counts = Object.fromEntries(filterNames.map(name => [name, 0]))
+    schedule.forEach(event => {
+      event.assignments.forEach(a => {
+        const worker = a.cover || a.person
+        if (worker && counts[worker] !== undefined) counts[worker] += 1
+      })
+    })
+    return counts
+  }, [schedule, filterNames])
   const filteredSchedule = selectedPerson
     ? schedule.filter(event => event.assignments.some(a => a.person === selectedPerson || a.cover === selectedPerson))
     : schedule
@@ -762,7 +772,10 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
               aria-selected={selectedPerson === ''}
             >
               <span>{'\u2728'} All team members</span>
-              {selectedPerson === '' && <span className="person-filter-check">{'\u2713'}</span>}
+              <span className="person-filter-option-meta">
+                {schedule.length} service day{schedule.length === 1 ? '' : 's'}
+                {selectedPerson === '' && <span className="person-filter-check">{'\u2713'}</span>}
+              </span>
             </button>
             {filterNames.map(name => (
               <button
@@ -774,7 +787,10 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
                 aria-selected={selectedPerson === name}
               >
                 <span>{name}</span>
-                {selectedPerson === name && <span className="person-filter-check">{'\u2713'}</span>}
+                <span className="person-filter-option-meta">
+                  {personShiftCounts[name] || 0} shift{personShiftCounts[name] === 1 ? '' : 's'}
+                  {selectedPerson === name && <span className="person-filter-check">{'\u2713'}</span>}
+                </span>
               </button>
             ))}
           </div>
@@ -805,6 +821,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
               onToggleLock={handleToggleLock}
               teamNames={teamNames}
               recentlyChanged={recentlyChanged}
+              selectedPerson={selectedPerson}
             />
           ))}
         </div>
@@ -875,7 +892,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                       const baseRole = a.role.replace(/\s+\d+$/, '')
                       const icon = ROLE_ICONS[a.role] || ROLE_ICONS[baseRole] || '\uD83D\uDC64'
                       return (
-                        <div key={a.id} className={`calendar-assignment ${a.status === 'swap_needed' ? 'needs-cover' : ''}`}>
+                        <div key={a.id} className={`calendar-assignment ${a.status === 'swap_needed' ? 'needs-cover' : ''} ${selectedPerson && worker === selectedPerson ? 'filtered-person' : ''}`}>
                           <span>{icon}</span>
                           <span>{selectedPerson ? a.role : worker}</span>
                         </div>
@@ -896,7 +913,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
 //  Event Card
 // ═══════════════════════════════════════════════════════════════
 
-function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, onToggleLock, teamNames, recentlyChanged }) {
+function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, onToggleLock, teamNames, recentlyChanged, selectedPerson }) {
   const [editingEvent, setEditingEvent] = useState(false)
   const [editType, setEditType] = useState(event.day_type === 'Sunday' ? 'Sunday' : event.day_type === 'Friday' ? 'Bible Study' : 'Other')
   const [editTitle, setEditTitle] = useState(event.custom_title || event.title || '')
@@ -1050,6 +1067,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               teamNames={teamNames}
               isPast={event.is_past}
               isRecentlyChanged={!!(recentlyChanged && recentlyChanged.has && recentlyChanged.has(a.id))}
+              selectedPerson={selectedPerson}
             />
           ))}
         </div>
@@ -1062,7 +1080,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
 //  Assignment Row
 // ═══════════════════════════════════════════════════════════════
 
-function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, doAction, onAssign, onToggleLock, teamNames, isPast, isRecentlyChanged }) {
+function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, doAction, onAssign, onToggleLock, teamNames, isPast, isRecentlyChanged, selectedPerson }) {
   const [showNames, setShowNames] = useState(false)
   const [menuPos, setMenuPos] = useState(null)
   const triggerRef = useRef(null)
@@ -1074,6 +1092,7 @@ function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, 
   const alreadyAssignedThisEvent = Boolean(user && eventAssignments.some(other => other.id !== a.id && ((other.cover || other.person) === user)))
   const isUnassigned = a.person === 'Select Helper' || a.person === 'TBD'
   const isConfirmed = a.status === 'confirmed'
+  const isFilteredPerson = selectedPerson && worker === selectedPerson
   const nameOptions = [...new Set([...(isUnassigned ? [] : [a.person]), ...teamNames].filter(Boolean))]
   const chooseName = (name) => {
     onAssign(a.id, name)
@@ -1141,7 +1160,7 @@ function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, 
             <button
               ref={triggerRef}
               type="button"
-              className={`person-name-btn ${isUnassigned ? 'unassigned' : ''}`}
+              className={`person-name-btn ${isUnassigned ? 'unassigned' : ''} ${isFilteredPerson ? 'filtered-person' : ''}`}
               onClick={openMenu}
               aria-label={`Change ${a.role} assignee (currently ${isUnassigned ? 'unassigned' : worker})`}
               aria-expanded={showNames}
@@ -1174,7 +1193,7 @@ function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, 
             )}
           </div>
         ) : (
-          <span className={`person-name ${isUnassigned ? 'unassigned' : ''}`}>
+          <span className={`person-name ${isUnassigned ? 'unassigned' : ''} ${isFilteredPerson ? 'filtered-person' : ''}`}>
             {personDisplay}
             {a.swapped_with && <span className="swap-tag"> (swapped with {a.swapped_with})</span>}
           </span>
