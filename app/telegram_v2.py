@@ -35,16 +35,16 @@ BASE_API = "https://api.telegram.org/bot"
 
 # ── Emoji maps ───────────────────────────────────────────────────────
 ROLE_EMOJI = {
-    "Computer": "\U0001F4BB",
-    "Camera 1": "📹",
-    "Camera 2": "📹",
-    "Camera": "📹",
+    "Computer": "\U0001F5A5\uFE0F",
+    "Camera 1": "\U0001F4F9",
+    "Camera 2": "\U0001F4F9",
+    "Camera": "\U0001F4F9",
     "Leader": "🎤",
     "Helper": "🙌",
 }
 
 # Friday Bible Study: first person gets computer icon, second gets hands icon
-FRIDAY_ICONS = ["\U0001F4BB", "\U0001F4F9"]
+FRIDAY_ICONS = ["\U0001F5A5\uFE0F", "\U0001F4F9"]
 
 # Short display names for roles
 ROLE_SHORT = {
@@ -220,7 +220,7 @@ def _schedule_url(person=None):
     return url
 
 
-def _schedule_button(label="📅 View Schedule", person=None):
+def _schedule_button(label="\U0001F4C5 View Schedule", person=None):
     if person:
         return {"text": label, "url": _schedule_url(person)}
     if os.environ.get("TELEGRAM_LOGIN_URL_ENABLED", "").lower() not in ("1", "true", "yes", "on"):
@@ -491,7 +491,7 @@ def _build_event_buttons(event, assignments=None, expanded_id=None):
         ])
 
     rows.append([
-        _schedule_button("📅 Show Schedule")
+        _schedule_button("\U0001F4C5 Show Schedule")
     ])
 
     return _make_inline_keyboard(rows) if rows else None
@@ -598,7 +598,7 @@ def _personal_question_buttons(assignment):
     return [
         [{"text": "✅ Yes, I'll be there", "callback_data": f"personal_confirm:{assignment.id}"}],
         [{"text": "❌ I can't make it", "callback_data": f"personal_decline:{assignment.id}"}],
-        [_schedule_button("📅 Open Schedule", person=assignment.person)],
+        [_schedule_button("\U0001F4C5 Open Schedule", person=assignment.person)],
     ]
 
 
@@ -705,23 +705,22 @@ def _assignment_line(assignment, role_label=None):
     worker = _worker_name(assignment)
     if not worker or worker in ("TBD", "Select Helper"):
         worker = "TBD"
-    label = role_label or assignment.role
     icon = "\U0001F4F9" if "Camera" in assignment.role else ROLE_EMOJI.get(assignment.role, "\U0001F464")
-    return f"{icon} {label}: {worker}"
+    return f"{icon} {worker}"
 
 
 def format_weekly_schedule(today=None):
     monday, _sunday, friday, sunday_event, extras = _weekly_schedule_events(today)
-    lines = ["📅 <b>Livestream schedule this week</b>", ""]
+    lines = ["\U0001F4C5 <b>Livestream schedule this week</b>", ""]
 
     for event in extras:
-        lines.append(f"<b>{_event_title(event)}</b> <i>@ {_event_time(event)}</i>")
+        lines.append(f"<b>{_event_title(event)}</b> <code>@ {_event_time(event)}</code>")
         for assignment in event.assignments:
             lines.append(_assignment_line(assignment))
         lines.append("")
 
     friday_time = _event_time(friday) if friday else "7:00 PM"
-    lines.append(f"<b>Friday Bible Study</b> <i>@ {friday_time}</i>")
+    lines.append(f"<b>Friday Bible Study</b> <code>@ {friday_time}</code>")
     if friday:
         for assignment in friday.assignments:
             lines.append(_assignment_line(assignment))
@@ -730,7 +729,7 @@ def format_weekly_schedule(today=None):
     lines.append("")
 
     sunday_time = _event_time(sunday_event) if sunday_event else "2:00 PM"
-    lines.append(f"<b>Sunday Service</b> <i>@ {sunday_time}</i>")
+    lines.append(f"<b>Sunday Service</b> <code>@ {sunday_time}</code>")
     if sunday_event:
         for assignment in sunday_event.assignments:
             lines.append(_assignment_line(assignment))
@@ -761,7 +760,7 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
         return 0
 
     text = format_weekly_schedule(today)
-    buttons = _make_inline_keyboard([[_schedule_button("📅 View Schedule")]])
+    buttons = _make_inline_keyboard([[_schedule_button()]])
     target_chat_id = chat_id or TELEGRAM_CHAT_ID
     msg_id = send_message(text, chat_id=target_chat_id, reply_markup=buttons)
     if not msg_id:
@@ -784,7 +783,7 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
 def send_event_reminder(event, chat_id=None):
     """Send the public 9 AM event post to the group chat."""
     text = format_today_group_post(event)
-    buttons = _make_inline_keyboard([[_schedule_button("📅 View Schedule")]])
+    buttons = _make_inline_keyboard([[_schedule_button()]])
     target = chat_id or TELEGRAM_CHAT_ID
     msg_id = send_message(text, chat_id=target, reply_markup=buttons)
 
@@ -954,7 +953,7 @@ def _swap_buttons(swap_request, recipient, future_assignment):
         }])
     buttons.extend([
         [{"text": "❌ No, I'm good", "callback_data": f"swap_decline:{swap_request.id}"}],
-        [_schedule_button("📅 Open Schedule", person=recipient)],
+        [_schedule_button("\U0001F4C5 Open Schedule", person=recipient)],
     ])
     return buttons
 
@@ -1419,7 +1418,7 @@ def _resolve_person(telegram_user_id, fallback_name):
 def _refresh_event_message(event, chat_id, message_id):
     """Re-render the event message with current statuses and buttons."""
     text = format_today_group_post(event)
-    buttons = _make_inline_keyboard([[_schedule_button("📅 View Schedule")]])
+    buttons = _make_inline_keyboard([[_schedule_button()]])
     edit_message(chat_id, message_id, text, reply_markup=buttons)
 
 
