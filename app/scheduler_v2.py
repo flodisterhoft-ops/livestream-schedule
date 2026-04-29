@@ -436,6 +436,17 @@ def _check_consecutive_event_streak(name, date_obj, overall):
     return last_worked != previous_dates
 
 
+def _assignment_declined_names(assignment):
+    declined = set()
+    for entry in assignment.history or []:
+        if entry.get("action") == "decline" and entry.get("by"):
+            declined.add(entry["by"])
+    for swap in getattr(assignment, "swap_requests", []) or []:
+        if swap.requestor:
+            declined.add(swap.requestor)
+    return declined
+
+
 def _check_strict_person_caps(name, date_obj, day_type, overall, roster):
     caps = _person_month_caps(name, roster)
     if name != "Florian" and not caps["custom"]:
@@ -801,9 +812,10 @@ def repair_future_assignments_for_roster(start_date=None, refill_pending=False):
                 kept += 1
                 continue
 
-            replacement = _select_best(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+            excluded = assigned_today + list(_assignment_declined_names(assignment))
+            replacement = _select_best(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=excluded)
             if replacement == "TBD":
-                replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+                replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=excluded)
 
             snapshot.append({
                 "id": assignment.id,
@@ -927,9 +939,10 @@ def rebalance_future_to_targets(targets, start_date=None, end_date=None, lock_co
             ]
 
             _increment_expected(pool, pool_role, event.date, role_tracking, roster, exclude=assigned_today, day_type=day_type)
-            replacement = _select_best(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+            excluded = assigned_today + list(_assignment_declined_names(assignment))
+            replacement = _select_best(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=excluded)
             if replacement == "TBD":
-                replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=assigned_today)
+                replacement = _select_relaxed(pool, pool_role, event.date, day_type, role_tracking, overall, roster, exclude=excluded)
 
             snapshot.append({
                 "id": assignment.id,
