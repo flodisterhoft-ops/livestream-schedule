@@ -720,7 +720,7 @@ def format_weekly_schedule(today=None):
         lines.append("")
 
     friday_time = _event_time(friday) if friday else "7:00 PM"
-    lines.append(f"<b>Friday Bible Study</b> <code>@ {friday_time}</code>")
+    lines.append(f"<b>Friday - Bible Study</b> <code>@ {friday_time}</code>")
     if friday:
         for assignment in friday.assignments:
             lines.append(_assignment_line(assignment))
