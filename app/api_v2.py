@@ -379,6 +379,8 @@ def do_action():
             return jsonify({"error": "Unauthorized"}), 403
         if assignment.status != "swap_needed":
             return jsonify({"error": "Shift is not available for pickup"}), 400
+        if any(a.id != assignment.id and (a.cover or a.person) == curr for a in event.assignments):
+            return jsonify({"error": "You are already scheduled for this event"}), 400
         assignment.cover = curr
         assignment.status = "confirmed"
         push_history()

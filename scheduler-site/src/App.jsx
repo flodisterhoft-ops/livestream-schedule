@@ -876,6 +876,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             <AssignmentRow
               key={a.id}
               assignment={a}
+              eventAssignments={event.assignments}
               user={user}
               isManager={isManager}
               doAction={doAction}
@@ -896,7 +897,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
 //  Assignment Row
 // ═══════════════════════════════════════════════════════════════
 
-function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, onToggleLock, teamNames, isPast, isRecentlyChanged }) {
+function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, doAction, onAssign, onToggleLock, teamNames, isPast, isRecentlyChanged }) {
   const [showNames, setShowNames] = useState(false)
   const [menuPos, setMenuPos] = useState(null)
   const triggerRef = useRef(null)
@@ -905,6 +906,7 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, onT
   const icon = ROLE_ICONS[a.role] || ROLE_ICONS[baseRole] || '\uD83D\uDC64'
   const worker = a.cover || a.person
   const isMe = a.person === user || a.cover === user
+  const alreadyAssignedThisEvent = Boolean(user && eventAssignments.some(other => other.id !== a.id && ((other.cover || other.person) === user)))
   const isUnassigned = a.person === 'Select Helper' || a.person === 'TBD'
   const isConfirmed = a.status === 'confirmed'
   const nameOptions = [...new Set([...(isUnassigned ? [] : [a.person]), ...teamNames].filter(Boolean))]
@@ -1055,7 +1057,7 @@ function AssignmentRow({ assignment: a, user, isManager, doAction, onAssign, onT
               </>
             )}
 
-            {user && a.status === 'swap_needed' && !isMe && !isUnassigned && (
+            {user && a.status === 'swap_needed' && !isMe && !isUnassigned && !alreadyAssignedThisEvent && (
               <button className="action-btn pickup" onClick={() => doAction('pickup', a.id)}>
                 Pick Up
               </button>

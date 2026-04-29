@@ -501,8 +501,13 @@ def _build_pickup_buttons(assignment):
     """Build buttons for shift pickup — list all team members who could cover."""
     from .utils import ROLES_CONFIG, ALL_NAMES
     rows = []
+    assigned_here = {
+        a.cover or a.person
+        for a in assignment.event.assignments
+        if a.id != assignment.id
+    }
     for name in ALL_NAMES:
-        if name in ("TBD", "Select Helper") or name == assignment.person:
+        if name in ("TBD", "Select Helper") or name == assignment.person or name in assigned_here:
             continue
         rows.append([{
             "text": f"🙋 {name}",
@@ -1116,6 +1121,9 @@ def handle_callback_query(data):
             return
         original_person = assignment.person
         if action == "swap_cover":
+            if any(a.id != assignment.id and (a.cover or a.person) == person_name for a in event.assignments):
+                answer_callback(callback_id, "You are already scheduled for this event.", show_alert=True)
+                return
             assignment.cover = person_name
             assignment.status = "confirmed"
             swap.status = "accepted"
@@ -1331,6 +1339,9 @@ def handle_callback_query(data):
 
     elif action == "pickup_as":
         cover_name = parts[2] if len(parts) > 2 else person_name
+        if any(a.id != assignment.id and (a.cover or a.person) == cover_name for a in event.assignments):
+            answer_callback(callback_id, f"{cover_name} is already scheduled for this event.", show_alert=True)
+            return
         assignment.cover = cover_name
         assignment.status = "confirmed"
         h = assignment.history

@@ -25,6 +25,7 @@ FLORIAN_MONTH_TOTAL_CAP = 3
 SUNDAY_MIN_GAP_DAYS = 8           # Min days between consecutive Sundays
 SERVICE_MIN_GAP_DAYS = 0
 FRIDAY_MIN_GAP_DAYS = 0
+MAX_CONSECUTIVE_EVENTS = 2
 
 
 # ── Team configuration (default, used when TeamMember table is empty) ────
@@ -233,6 +234,7 @@ def _build_history(roster, end_before=None):
             "last_sun_date": None,
             "last_fri_date": None,
             "last_service_date": None,
+            "recent_service_dates": [],
         }
         for name in all_names
     }
@@ -283,6 +285,7 @@ def _build_history(roster, end_before=None):
                 overall[worker]["lifetime"] += 1
                 overall[worker]["last_date"] = d
                 overall[worker]["last_service_date"] = d
+                overall[worker]["recent_service_dates"].append(d)
 
                 if is_sunday:
                     overall[worker]["last_sun_date"] = d
@@ -297,6 +300,16 @@ def _build_history(roster, end_before=None):
                     overall[worker]["last_fri_date"] = d
 
     return role_tracking, overall
+
+
+def _previous_service_dates(date_obj, limit=2):
+    return [
+        row[0] for row in Event.query.with_entities(Event.date)
+        .filter(Event.date < date_obj, Event.day_type.in_(["Sunday", "Friday"]))
+        .order_by(Event.date.desc())
+        .limit(limit)
+        .all()
+    ]
 
 
 def _schedule_priority(name, role, day_type, role_tracking, overall, roster, date_obj):
@@ -409,6 +422,20 @@ def _check_service_gap(name, date_obj, overall):
     return True
 
 
+def _check_consecutive_event_streak(name, date_obj, overall):
+    recent = []
+    for service_date in overall.get(name, {}).get("recent_service_dates", []):
+        if service_date not in recent:
+            recent.append(service_date)
+    if len(recent) < MAX_CONSECUTIVE_EVENTS:
+        return True
+    previous_dates = _previous_service_dates(date_obj, MAX_CONSECUTIVE_EVENTS)
+    if len(previous_dates) < MAX_CONSECUTIVE_EVENTS:
+        return True
+    last_worked = list(reversed(recent[-MAX_CONSECUTIVE_EVENTS:]))
+    return last_worked != previous_dates
+
+
 def _check_strict_person_caps(name, date_obj, day_type, overall, roster):
     caps = _person_month_caps(name, roster)
     if name != "Florian" and not caps["custom"]:
@@ -439,6 +466,7 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
         and is_available(p, date_obj)
         and _person_is_active(p, date_obj, roster)
         and _check_service_gap(p, date_obj, overall)
+        and _check_consecutive_event_streak(p, date_obj, overall)
         and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
         and (day_type != "Friday" or _check_friday_gap(p, date_obj, overall))
     ]
@@ -467,6 +495,7 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
             and is_available(p, date_obj)
             and _person_is_active(p, date_obj, roster)
             and _check_service_gap(p, date_obj, overall)
+            and _check_consecutive_event_streak(p, date_obj, overall)
             and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
             and (day_type != "Friday" or _check_friday_gap(p, date_obj, overall))
             and _check_strict_person_caps(p, date_obj, day_type, overall, roster)
@@ -487,6 +516,7 @@ def _select_relaxed(pool, role, date_obj, day_type, role_tracking, overall, rost
         and is_available(p, date_obj)
         and _person_is_active(p, date_obj, roster)
         and _check_service_gap(p, date_obj, overall)
+        and _check_consecutive_event_streak(p, date_obj, overall)
         and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
         and (day_type != "Friday" or _check_friday_gap(p, date_obj, overall))
     ]
@@ -509,6 +539,7 @@ def _record_assignment(name, role, date_obj, day_type, role_tracking, overall):
         overall[name]["lifetime"] += 1
         overall[name]["last_date"] = date_obj
         overall[name]["last_service_date"] = date_obj
+        overall[name].setdefault("recent_service_dates", []).append(date_obj)
 
         month_key = (date_obj.year, date_obj.month)
         if month_key not in overall[name]["month_counts"]:
