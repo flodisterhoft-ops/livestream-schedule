@@ -825,9 +825,6 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
 
 function MonthCalendar({ activeMonth, events, selectedPerson }) {
   const todayKey = toDateKey(new Date())
-  const monthDate = activeMonth ? new Date(activeMonth + '-15T12:00:00') : new Date()
-  const monthLabel = monthDate.toLocaleString('en', { month: 'long' }).toUpperCase()
-  const yearLabel = monthDate.getFullYear()
   const eventsByDate = useMemo(() => {
     const map = new Map()
     events.forEach(event => {
@@ -861,10 +858,6 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
 
   return (
     <div className="calendar-view">
-      <div className="calendar-view-header">
-        <span className="calendar-eyebrow">{selectedPerson || yearLabel}</span>
-        <h2>{monthLabel}</h2>
-      </div>
       <div className="calendar-weekdays">
         {weekdays.map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
       </div>
@@ -892,7 +885,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                       const eventKind = event.day_type === 'Friday' ? 'friday' : event.day_type === 'Sunday' ? 'sunday' : 'custom'
                       return (
                         <div className="calendar-event" key={`${event.date}-${event.title}-${event.day_type}`}>
-                          <div className={`calendar-chip calendar-event-chip ${eventKind}`}>
+                          <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={event.day_type === 'Friday' ? 'Bible Study' : event.title}>
                             <span className="calendar-chip-text">{event.day_type === 'Friday' ? 'Bible Study' : event.title}</span>
                           </div>
                           <div className="calendar-chip calendar-time-chip">
@@ -909,7 +902,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                               selectedPerson && worker === selectedPerson ? 'filtered-person' : '',
                             ].filter(Boolean).join(' ')
                             return (
-                              <div key={a.id} className={assignmentClasses}>
+                              <div key={a.id} className={assignmentClasses} title={`${a.role}: ${worker || 'Unassigned'}`}>
                                 <span className="calendar-role-icon">{icon}</span>
                                 <span className="calendar-chip-text">{selectedPerson ? a.role : (worker || 'Unassigned')}</span>
                               </div>
