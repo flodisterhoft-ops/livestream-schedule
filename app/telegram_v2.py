@@ -1444,21 +1444,19 @@ def refresh_event_telegram(event):
 
 def _inside_daily_reminder_window(now=None):
     now = now or vancouver_now()
-    return now.hour == 9
+    return now.hour == 8
 
 
 def send_daily_reminders_v2(chat_id=None):
-    """Send 9 AM group posts and temp-group personal questions."""
+    """Send 8 AM temp-group personal questions."""
     now = vancouver_now()
     if not _inside_daily_reminder_window(now):
-        print(f"[Scheduler] Skipping daily reminders outside 9AM window ({now.isoformat()})")
+        print(f"[Scheduler] Skipping daily reminders outside 8AM window ({now.isoformat()})")
         return 0
     today = vancouver_today()
     events = Event.query.filter_by(date=today).all()
     sent = 0
     for event in events:
-        if send_event_reminder(event, chat_id=chat_id):
-            sent += 1
         for assignment in event.assignments:
             worker = assignment.cover or assignment.person
             if worker in ("TBD", "Select Helper") or assignment.status == "swap_needed":

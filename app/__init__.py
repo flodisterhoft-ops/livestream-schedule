@@ -322,12 +322,12 @@ def _start_daily_scheduler(app):
     atexit.register(_cleanup_lock)
 
     def _fire_daily_reminders():
-        """Run send_daily_reminders_v2() inside app context at 9 AM Vancouver."""
+        """Run send_daily_reminders_v2() inside app context at 8 AM Vancouver."""
         with app.app_context():
             try:
                 from .telegram_v2 import send_daily_reminders_v2
                 sent = send_daily_reminders_v2()
-                print(f"[Scheduler] 9AM reminder fired — sent {sent} message(s)")
+                print(f"[Scheduler] 8AM reminder fired — sent {sent} message(s)")
             except Exception as e:
                 print(f"[Scheduler] Reminder job failed: {e}")
 
@@ -380,7 +380,7 @@ def _start_daily_scheduler(app):
     scheduler = BackgroundScheduler(timezone="America/Vancouver", daemon=True)
     scheduler.add_job(
         _fire_daily_reminders,
-        trigger=CronTrigger(hour=9, minute=0, timezone="America/Vancouver"),
+        trigger=CronTrigger(hour=8, minute=0, timezone="America/Vancouver"),
         id="daily_reminder_v2",
         replace_existing=True,
         misfire_grace_time=3600,  # If server was down, still fire if within an hour
@@ -422,7 +422,7 @@ def _start_daily_scheduler(app):
     )
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown(wait=False))
-    print(f"[Scheduler] Started (pid {os.getpid()}) — daily reminders at 9:00 AM America/Vancouver")
+    print(f"[Scheduler] Started (pid {os.getpid()}) — daily reminders at 8:00 AM America/Vancouver")
 
 
 def _pid_alive(pid):
