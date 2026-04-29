@@ -742,10 +742,10 @@ def format_weekly_schedule(today=None):
 
 def _weekly_schedule_already_sent(monday):
     key = f"weekly_schedule:{monday.isoformat()}"
-    return InteractionLog.query.filter_by(
-        action="weekly_schedule_sent",
-        event_date=monday,
-        details=key,
+    return InteractionLog.query.filter(
+        InteractionLog.action == "weekly_schedule_sent",
+        InteractionLog.event_date == monday,
+        InteractionLog.details.like(f"{key}%"),
     ).first() is not None
 
 
@@ -762,7 +762,8 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
 
     text = format_weekly_schedule(today)
     buttons = _make_inline_keyboard([[_schedule_button("📅 View Schedule")]])
-    msg_id = send_message(text, chat_id=chat_id or TELEGRAM_CHAT_ID, reply_markup=buttons)
+    target_chat_id = chat_id or TELEGRAM_CHAT_ID
+    msg_id = send_message(text, chat_id=target_chat_id, reply_markup=buttons)
     if not msg_id:
         return 0
 
@@ -770,7 +771,7 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
         action="weekly_schedule_sent",
         person_name="group",
         event_date=monday,
-        details=f"weekly_schedule:{monday.isoformat()}",
+        details=f"weekly_schedule:{monday.isoformat()}|chat_id={target_chat_id}|message_id={msg_id}",
     ))
     db.session.commit()
     return 1
