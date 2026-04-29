@@ -815,15 +815,15 @@ body {
 .person-filter {
   position: relative;
   z-index: 20;
-  margin: -8px 0 14px;
+  margin: -8px 0 12px;
 }
 
 .person-filter-trigger {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px;
+  gap: 4px;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: linear-gradient(135deg, var(--bg-card), #f8fbff);
@@ -852,8 +852,8 @@ body {
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 4px 4px 4px 6px;
+  gap: 6px;
+  padding: 2px 3px 2px 5px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -862,20 +862,20 @@ body {
 }
 
 .person-filter-icon {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: var(--accent-light);
   color: var(--accent);
-  font-size: 0.84rem;
+  font-size: 0.76rem;
 }
 
 .person-filter-text {
   min-width: 0;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 750;
   white-space: nowrap;
   overflow: hidden;
@@ -883,11 +883,11 @@ body {
 }
 
 .person-filter-count {
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
   background: var(--bg-hover);
   color: var(--text-secondary);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -899,7 +899,7 @@ body {
 
 .person-filter-chevron {
   color: var(--text-muted);
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   line-height: 1;
   transform: rotate(90deg);
   transition: transform 0.2s ease, color 0.2s ease;
@@ -912,8 +912,8 @@ body {
 
 .person-calendar-toggle {
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -921,7 +921,7 @@ body {
   border-radius: 50%;
   background: var(--bg-hover);
   color: var(--text-secondary);
-  font-size: 1rem;
+  font-size: 0.9rem;
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
@@ -1034,7 +1034,7 @@ body {
   text-transform: uppercase;
 }
 
-.calendar-weekdays span:first-child {
+.calendar-weekdays span:last-child {
   color: #f87171;
 }
 
@@ -1140,6 +1140,16 @@ body {
   min-width: 0;
   margin-top: 0;
   overflow: visible;
+}
+
+.calendar-event.past .calendar-chip {
+  filter: grayscale(0.55) brightness(0.93);
+  opacity: 0.7;
+}
+
+.calendar-event.past:hover .calendar-chip {
+  filter: grayscale(0.25) brightness(0.98);
+  opacity: 0.92;
 }
 
 .calendar-chip {

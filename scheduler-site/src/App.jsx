@@ -565,7 +565,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
   const [indicator, setIndicator] = useState(null)
   const [selectedPerson, setSelectedPerson] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
-  const [viewMode, setViewMode] = useState('calendar')
+  const [viewMode, setViewMode] = useState('cards')
   useEffect(() => {
     const measure = () => {
       const nav = navRef.current
@@ -840,9 +840,9 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
     const first = new Date(year, month - 1, 1, 12)
     const last = new Date(year, month, 0, 12)
     const start = new Date(first)
-    start.setDate(first.getDate() - first.getDay())
+    start.setDate(first.getDate() - ((first.getDay() + 6) % 7))
     const end = new Date(last)
-    end.setDate(last.getDate() + (6 - last.getDay()))
+    end.setDate(last.getDate() + (6 - ((last.getDay() + 6) % 7)))
     const result = []
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       result.push(new Date(d))
@@ -854,7 +854,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
     for (let i = 0; i < days.length; i += 7) result.push(days.slice(i, i + 7))
     return result
   }, [days])
-  const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+  const weekdays = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
   return (
     <div className="calendar-view">
@@ -884,7 +884,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                       const assignments = event.assignments.filter(a => !selectedPerson || a.person === selectedPerson || a.cover === selectedPerson)
                       const eventKind = event.day_type === 'Friday' ? 'friday' : event.day_type === 'Sunday' ? 'sunday' : 'custom'
                       return (
-                        <div className="calendar-event" key={`${event.date}-${event.title}-${event.day_type}`}>
+                        <div className={`calendar-event ${event.is_past ? 'past' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
                           <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={event.day_type === 'Friday' ? 'Bible Study' : event.title}>
                             <span className="calendar-chip-text">{event.day_type === 'Friday' ? 'Bible Study' : event.title}</span>
                           </div>
