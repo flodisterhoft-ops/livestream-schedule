@@ -969,9 +969,18 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
 //  Event Card
 // ═══════════════════════════════════════════════════════════════
 
+const isCommunionTitle = (title) => /communion/i.test(title || '')
+
+function detectInitialEditType(event) {
+  if (isCommunionTitle(event.custom_title)) return 'Communion'
+  if (event.day_type === 'Sunday') return 'Sunday'
+  if (event.day_type === 'Friday') return 'Bible Study'
+  return 'Other'
+}
+
 function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, onToggleLock, teamNames, recentlyChanged, selectedPerson }) {
   const [editingEvent, setEditingEvent] = useState(false)
-  const [editType, setEditType] = useState(event.day_type === 'Sunday' ? 'Sunday' : event.day_type === 'Friday' ? 'Bible Study' : 'Other')
+  const [editType, setEditType] = useState(() => detectInitialEditType(event))
   const [editTitle, setEditTitle] = useState(event.custom_title || event.title || '')
   const [editDate, setEditDate] = useState(event.date)
   const [editTime, setEditTime] = useState(event.start_time || defaultStartTime(event.day_type))
@@ -986,8 +995,19 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
   useEffect(() => {
     if (editingEvent) return
     setEditCancelled(Boolean(event.cancelled))
+    setEditType(detectInitialEditType(event))
     setEditRoles(event.assignments.map(a => ({ id: a.id, role: a.role, person: a.person })))
   }, [event, editingEvent])
+
+  const handleTypeChange = (nextType) => {
+    setEditType(nextType)
+    if (nextType === 'Communion') {
+      setEditTime('19:00')
+      setEditCancelled(true)
+    } else {
+      setEditTime(defaultStartTime(nextType === 'Bible Study' ? 'Friday' : nextType))
+    }
+  }
 
   const removeEditRole = (idx) => {
     setEditRoles(rs => rs.filter((_, i) => i !== idx))
@@ -1006,10 +1026,16 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
     const keptIds = new Set(editRoles.filter(r => r.id).map(r => r.id))
     const remove_assignment_ids = event.assignments.filter(a => !keptIds.has(a.id)).map(a => a.id)
     const add_roles = editRoles.filter(r => !r.id).map(r => r.role)
+    let custom_title = null
+    let day_type = 'Custom'
+    if (editType === 'Sunday') { day_type = 'Sunday'; custom_title = null }
+    else if (editType === 'Bible Study') { day_type = 'Friday'; custom_title = null }
+    else if (editType === 'Communion') { day_type = 'Custom'; custom_title = 'Communion Service' }
+    else { day_type = 'Custom'; custom_title = editTitle }
     const updates = {
       new_date: editDate,
-      day_type: editType === 'Sunday' ? 'Sunday' : editType === 'Bible Study' ? 'Friday' : 'Custom',
-      custom_title: editType === 'Other' ? editTitle : null,
+      day_type,
+      custom_title,
       start_time: editTime,
       cancelled: editCancelled,
     }
@@ -1075,6 +1101,9 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             className={`event-title ${canEdit ? 'editable' : ''}`}
             {...editProps}
           >
+            {isCommunionTitle(event.custom_title || event.title) && (
+              <span className="event-title-icon" aria-hidden="true">🍞🍷</span>
+            )}
             {event.title}
             {isToday && <span className="today-pill">TODAY</span>}
           </TitleTag>
@@ -1100,47 +1129,47 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
         </div>
         {editingEvent && (
           <div className="event-editor" ref={editorRef}>
-            <input
-              type="date"
-              value={editDate}
-              onChange={e => setEditDate(e.target.value)}
-              className="event-edit-input"
-            />
+            <div className="event-edit-row">
+              <input
+                type="date"
+                value={editDate}
+                onChange={e => setEditDate(e.target.value)}
+                className="event-edit-input"
+              />
+              <input
+                type="time"
+                value={editTime}
+                onChange={e => setEditTime(e.target.value)}
+                className="event-edit-input"
+                disabled={editCancelled}
+              />
+            </div>
             <select
               value={editType}
-              onChange={e => {
-                setEditType(e.target.value)
-                setEditTime(defaultStartTime(e.target.value === 'Bible Study' ? 'Friday' : e.target.value))
-              }}
+              onChange={e => handleTypeChange(e.target.value)}
               className="event-edit-input"
             >
-              <option value="Sunday">Sunday Service</option>
-              <option value="Bible Study">Bible Study</option>
-              <option value="Other">Other</option>
+              <option value="Sunday">⛪ Sunday Service</option>
+              <option value="Bible Study">📖 Bible Study</option>
+              <option value="Communion">🍞🍷 Communion Service</option>
+              <option value="Other">✏️ Other</option>
             </select>
             {editType === 'Other' && (
               <input
                 type="text"
                 value={editTitle}
                 onChange={e => setEditTitle(e.target.value)}
-                placeholder="Event title (e.g., Communion)"
+                placeholder="Event title"
                 className="event-edit-input"
               />
             )}
-            <input
-              type="time"
-              value={editTime}
-              onChange={e => setEditTime(e.target.value)}
-              className="event-edit-input"
-              disabled={editCancelled}
-            />
             <label className="event-cancel-toggle">
               <input
                 type="checkbox"
                 checked={editCancelled}
                 onChange={e => setEditCancelled(e.target.checked)}
               />
-              <span>🚫 No livestream needed</span>
+              <span>{editCancelled ? '✅' : '🚫'} No livestream needed</span>
             </label>
             {!editCancelled && (
               <div className="event-helpers-edit">
@@ -1171,12 +1200,12 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               </div>
             )}
             <div className="event-editor-actions">
-              <button className="action-btn confirm" onClick={saveEvent}>Save</button>
-              <button className="action-btn undo" onClick={() => setEditingEvent(false)}>Cancel</button>
+              <button className="event-editor-btn cancel" type="button" onClick={() => setEditingEvent(false)}>Cancel</button>
+              <button className="event-editor-btn save" type="button" onClick={saveEvent}>Save</button>
             </div>
           </div>
         )}
-        {isCancelled && !editingEvent ? (
+        {editingEvent ? null : isCancelled ? (
           <div className="event-cancelled-banner">✅ No livestream needed</div>
         ) : (
           <div className="assignments">
