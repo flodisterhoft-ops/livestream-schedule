@@ -924,7 +924,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                           </div>
                           {isCancelled ? (
                             <div className="calendar-chip calendar-cancelled-chip" title="No livestream needed">
-                              <span className="calendar-role-icon">\uD83D\uDEAB</span>
+                              <span className="calendar-role-icon">\u2705</span>
                               <span className="calendar-chip-text">No livestream</span>
                             </div>
                           ) : (
@@ -1177,7 +1177,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
           </div>
         )}
         {isCancelled && !editingEvent ? (
-          <div className="event-cancelled-banner">🚫 No livestream needed</div>
+          <div className="event-cancelled-banner">✅ No livestream needed</div>
         ) : (
           <div className="assignments">
             {event.assignments.map(a => (

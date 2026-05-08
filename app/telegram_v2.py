@@ -665,7 +665,7 @@ def format_monthly_schedule(year, month):
         lines.append(f"<b>{day}</b> - {title}")
 
         if getattr(event, "cancelled", False):
-            lines.append("  🚫 <i>No livestream needed</i>")
+            lines.append("  ✅ <i>No livestream needed</i>")
             lines.append("")
             continue
 
@@ -730,44 +730,61 @@ def _assignment_line(assignment, role_label=None):
     return f"{icon} {worker}"
 
 
+def _weekly_event_block(event, default_header=None, default_time=None, missing_label=None):
+    """Render one event's block in the weekly schedule.
+
+    Header rule: when an event has a custom title (e.g. 'Communion'), use it
+    on its own. When the title is the default ('Bible Study' / 'Sunday Service'),
+    fall back to the caller-provided default_header (e.g. 'Friday - Bible Study').
+    """
+    if not event:
+        if default_header is None:
+            return []
+        time = default_time or "7:00 PM"
+        return [
+            f"<b>{default_header}</b> <code>@ {time}</code>",
+            f"<i>{missing_label or 'Not scheduled.'}</i>",
+        ]
+
+    title = _event_title(event)
+    if event.custom_title:
+        header = f"<b>{title}</b>"
+    elif default_header:
+        header = f"<b>{default_header}</b>"
+    else:
+        header = f"<b>{title}</b>"
+
+    lines = [f"{header} <code>@ {_event_time(event)}</code>"]
+    if getattr(event, "cancelled", False):
+        lines.append("✅ <i>No livestream needed today</i>")
+    else:
+        for assignment in event.assignments:
+            lines.append(_assignment_line(assignment))
+    return lines
+
+
 def format_weekly_schedule(today=None):
     monday, _sunday, friday, sunday_event, extras = _weekly_schedule_events(today)
     lines = ["\U0001F4C5 <b>Livestream schedule this week</b>", ""]
 
     for event in extras:
-        if getattr(event, "cancelled", False):
-            lines.append(f"<b>{_event_title(event)}</b>")
-            lines.append("🚫 <i>No livestream needed</i>")
-        else:
-            lines.append(f"<b>{_event_title(event)}</b> <code>@ {_event_time(event)}</code>")
-            for assignment in event.assignments:
-                lines.append(_assignment_line(assignment))
+        lines.extend(_weekly_event_block(event))
         lines.append("")
 
-    if friday and getattr(friday, "cancelled", False):
-        lines.append(f"<b>Friday - {_event_title(friday)}</b>")
-        lines.append("🚫 <i>No livestream needed</i>")
-    else:
-        friday_time = _event_time(friday) if friday else "7:00 PM"
-        lines.append(f"<b>Friday - Bible Study</b> <code>@ {friday_time}</code>")
-        if friday:
-            for assignment in friday.assignments:
-                lines.append(_assignment_line(assignment))
-        else:
-            lines.append("<i>No Bible Study scheduled.</i>")
+    lines.extend(_weekly_event_block(
+        friday,
+        default_header="Friday - Bible Study",
+        default_time="7:00 PM",
+        missing_label="No Bible Study scheduled.",
+    ))
     lines.append("")
 
-    if sunday_event and getattr(sunday_event, "cancelled", False):
-        lines.append(f"<b>Sunday - {_event_title(sunday_event)}</b>")
-        lines.append("🚫 <i>No livestream needed</i>")
-    else:
-        sunday_time = _event_time(sunday_event) if sunday_event else "2:00 PM"
-        lines.append(f"<b>Sunday Service</b> <code>@ {sunday_time}</code>")
-        if sunday_event:
-            for assignment in sunday_event.assignments:
-                lines.append(_assignment_line(assignment))
-        else:
-            lines.append("<i>No Sunday Service scheduled.</i>")
+    lines.extend(_weekly_event_block(
+        sunday_event,
+        default_header="Sunday Service",
+        default_time="2:00 PM",
+        missing_label="No Sunday Service scheduled.",
+    ))
 
     return "\n".join(lines).strip()
 
