@@ -232,6 +232,9 @@ def create_app(config_class='config.Config'):
         if 'redeemed_for_id' not in cols:
             db.session.execute(text('ALTER TABLE assignment ADD COLUMN redeemed_for_id INTEGER REFERENCES assignment(id) ON DELETE SET NULL'))
             db.session.commit()
+        if 'orphan_dismissed_at' not in cols:
+            db.session.execute(text('ALTER TABLE assignment ADD COLUMN orphan_dismissed_at TIMESTAMP'))
+            db.session.commit()
 
         team_member_cols = [c['name'] for c in insp.get_columns('team_member')]
         if '_role_preferences_json' not in team_member_cols:

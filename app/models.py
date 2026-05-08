@@ -96,6 +96,8 @@ class Assignment(db.Model):
     # When this row is an orphan from a cancelled event and the manager redeemed
     # it onto another assignment, this points to that target. NULL = unspent.
     redeemed_for_id = db.Column(db.Integer, db.ForeignKey('assignment.id', ondelete="SET NULL"))
+    # Manager-dismissed from the Collected Shifts list. NULL = still listed.
+    orphan_dismissed_at = db.Column(db.DateTime)
 
     @property
     def history(self):

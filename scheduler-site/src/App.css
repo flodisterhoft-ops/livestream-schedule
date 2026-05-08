@@ -153,13 +153,19 @@ body {
 
 .header-actions.admin-actions {
   display: grid;
-  grid-template-columns: 40px 40px;
+  grid-template-columns: 40px 40px 40px;
   grid-auto-rows: 40px;
   gap: 5px;
   position: absolute;
   top: 14px;
   right: 0;
   z-index: 5;
+}
+
+/* Layout: row 1 has 2 buttons (Add + Manager toggle, starting at col 2),
+   row 2 has 3 buttons (Collected + Gear + Year Overview). */
+.header-actions.admin-actions .manager-btn.add-btn {
+  grid-column: 2;
 }
 
 .header-actions.admin-actions .manager-btn {
@@ -410,7 +416,7 @@ body {
 .orphan-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 10px 12px;
 }
 
@@ -429,6 +435,88 @@ body {
   font-size: 0.78rem;
   color: var(--text-secondary);
   margin-top: 2px;
+}
+
+.orphan-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.orphan-btn-assign,
+.orphan-btn-cancel,
+.orphan-slot-pick {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.orphan-btn-assign {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: var(--accent-light);
+}
+
+.orphan-btn-assign:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.orphan-btn-cancel {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+.orphan-btn-cancel:hover {
+  background: var(--border);
+}
+
+.orphan-btn-dismiss {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  padding: 0;
+}
+
+.orphan-btn-dismiss:hover {
+  background: var(--danger-light);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.orphan-slot-pick {
+  background: var(--success-light);
+  color: var(--success);
+  border-color: var(--success-light);
+}
+
+.orphan-slot-pick:hover {
+  background: var(--success);
+  color: white;
+}
+
+.orphan-btn-assign:disabled,
+.orphan-btn-cancel:disabled,
+.orphan-btn-dismiss:disabled,
+.orphan-slot-pick:disabled {
+  opacity: 0.5;
+  cursor: wait;
 }
 
 .orphan-picker {

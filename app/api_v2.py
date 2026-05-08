@@ -259,6 +259,7 @@ def get_schedule():
             "custom_title": event.custom_title,
             "start_time": (event.start_time or _default_start_time(event.day_type)).strftime("%H:%M"),
             "notes": event.notes,
+            "cancelled": bool(getattr(event, "cancelled", False)),
             "is_past": event.date < today,
             "assignments": assignments,
         })
@@ -643,7 +644,6 @@ def update_event(date_str):
         return jsonify({"error": "Not found"}), 404
 
     data = request.json or {}
-    print(f"[PATCH /event/{date_str}] body={data!r}")  # TEMP DEBUG
     if "custom_title" in data:
         event.custom_title = data["custom_title"] or None
     if "day_type" in data:
@@ -657,13 +657,25 @@ def update_event(date_str):
             return jsonify({"error": str(e)}), 400
     if "notes" in data:
         event.notes = data["notes"]
+    cancelled_changed_to_true = False
     if "cancelled" in data:
         try:
             cancelled_val = _optional_bool(data.get("cancelled"), "cancelled")
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         if cancelled_val is not None:
+            if cancelled_val and not event.cancelled:
+                cancelled_changed_to_true = True
             event.cancelled = cancelled_val
+
+    # When an event is freshly cancelled, clear lingering swap_needed status and
+    # cancel any active SwapRequests so the card stops showing "needs coverage".
+    if cancelled_changed_to_true:
+        for a in event.assignments:
+            if a.status == "swap_needed":
+                a.status = "pending"
+        for sr in SwapRequest.query.filter_by(event_date=event.date, status="active").all():
+            sr.status = "cancelled"
     if "new_date" in data:
         new_d = datetime.date.fromisoformat(data["new_date"])
         existing = Event.query.filter_by(date=new_d).first()
@@ -762,12 +774,13 @@ def toggle_assignment_lock(assignment_id):
 # ═══════════════════════════════════════════════════════════════════
 
 def _orphan_query():
-    """Assignments that belong to a cancelled event and haven't been redeemed."""
+    """Assignments that belong to a cancelled event and haven't been redeemed or dismissed."""
     return (
         Assignment.query
         .join(Event, Assignment.event_id == Event.id)
         .filter(Event.cancelled.is_(True))
         .filter(Assignment.redeemed_for_id.is_(None))
+        .filter(Assignment.orphan_dismissed_at.is_(None))
         .filter(~Assignment.person.in_(("TBD", "Select Helper")))
     )
 
@@ -838,6 +851,20 @@ def list_orphan_open_slots():
         .all()
     )
     return jsonify([_open_slot_to_dict(s) for s in slots])
+
+
+@api_v2.route("/orphan-shifts/<int:orphan_id>", methods=["DELETE"])
+def dismiss_orphan_shift(orphan_id):
+    """Dismiss an orphan from the Collected Shifts list (manager only)."""
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    orphan = Assignment.query.get(orphan_id)
+    if not orphan:
+        return jsonify({"error": "Not found"}), 404
+    orphan.orphan_dismissed_at = datetime.datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True, "id": orphan_id})
 
 
 @api_v2.route("/orphan-shifts/<int:orphan_id>/redeem", methods=["POST"])

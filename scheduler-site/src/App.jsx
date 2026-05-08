@@ -578,10 +578,10 @@ export default function App() {
         <OrphanShiftsModal
           orphans={orphanShifts}
           onClose={() => setShowOrphans(false)}
-          onRedeemed={() => {
+          onChanged={(action) => {
             loadSchedule()
             loadOrphans()
-            showFlash('Shift redeemed')
+            showFlash(action === 'dismissed' ? 'Removed from list' : 'Shift redeemed')
           }}
           showFlash={showFlash}
         />
@@ -3411,7 +3411,7 @@ function Counter({ label, value, onChange, max = 5 }) {
 //  Orphan Shifts Modal
 // ═══════════════════════════════════════════════════════════════
 
-function OrphanShiftsModal({ orphans, onClose, onRedeemed, showFlash }) {
+function OrphanShiftsModal({ orphans, onClose, onChanged, showFlash }) {
   const [pickerForId, setPickerForId] = useState(null)
   const [openSlots, setOpenSlots] = useState([])
   const [loadingSlots, setLoadingSlots] = useState(false)
@@ -3456,8 +3456,21 @@ function OrphanShiftsModal({ orphans, onClose, onRedeemed, showFlash }) {
         method: 'POST',
         body: JSON.stringify({ target_assignment_id: targetAssignmentId }),
       })
-      onRedeemed()
+      onChanged('redeemed')
       closePicker()
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
+  const dismiss = async (orphanId, person) => {
+    if (!window.confirm(`Remove ${person} from the Collected Shifts list?`)) return
+    setSubmittingId(orphanId)
+    try {
+      await api(`/orphan-shifts/${orphanId}`, { method: 'DELETE' })
+      onChanged('dismissed')
     } catch (e) {
       showFlash(e.message, 'error')
     } finally {
@@ -3501,11 +3514,20 @@ function OrphanShiftsModal({ orphans, onClose, onRedeemed, showFlash }) {
                           {o.role} · {o.event_title} · {formatDateLine(o.event_date)}
                         </div>
                       </div>
-                      {isPicking ? (
-                        <button className="action-btn undo" onClick={closePicker} disabled={isSubmitting}>Cancel</button>
-                      ) : (
-                        <button className="action-btn confirm" onClick={() => openPicker(o.id)} disabled={isSubmitting}>Assign to…</button>
-                      )}
+                      <div className="orphan-actions">
+                        {isPicking ? (
+                          <button className="orphan-btn-cancel" onClick={closePicker} disabled={isSubmitting}>Cancel</button>
+                        ) : (
+                          <button className="orphan-btn-assign" onClick={() => openPicker(o.id)} disabled={isSubmitting}>Assign →</button>
+                        )}
+                        <button
+                          className="orphan-btn-dismiss"
+                          onClick={() => dismiss(o.id, o.person)}
+                          disabled={isSubmitting}
+                          aria-label={`Remove ${o.person}`}
+                          title="Remove from list"
+                        >×</button>
+                      </div>
                     </div>
                     {isPicking && (
                       <div className="orphan-picker">
@@ -3528,7 +3550,7 @@ function OrphanShiftsModal({ orphans, onClose, onRedeemed, showFlash }) {
                                   </div>
                                 </div>
                                 <button
-                                  className="action-btn pickup"
+                                  className="orphan-slot-pick"
                                   onClick={() => redeem(o.id, s.assignment_id)}
                                   disabled={isSubmitting}
                                 >
