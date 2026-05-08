@@ -230,19 +230,14 @@ export default function App() {
     if (!loading) {
       loadSchedule()
       loadTeam()
-      if (isManager) loadOrphans()
+      if (isAdmin) loadOrphans()
     }
-  }, [loading, isManager, loadSchedule, loadTeam, loadOrphans])
+  }, [loading, isAdmin, loadSchedule, loadTeam, loadOrphans])
 
   // Refresh orphan list whenever the schedule changes (events get cancelled/uncancelled).
   useEffect(() => {
-    if (!loading && isManager && schedule.length) loadOrphans()
-  }, [schedule, loading, isManager, loadOrphans])
-
-  // Clear orphan list when leaving manager mode so the badge doesn't linger.
-  useEffect(() => {
-    if (!isManager) setOrphanShifts([])
-  }, [isManager])
+    if (!loading && isAdmin && schedule.length) loadOrphans()
+  }, [schedule, loading, isAdmin, loadOrphans])
 
   const showFlash = (msg, type = 'success') => {
     setFlash({ msg, type })
@@ -444,14 +439,6 @@ export default function App() {
           {isAdmin ? (
             <>
               <button
-                className="manager-btn add-btn"
-                onClick={openAdminCreateEvent}
-                title="Add new event"
-                aria-label="Add new event"
-              >
-                <span className="manager-btn-icon">{'+'}</span>
-              </button>
-              <button
                 className={`manager-btn ${isManager ? 'active' : ''}`}
                 onClick={toggleManager}
                 title={isManager ? 'Exit Manager Mode' : 'Enter Manager Mode'}
@@ -462,19 +449,17 @@ export default function App() {
                   {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
                 </span>
               </button>
-              {isManager && (
-                <button
-                  className="manager-btn orphan-btn"
-                  onClick={() => setShowOrphans(true)}
-                  title={`Collected shifts${orphanShifts.length ? ` (${orphanShifts.length})` : ''}`}
-                  aria-label="Collected shifts"
-                >
-                  <span className="manager-btn-icon">{'\uD83D\uDCCB'}</span>
-                  {orphanShifts.length > 0 && (
-                    <span className="orphan-badge">{orphanShifts.length}</span>
-                  )}
-                </button>
-              )}
+              <button
+                className="manager-btn orphan-btn"
+                onClick={() => setShowOrphans(true)}
+                title={`Collected shifts${orphanShifts.length ? ` (${orphanShifts.length})` : ''}`}
+                aria-label="Collected shifts"
+              >
+                <span className="manager-btn-icon">{'\uD83D\uDCCB'}</span>
+                {orphanShifts.length > 0 && (
+                  <span className="orphan-badge">{orphanShifts.length}</span>
+                )}
+              </button>
               <button
                 className="manager-btn settings-btn"
                 onClick={openRoleSettings}
@@ -534,6 +519,7 @@ export default function App() {
         loadSchedule={loadSchedule}
         team={team}
         recentlyChanged={recentlyChanged}
+        onAddEvent={openAdminCreateEvent}
       />
 
       {showCreate && (
@@ -601,7 +587,7 @@ export default function App() {
 //  Schedule Tab
 // ═══════════════════════════════════════════════════════════════
 
-function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, recentlyChanged }) {
+function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, recentlyChanged, onAddEvent }) {
   const navRef = useRef(null)
   const filterRef = useRef(null)
   const [indicator, setIndicator] = useState(null)
@@ -770,33 +756,25 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
       </div>
 
       <div className="person-filter" ref={filterRef}>
-        <button
-          type="button"
-          className={`person-filter-trigger ${selectedPerson ? 'active' : ''}`}
-          onClick={() => setFilterOpen(v => !v)}
-          aria-haspopup="listbox"
-          aria-expanded={filterOpen}
-        >
-          <span className="person-filter-icon">{'\uD83D\uDC64'}</span>
-          <span className="person-filter-text">
-            {selectedPerson ? selectedPerson : 'All team members'}
-          </span>
-          <span className="person-filter-count">
-            {selectedPerson ? `${selectedPersonCount} shift${selectedPersonCount === 1 ? '' : 's'}` : 'Filter'}
-          </span>
-          <span className={`person-filter-chevron ${filterOpen ? 'open' : ''}`}>{'\u203A'}</span>
-        </button>
-        <button
-          type="button"
-          className={`person-calendar-toggle ${viewMode === 'calendar' ? 'active' : ''}`}
-          onClick={() => setViewMode(viewMode === 'calendar' ? 'cards' : 'calendar')}
-          aria-label={viewMode === 'calendar' ? 'Show schedule cards' : 'Show calendar'}
-          aria-pressed={viewMode === 'calendar'}
-        >
-          {viewMode === 'calendar' ? '\uD83D\uDCCB' : '\uD83D\uDCC5'}
-        </button>
-        {filterOpen && (
-          <div className="person-filter-menu" role="listbox" aria-label="Filter schedule by name">
+        <div className="person-filter-pill-wrap">
+          <button
+            type="button"
+            className={`person-filter-trigger ${selectedPerson ? 'active' : ''}`}
+            onClick={() => setFilterOpen(v => !v)}
+            aria-haspopup="listbox"
+            aria-expanded={filterOpen}
+          >
+            <span className="person-filter-icon">{'\uD83D\uDC64'}</span>
+            <span className="person-filter-text">
+              {selectedPerson ? selectedPerson : 'All team members'}
+            </span>
+            <span className="person-filter-count">
+              {selectedPerson ? `${selectedPersonCount} shift${selectedPersonCount === 1 ? '' : 's'}` : 'Filter'}
+            </span>
+            <span className={`person-filter-chevron ${filterOpen ? 'open' : ''}`}>{'\u203A'}</span>
+          </button>
+          {filterOpen && (
+            <div className="person-filter-menu" role="listbox" aria-label="Filter schedule by name">
             <button
               type="button"
               className={`person-filter-option ${selectedPerson === '' ? 'selected' : ''}`}
@@ -826,8 +804,29 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
                 </span>
               </button>
             ))}
-          </div>
+            </div>
+          )}
+        </div>
+        {isAdmin && onAddEvent && (
+          <button
+            type="button"
+            className="person-add-event"
+            onClick={onAddEvent}
+            aria-label="Add new event"
+            title="Add new event"
+          >
+            +
+          </button>
         )}
+        <button
+          type="button"
+          className={`person-calendar-toggle ${viewMode === 'calendar' ? 'active' : ''}`}
+          onClick={() => setViewMode(viewMode === 'calendar' ? 'cards' : 'calendar')}
+          aria-label={viewMode === 'calendar' ? 'Show schedule cards' : 'Show calendar'}
+          aria-pressed={viewMode === 'calendar'}
+        >
+          {viewMode === 'calendar' ? '\ud83d\udccb' : '\ud83d\udcc5'}
+        </button>
       </div>
 
       {viewMode === 'calendar' ? (
@@ -924,17 +923,13 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                       const assignments = event.assignments.filter(a => !selectedPerson || a.person === selectedPerson || a.cover === selectedPerson)
                       const eventKind = event.day_type === 'Friday' ? 'friday' : event.day_type === 'Sunday' ? 'sunday' : 'custom'
                       const isCancelled = Boolean(event.cancelled)
+                      const chipLabel = (event.day_type === 'Friday' && !event.custom_title) ? 'Bible Study' : event.title
                       return (
                         <div className={`calendar-event ${event.is_past ? 'past' : ''} ${isCancelled ? 'cancelled' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
-                          <div className={`calendar-chip calendar-event-chip ${eventKind} ${isCancelled ? 'cancelled' : ''}`} title={isCancelled ? `${event.title} - No livestream needed` : (event.day_type === 'Friday' ? 'Bible Study' : event.title)}>
-                            <span className="calendar-chip-text">{event.day_type === 'Friday' && !event.custom_title ? 'Bible Study' : event.title}</span>
+                          <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={isCancelled ? `${chipLabel} - No livestream needed` : chipLabel}>
+                            <span className="calendar-chip-text">{isCancelled ? `\u2705 ${chipLabel}` : chipLabel}</span>
                           </div>
-                          {isCancelled ? (
-                            <div className="calendar-chip calendar-cancelled-chip" title="No livestream needed">
-                              <span className="calendar-role-icon">\u2705</span>
-                              <span className="calendar-chip-text">No livestream</span>
-                            </div>
-                          ) : (
+                          {isCancelled ? null : (
                             <>
                               {assignments.slice(0, 4).map(a => {
                                 const worker = a.cover || a.person

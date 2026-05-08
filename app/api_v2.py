@@ -826,11 +826,15 @@ def _open_slot_to_dict(assignment):
     }
 
 
+def _is_admin_or_manager():
+    return session.get("manager") or session.get("user_name") == "Florian"
+
+
 @api_v2.route("/orphan-shifts")
 def list_orphan_shifts():
-    """List unredeemed orphan shifts (people from cancelled events). Manager only."""
-    if not session.get("manager"):
-        return jsonify({"error": "Manager only"}), 403
+    """List unredeemed orphan shifts. Admin or manager only."""
+    if not _is_admin_or_manager():
+        return jsonify({"error": "Admin only"}), 403
     orphans = _orphan_query().order_by(Assignment.id).all()
     return jsonify([_orphan_to_dict(o) for o in orphans])
 
@@ -840,10 +844,10 @@ def list_orphan_open_slots():
     """List upcoming assignments where an orphan can be redeemed.
 
     Includes swap_needed shifts and any unfilled (TBD/Select Helper) slots
-    on future, non-cancelled events. Manager only.
+    on future, non-cancelled events. Admin or manager only.
     """
-    if not session.get("manager"):
-        return jsonify({"error": "Manager only"}), 403
+    if not _is_admin_or_manager():
+        return jsonify({"error": "Admin only"}), 403
     today = vancouver_today()
     slots = (
         Assignment.query
