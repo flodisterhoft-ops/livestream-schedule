@@ -712,13 +712,11 @@ def _weekly_schedule_events(today=None):
         Event.date >= monday,
         Event.date <= sunday,
     ).order_by(Event.date).all()
-    friday = next((event for event in events if event.day_type == "Friday"), None)
-    sunday_event = next((event for event in events if _is_sunday_event(event)), None)
-    extras = [
-        event for event in events
-        if event not in (friday, sunday_event)
-        and event.day_type not in ("Friday", "Sunday")
-    ]
+    # Slot by weekday so a custom-typed event (e.g. Communion on Friday) still
+    # lands in the Friday slot instead of falling through to "extras".
+    friday = next((e for e in events if e.date.weekday() == 4), None)
+    sunday_event = next((e for e in events if e.date.weekday() == 6), None)
+    extras = [e for e in events if e is not friday and e is not sunday_event]
     return monday, sunday, friday, sunday_event, extras
 
 
