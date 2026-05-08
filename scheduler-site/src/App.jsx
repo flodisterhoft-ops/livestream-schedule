@@ -881,30 +881,40 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                     {dayEvents.map(event => {
                       const assignments = event.assignments.filter(a => !selectedPerson || a.person === selectedPerson || a.cover === selectedPerson)
                       const eventKind = event.day_type === 'Friday' ? 'friday' : event.day_type === 'Sunday' ? 'sunday' : 'custom'
+                      const isCancelled = Boolean(event.cancelled)
                       return (
-                        <div className={`calendar-event ${event.is_past ? 'past' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
-                          <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={event.day_type === 'Friday' ? 'Bible Study' : event.title}>
-                            <span className="calendar-chip-text">{event.day_type === 'Friday' ? 'Bible Study' : event.title}</span>
+                        <div className={`calendar-event ${event.is_past ? 'past' : ''} ${isCancelled ? 'cancelled' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
+                          <div className={`calendar-chip calendar-event-chip ${eventKind} ${isCancelled ? 'cancelled' : ''}`} title={isCancelled ? `${event.title} - No livestream needed` : (event.day_type === 'Friday' ? 'Bible Study' : event.title)}>
+                            <span className="calendar-chip-text">{event.day_type === 'Friday' && !event.custom_title ? 'Bible Study' : event.title}</span>
                           </div>
-                          {assignments.slice(0, 4).map(a => {
-                            const worker = a.cover || a.person
-                            const baseRole = a.role.replace(/\s+\d+$/, '')
-                            const icon = ROLE_ICONS[a.role] || ROLE_ICONS[baseRole] || '\uD83D\uDC64'
-                            const assignmentClasses = [
-                              'calendar-chip',
-                              'calendar-assignment',
-                              a.status === 'swap_needed' ? 'needs-cover' : '',
-                              selectedPerson && worker === selectedPerson ? 'filtered-person' : '',
-                            ].filter(Boolean).join(' ')
-                            return (
-                              <div key={a.id} className={assignmentClasses} title={`${a.role}: ${worker || 'Unassigned'}`}>
-                                <span className="calendar-role-icon">{icon}</span>
-                                <span className="calendar-chip-text">{selectedPerson ? a.role : (worker || 'Unassigned')}</span>
-                              </div>
-                            )
-                          })}
-                          {assignments.length > 4 && (
-                            <div className="calendar-chip calendar-more-chip">+{assignments.length - 4} more</div>
+                          {isCancelled ? (
+                            <div className="calendar-chip calendar-cancelled-chip" title="No livestream needed">
+                              <span className="calendar-role-icon">\uD83D\uDEAB</span>
+                              <span className="calendar-chip-text">No livestream</span>
+                            </div>
+                          ) : (
+                            <>
+                              {assignments.slice(0, 4).map(a => {
+                                const worker = a.cover || a.person
+                                const baseRole = a.role.replace(/\s+\d+$/, '')
+                                const icon = ROLE_ICONS[a.role] || ROLE_ICONS[baseRole] || '\uD83D\uDC64'
+                                const assignmentClasses = [
+                                  'calendar-chip',
+                                  'calendar-assignment',
+                                  a.status === 'swap_needed' ? 'needs-cover' : '',
+                                  selectedPerson && worker === selectedPerson ? 'filtered-person' : '',
+                                ].filter(Boolean).join(' ')
+                                return (
+                                  <div key={a.id} className={assignmentClasses} title={`${a.role}: ${worker || 'Unassigned'}`}>
+                                    <span className="calendar-role-icon">{icon}</span>
+                                    <span className="calendar-chip-text">{selectedPerson ? a.role : (worker || 'Unassigned')}</span>
+                                  </div>
+                                )
+                              })}
+                              {assignments.length > 4 && (
+                                <div className="calendar-chip calendar-more-chip">+{assignments.length - 4} more</div>
+                              )}
+                            </>
                           )}
                         </div>
                       )
@@ -930,18 +940,46 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
   const [editTitle, setEditTitle] = useState(event.custom_title || event.title || '')
   const [editDate, setEditDate] = useState(event.date)
   const [editTime, setEditTime] = useState(event.start_time || defaultStartTime(event.day_type))
+  const [editCancelled, setEditCancelled] = useState(Boolean(event.cancelled))
+  const [editRoles, setEditRoles] = useState(() => event.assignments.map(a => ({ id: a.id, role: a.role, person: a.person })))
   const editorRef = useRef(null)
   const d = new Date(event.date + 'T12:00:00')
   const dayNum = d.getDate()
   const dayName = d.toLocaleString('en', { weekday: 'short' })
   const monthName = d.toLocaleString('en', { month: 'short' })
+
+  useEffect(() => {
+    if (editingEvent) return
+    setEditCancelled(Boolean(event.cancelled))
+    setEditRoles(event.assignments.map(a => ({ id: a.id, role: a.role, person: a.person })))
+  }, [event, editingEvent])
+
+  const removeEditRole = (idx) => {
+    setEditRoles(rs => rs.filter((_, i) => i !== idx))
+  }
+
+  const addEditRole = (type) => {
+    setEditRoles(rs => {
+      if (type === 'Computer') return [...rs, { id: null, role: 'Computer', person: 'Select Helper' }]
+      const cams = rs.filter(r => r.role.toLowerCase().startsWith('camera')).length
+      const nextRole = cams === 0 ? 'Camera 1' : `Camera ${cams + 1}`
+      return [...rs, { id: null, role: nextRole, person: 'Select Helper' }]
+    })
+  }
+
   const saveEvent = () => {
+    const keptIds = new Set(editRoles.filter(r => r.id).map(r => r.id))
+    const remove_assignment_ids = event.assignments.filter(a => !keptIds.has(a.id)).map(a => a.id)
+    const add_roles = editRoles.filter(r => !r.id).map(r => r.role)
     const updates = {
       new_date: editDate,
       day_type: editType === 'Sunday' ? 'Sunday' : editType === 'Bible Study' ? 'Friday' : 'Custom',
       custom_title: editType === 'Other' ? editTitle : null,
       start_time: editTime,
+      cancelled: editCancelled,
     }
+    if (remove_assignment_ids.length) updates.remove_assignment_ids = remove_assignment_ids
+    if (add_roles.length) updates.add_roles = add_roles
     onEventUpdate(event, updates)
     setEditingEvent(false)
   }
@@ -978,11 +1016,13 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
   })()
   const isToday = event.date === todayKey
   const hasSwap = event.assignments.some(a => a.status === 'swap_needed')
+  const isCancelled = Boolean(event.cancelled)
   const cardClasses = [
     'event-card',
     event.is_past ? 'past' : '',
     isToday ? 'today' : '',
-    hasSwap && !event.is_past ? 'swap-needed' : '',
+    hasSwap && !event.is_past && !isCancelled ? 'swap-needed' : '',
+    isCancelled ? 'cancelled' : '',
   ].filter(Boolean).join(' ')
   return (
     <div className={cardClasses}>
@@ -1048,7 +1088,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
                 type="text"
                 value={editTitle}
                 onChange={e => setEditTitle(e.target.value)}
-                placeholder="Event title"
+                placeholder="Event title (e.g., Communion)"
                 className="event-edit-input"
               />
             )}
@@ -1057,31 +1097,72 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               value={editTime}
               onChange={e => setEditTime(e.target.value)}
               className="event-edit-input"
+              disabled={editCancelled}
             />
+            <label className="event-cancel-toggle">
+              <input
+                type="checkbox"
+                checked={editCancelled}
+                onChange={e => setEditCancelled(e.target.checked)}
+              />
+              <span>🚫 No livestream needed</span>
+            </label>
+            {!editCancelled && (
+              <div className="event-helpers-edit">
+                <div className="event-helpers-label">Helpers needed</div>
+                {editRoles.length === 0 && (
+                  <div className="event-helpers-empty">No helpers — add one below.</div>
+                )}
+                {editRoles.map((r, idx) => {
+                  const baseRole = r.role.replace(/\s+\d+$/, '')
+                  const icon = ROLE_ICONS[r.role] || ROLE_ICONS[baseRole] || '👤'
+                  return (
+                    <div key={`${r.id ?? 'new'}-${idx}`} className="event-helpers-row">
+                      <span className="event-helpers-icon">{icon}</span>
+                      <span className="event-helpers-name">{r.role}</span>
+                      <button
+                        type="button"
+                        className="event-helpers-btn remove"
+                        onClick={() => removeEditRole(idx)}
+                        aria-label={`Remove ${r.role}`}
+                      >−</button>
+                    </div>
+                  )
+                })}
+                <div className="event-helpers-add">
+                  <button type="button" className="event-helpers-btn add" onClick={() => addEditRole('Computer')}>+ 💻 Computer</button>
+                  <button type="button" className="event-helpers-btn add" onClick={() => addEditRole('Camera')}>+ 📹 Camera</button>
+                </div>
+              </div>
+            )}
             <div className="event-editor-actions">
               <button className="action-btn confirm" onClick={saveEvent}>Save</button>
               <button className="action-btn undo" onClick={() => setEditingEvent(false)}>Cancel</button>
             </div>
           </div>
         )}
-        <div className="assignments">
-          {event.assignments.map(a => (
-            <AssignmentRow
-              key={a.id}
-              assignment={a}
-              eventAssignments={event.assignments}
-              user={user}
-              isManager={isManager}
-              doAction={doAction}
-              onAssign={onAssign}
-              onToggleLock={onToggleLock}
-              teamNames={teamNames}
-              isPast={event.is_past}
-              isRecentlyChanged={!!(recentlyChanged && recentlyChanged.has && recentlyChanged.has(a.id))}
-              selectedPerson={selectedPerson}
-            />
-          ))}
-        </div>
+        {isCancelled && !editingEvent ? (
+          <div className="event-cancelled-banner">🚫 No livestream needed</div>
+        ) : (
+          <div className="assignments">
+            {event.assignments.map(a => (
+              <AssignmentRow
+                key={a.id}
+                assignment={a}
+                eventAssignments={event.assignments}
+                user={user}
+                isManager={isManager}
+                doAction={doAction}
+                onAssign={onAssign}
+                onToggleLock={onToggleLock}
+                teamNames={teamNames}
+                isPast={event.is_past}
+                isRecentlyChanged={!!(recentlyChanged && recentlyChanged.has && recentlyChanged.has(a.id))}
+                selectedPerson={selectedPerson}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

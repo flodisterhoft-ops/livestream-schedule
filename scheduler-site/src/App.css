@@ -1251,6 +1251,19 @@ body {
   font-weight: 800;
 }
 
+.calendar-event-chip.cancelled,
+.calendar-event.cancelled .calendar-event-chip {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.calendar-cancelled-chip {
+  background: rgba(229, 231, 235, 0.78);
+  color: #6b7280;
+  font-style: italic;
+  border: 1px dashed rgba(107, 114, 128, 0.5);
+}
+
 .calendar-day.saturday .calendar-chip,
 .calendar-day:nth-child(7n) .calendar-chip {
   margin-left: auto;
@@ -1584,6 +1597,142 @@ body {
 .event-editor-actions {
   display: flex;
   gap: 6px;
+}
+
+.event-cancel-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.event-cancel-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.event-helpers-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.event-helpers-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.event-helpers-empty {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.event-helpers-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+}
+
+.event-helpers-icon {
+  font-size: 1rem;
+  width: 22px;
+  text-align: center;
+}
+
+.event-helpers-name {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.event-helpers-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.event-helpers-btn:hover {
+  background: var(--bg-hover);
+}
+
+.event-helpers-btn.remove {
+  color: var(--danger);
+  border-color: var(--danger-light);
+  background: var(--danger-light);
+  min-width: 28px;
+}
+
+.event-helpers-btn.remove:hover {
+  background: var(--danger);
+  color: white;
+}
+
+.event-helpers-btn.add {
+  color: var(--accent);
+  border-color: var(--accent-light);
+  background: var(--accent-light);
+  font-size: 0.8rem;
+}
+
+.event-helpers-btn.add:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.event-helpers-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.event-card.cancelled {
+  background: var(--bg-hover);
+  opacity: 0.85;
+}
+
+.event-card.cancelled .event-title {
+  color: var(--text-secondary);
+}
+
+.event-card.cancelled .event-time-pill {
+  display: none;
+}
+
+.event-cancelled-banner {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  border: 1px dashed var(--border);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-style: italic;
+  text-align: center;
+  margin-top: 4px;
 }
 
 /* ── Assignment Rows ──────────────────────────────────────── */

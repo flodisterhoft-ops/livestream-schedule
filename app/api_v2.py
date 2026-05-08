@@ -656,6 +656,13 @@ def update_event(date_str):
             return jsonify({"error": str(e)}), 400
     if "notes" in data:
         event.notes = data["notes"]
+    if "cancelled" in data:
+        try:
+            cancelled_val = _optional_bool(data.get("cancelled"), "cancelled")
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        if cancelled_val is not None:
+            event.cancelled = cancelled_val
     if "new_date" in data:
         new_d = datetime.date.fromisoformat(data["new_date"])
         existing = Event.query.filter_by(date=new_d).first()
@@ -663,7 +670,38 @@ def update_event(date_str):
             return jsonify({"error": "Event already exists on new date"}), 409
         event.date = new_d
 
+    remove_ids = data.get("remove_assignment_ids") or []
+    if remove_ids:
+        for raw_id in remove_ids:
+            try:
+                aid = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            target = Assignment.query.filter_by(id=aid, event_id=event.id).first()
+            if target:
+                db.session.delete(target)
+
+    add_roles = data.get("add_roles") or []
+    if add_roles:
+        for role_name in add_roles:
+            role_name = (role_name or "").strip()
+            if not role_name:
+                continue
+            db.session.add(Assignment(
+                event_id=event.id,
+                role=role_name,
+                person="Select Helper",
+                status="pending",
+            ))
+
     db.session.commit()
+
+    # Refresh the Telegram reminder if one was already sent (best-effort).
+    try:
+        tg.update_event_reminder(event)
+    except Exception as e:
+        print(f"[telegram] update_event_reminder failed: {e}")
+
     return jsonify(_event_to_dict(event))
 
 
@@ -1414,6 +1452,7 @@ def _event_to_dict(event):
         "custom_title": event.custom_title,
         "start_time": (event.start_time or _default_start_time(event.day_type)).strftime("%H:%M"),
         "notes": event.notes,
+        "cancelled": bool(getattr(event, "cancelled", False)),
         "is_past": event.date < vancouver_today(),
         "assignments": [_assignment_to_dict(a) for a in event.assignments],
     }

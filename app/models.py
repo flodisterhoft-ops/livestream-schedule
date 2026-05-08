@@ -67,6 +67,7 @@ class Event(db.Model):
     custom_title = db.Column(db.String(100))
     start_time = db.Column(db.Time)
     notes = db.Column(db.Text)  # Event notes/comments
+    cancelled = db.Column(db.Boolean, default=False, nullable=False)  # No livestream needed (e.g., communion)
     telegram_message_id = db.Column(db.Integer)  # v2 reminder message ID
     telegram_chat_id = db.Column(db.String(30))  # Chat where reminder was sent
     assignments = db.relationship('Assignment', backref='event', lazy=True, cascade="all, delete-orphan", order_by="Assignment.id")
@@ -77,6 +78,7 @@ class Event(db.Model):
             "custom_title": self.custom_title,
             "start_time": self.start_time.strftime("%H:%M") if self.start_time else None,
             "notes": self.notes,
+            "cancelled": bool(self.cancelled),
             "assignments": [a.to_dict() for a in self.assignments]
         }
 

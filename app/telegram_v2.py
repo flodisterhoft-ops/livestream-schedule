@@ -551,6 +551,14 @@ def format_event_message(event, header=None):
 
 def format_today_group_post(event):
     title = _event_title(event)
+    if getattr(event, "cancelled", False):
+        return "\n".join([
+            f"✝️ <b>{title}</b>",
+            f"🗓 {_date_line(event.date)}",
+            "",
+            "🚫 <i>No livestream needed today.</i>",
+        ])
+
     lines = [
         f"📅 <b>{title}</b>",
         f"🗓 {_date_line(event.date)}",
@@ -653,6 +661,11 @@ def format_monthly_schedule(year, month):
         day = event.date.strftime("%a %d")
         lines.append(f"<b>{day}</b> - {title}")
 
+        if getattr(event, "cancelled", False):
+            lines.append("  🚫 <i>No livestream needed</i>")
+            lines.append("")
+            continue
+
         is_friday = event.day_type == "Friday"
         for i, a in enumerate(event.assignments):
             worker = a.cover if a.cover else a.person
@@ -719,27 +732,39 @@ def format_weekly_schedule(today=None):
     lines = ["\U0001F4C5 <b>Livestream schedule this week</b>", ""]
 
     for event in extras:
-        lines.append(f"<b>{_event_title(event)}</b> <code>@ {_event_time(event)}</code>")
-        for assignment in event.assignments:
-            lines.append(_assignment_line(assignment))
+        if getattr(event, "cancelled", False):
+            lines.append(f"<b>{_event_title(event)}</b>")
+            lines.append("🚫 <i>No livestream needed</i>")
+        else:
+            lines.append(f"<b>{_event_title(event)}</b> <code>@ {_event_time(event)}</code>")
+            for assignment in event.assignments:
+                lines.append(_assignment_line(assignment))
         lines.append("")
 
-    friday_time = _event_time(friday) if friday else "7:00 PM"
-    lines.append(f"<b>Friday - Bible Study</b> <code>@ {friday_time}</code>")
-    if friday:
-        for assignment in friday.assignments:
-            lines.append(_assignment_line(assignment))
+    if friday and getattr(friday, "cancelled", False):
+        lines.append(f"<b>Friday - {_event_title(friday)}</b>")
+        lines.append("🚫 <i>No livestream needed</i>")
     else:
-        lines.append("<i>No Bible Study scheduled.</i>")
+        friday_time = _event_time(friday) if friday else "7:00 PM"
+        lines.append(f"<b>Friday - Bible Study</b> <code>@ {friday_time}</code>")
+        if friday:
+            for assignment in friday.assignments:
+                lines.append(_assignment_line(assignment))
+        else:
+            lines.append("<i>No Bible Study scheduled.</i>")
     lines.append("")
 
-    sunday_time = _event_time(sunday_event) if sunday_event else "2:00 PM"
-    lines.append(f"<b>Sunday Service</b> <code>@ {sunday_time}</code>")
-    if sunday_event:
-        for assignment in sunday_event.assignments:
-            lines.append(_assignment_line(assignment))
+    if sunday_event and getattr(sunday_event, "cancelled", False):
+        lines.append(f"<b>Sunday - {_event_title(sunday_event)}</b>")
+        lines.append("🚫 <i>No livestream needed</i>")
     else:
-        lines.append("<i>No Sunday Service scheduled.</i>")
+        sunday_time = _event_time(sunday_event) if sunday_event else "2:00 PM"
+        lines.append(f"<b>Sunday Service</b> <code>@ {sunday_time}</code>")
+        if sunday_event:
+            for assignment in sunday_event.assignments:
+                lines.append(_assignment_line(assignment))
+        else:
+            lines.append("<i>No Sunday Service scheduled.</i>")
 
     return "\n".join(lines).strip()
 
@@ -798,6 +823,20 @@ def send_event_reminder(event, chat_id=None):
         db.session.commit()
 
     return msg_id
+
+
+def update_event_reminder(event):
+    """Re-render and edit the previously sent group reminder for this event.
+
+    No-op if the event has no recorded message id (none was ever sent) or if
+    the edit fails (Telegram blocks edits older than 48h — we silently skip).
+    Returns True on a successful edit, False otherwise.
+    """
+    if not event or not event.telegram_message_id or not event.telegram_chat_id:
+        return False
+    text = format_today_group_post(event)
+    buttons = _make_inline_keyboard([[_schedule_button()]])
+    return bool(edit_message(event.telegram_chat_id, event.telegram_message_id, text, reply_markup=buttons))
 
 
 def send_personal_question_temp_group(assignment):
@@ -1468,6 +1507,8 @@ def send_daily_reminders_v2(chat_id=None):
     events = Event.query.filter_by(date=today).all()
     sent = 0
     for event in events:
+        if getattr(event, "cancelled", False):
+            continue
         for assignment in event.assignments:
             worker = assignment.cover or assignment.person
             if worker in ("TBD", "Select Helper") or assignment.status == "swap_needed":
@@ -1571,6 +1612,8 @@ def send_weekday_5pm_reminders_v2(chat_id=None):
     sent = 0
     for event in events:
         if _is_sunday_event(event) or event.date.weekday() >= 5:
+            continue
+        if getattr(event, "cancelled", False):
             continue
         for assignment in event.assignments:
             worker = assignment.cover or assignment.person
