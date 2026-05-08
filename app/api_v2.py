@@ -643,6 +643,7 @@ def update_event(date_str):
         return jsonify({"error": "Not found"}), 404
 
     data = request.json or {}
+    print(f"[PATCH /event/{date_str}] body={data!r}")  # TEMP DEBUG
     if "custom_title" in data:
         event.custom_title = data["custom_title"] or None
     if "day_type" in data:

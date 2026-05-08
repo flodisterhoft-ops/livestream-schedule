@@ -828,9 +828,9 @@ def send_event_reminder(event, chat_id=None):
 def update_event_reminder(event):
     """Re-render and edit the previously sent group reminder for this event.
 
-    No-op if the event has no recorded message id (none was ever sent) or if
-    the edit fails (Telegram blocks edits older than 48h — we silently skip).
-    Returns True on a successful edit, False otherwise.
+    No-op if the event has no recorded message id (none was ever sent).
+    Bots can edit their own messages without a time limit, so this works
+    regardless of how old the original post is. Returns True on success.
     """
     if not event or not event.telegram_message_id or not event.telegram_chat_id:
         return False
