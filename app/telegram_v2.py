@@ -236,12 +236,17 @@ def _schedule_button(label="\U0001F4C5 View Schedule", person=None):
 
 def _event_title(event):
     if event.custom_title:
-        return event.custom_title
-    if event.day_type == "Friday":
-        return "Bible Study"
-    if event.day_type == "Sunday":
-        return "Sunday Service"
-    return event.day_type or "Event"
+        title = event.custom_title
+    elif event.day_type == "Friday":
+        title = "Bible Study"
+    elif event.day_type == "Sunday":
+        title = "Sunday Service"
+    else:
+        title = event.day_type or "Event"
+    # Decorate Communion events with a wine emoji on the right side.
+    if "communion" in title.lower() and "🍷" not in title:
+        title = f"{title} 🍷"
+    return title
 
 
 def _event_time(event):
@@ -559,7 +564,7 @@ def format_today_group_post(event):
             f"🗓 {_date_line(event.date)}",
             f"🕖 {_event_time(event)}",
             "",
-            "✅ <i>No livestream needed today</i>",
+            "✅ <i>No livestream needed</i>",
         ])
 
     lines = [
@@ -754,7 +759,7 @@ def _weekly_event_block(event, default_header=None, default_time=None, missing_l
 
     lines = [f"{header} <code>@ {_event_time(event)}</code>"]
     if getattr(event, "cancelled", False):
-        lines.append("✅ <i>No livestream needed today</i>")
+        lines.append("✅ <i>No livestream needed</i>")
     else:
         for assignment in event.assignments:
             lines.append(_assignment_line(assignment))
@@ -855,6 +860,51 @@ def update_event_reminder(event):
     text = format_today_group_post(event)
     buttons = _make_inline_keyboard([[_schedule_button()]])
     return bool(edit_message(event.telegram_chat_id, event.telegram_message_id, text, reply_markup=buttons))
+
+
+def _parse_weekly_schedule_log(log):
+    """Pull (chat_id, message_id) out of an InteractionLog details string."""
+    if not log or not log.details:
+        return None, None
+    parts = {}
+    for chunk in log.details.split("|"):
+        if "=" in chunk:
+            k, v = chunk.split("=", 1)
+            parts[k.strip()] = v.strip()
+    chat_id = parts.get("chat_id")
+    try:
+        msg_id = int(parts["message_id"]) if parts.get("message_id") else None
+    except (TypeError, ValueError):
+        msg_id = None
+    return chat_id, msg_id
+
+
+def update_weekly_schedule_for_event(event):
+    """Re-render and edit the weekly schedule message that contains this event.
+
+    No-op if no weekly schedule was sent for this event's week. Logged for
+    debug.
+    """
+    if not event:
+        return False
+    monday = event.date - datetime.timedelta(days=event.date.weekday())
+    key = f"weekly_schedule:{monday.isoformat()}"
+    log = (
+        InteractionLog.query
+        .filter(
+            InteractionLog.action == "weekly_schedule_sent",
+            InteractionLog.event_date == monday,
+            InteractionLog.details.like(f"{key}%"),
+        )
+        .order_by(InteractionLog.id.desc())
+        .first()
+    )
+    chat_id, msg_id = _parse_weekly_schedule_log(log)
+    if not chat_id or not msg_id:
+        return False
+    text = format_weekly_schedule(today=monday)
+    buttons = _make_inline_keyboard([[_schedule_button()]])
+    return bool(edit_message(chat_id, msg_id, text, reply_markup=buttons))
 
 
 def send_personal_question_temp_group(assignment):

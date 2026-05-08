@@ -714,6 +714,11 @@ def update_event(date_str):
         tg.update_event_reminder(event)
     except Exception as e:
         print(f"[telegram] update_event_reminder failed: {e}")
+    # Refresh the weekly schedule message that included this event (best-effort).
+    try:
+        tg.update_weekly_schedule_for_event(event)
+    except Exception as e:
+        print(f"[telegram] update_weekly_schedule_for_event failed: {e}")
 
     return jsonify(_event_to_dict(event))
 
@@ -823,7 +828,9 @@ def _open_slot_to_dict(assignment):
 
 @api_v2.route("/orphan-shifts")
 def list_orphan_shifts():
-    """List unredeemed orphan shifts (people from cancelled events)."""
+    """List unredeemed orphan shifts (people from cancelled events). Manager only."""
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
     orphans = _orphan_query().order_by(Assignment.id).all()
     return jsonify([_orphan_to_dict(o) for o in orphans])
 
@@ -833,8 +840,10 @@ def list_orphan_open_slots():
     """List upcoming assignments where an orphan can be redeemed.
 
     Includes swap_needed shifts and any unfilled (TBD/Select Helper) slots
-    on future, non-cancelled events.
+    on future, non-cancelled events. Manager only.
     """
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
     today = vancouver_today()
     slots = (
         Assignment.query

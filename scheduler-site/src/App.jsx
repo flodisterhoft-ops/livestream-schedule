@@ -230,14 +230,19 @@ export default function App() {
     if (!loading) {
       loadSchedule()
       loadTeam()
-      if (isAdmin) loadOrphans()
+      if (isManager) loadOrphans()
     }
-  }, [loading, isAdmin, loadSchedule, loadTeam, loadOrphans])
+  }, [loading, isManager, loadSchedule, loadTeam, loadOrphans])
 
   // Refresh orphan list whenever the schedule changes (events get cancelled/uncancelled).
   useEffect(() => {
-    if (!loading && isAdmin && schedule.length) loadOrphans()
-  }, [schedule, loading, isAdmin, loadOrphans])
+    if (!loading && isManager && schedule.length) loadOrphans()
+  }, [schedule, loading, isManager, loadOrphans])
+
+  // Clear orphan list when leaving manager mode so the badge doesn't linger.
+  useEffect(() => {
+    if (!isManager) setOrphanShifts([])
+  }, [isManager])
 
   const showFlash = (msg, type = 'success') => {
     setFlash({ msg, type })
@@ -457,17 +462,19 @@ export default function App() {
                   {isManager ? '\uD83D\uDEE1\uFE0F' : '\uD83D\uDD13'}
                 </span>
               </button>
-              <button
-                className="manager-btn orphan-btn"
-                onClick={() => setShowOrphans(true)}
-                title={`Collected shifts${orphanShifts.length ? ` (${orphanShifts.length})` : ''}`}
-                aria-label="Collected shifts"
-              >
-                <span className="manager-btn-icon">{'\uD83D\uDCCB'}</span>
-                {orphanShifts.length > 0 && (
-                  <span className="orphan-badge">{orphanShifts.length}</span>
-                )}
-              </button>
+              {isManager && (
+                <button
+                  className="manager-btn orphan-btn"
+                  onClick={() => setShowOrphans(true)}
+                  title={`Collected shifts${orphanShifts.length ? ` (${orphanShifts.length})` : ''}`}
+                  aria-label="Collected shifts"
+                >
+                  <span className="manager-btn-icon">{'\uD83D\uDCCB'}</span>
+                  {orphanShifts.length > 0 && (
+                    <span className="orphan-badge">{orphanShifts.length}</span>
+                  )}
+                </button>
+              )}
               <button
                 className="manager-btn settings-btn"
                 onClick={openRoleSettings}
@@ -1101,10 +1108,10 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             className={`event-title ${canEdit ? 'editable' : ''}`}
             {...editProps}
           >
-            {isCommunionTitle(event.custom_title || event.title) && (
-              <span className="event-title-icon" aria-hidden="true">🍞🍷</span>
-            )}
             {event.title}
+            {isCommunionTitle(event.custom_title || event.title) && (
+              <span className="event-title-icon" aria-hidden="true">🍷</span>
+            )}
             {isToday && <span className="today-pill">TODAY</span>}
           </TitleTag>
           <div className="event-header-actions">
@@ -1151,7 +1158,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             >
               <option value="Sunday">⛪ Sunday Service</option>
               <option value="Bible Study">📖 Bible Study</option>
-              <option value="Communion">🍞🍷 Communion Service</option>
+              <option value="Communion">Communion Service 🍷</option>
               <option value="Other">✏️ Other</option>
             </select>
             {editType === 'Other' && (
