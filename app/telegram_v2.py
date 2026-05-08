@@ -552,11 +552,14 @@ def format_event_message(event, header=None):
 def format_today_group_post(event):
     title = _event_title(event)
     if getattr(event, "cancelled", False):
+        # Keep the original header (title / date / time) and just replace the
+        # assignment list with a single "no livestream" line.
         return "\n".join([
-            f"✝️ <b>{title}</b>",
+            f"📅 <b>{title}</b>",
             f"🗓 {_date_line(event.date)}",
+            f"🕖 {_event_time(event)}",
             "",
-            "🚫 <i>No livestream needed today.</i>",
+            "✅ <i>No livestream needed today</i>",
         ])
 
     lines = [
