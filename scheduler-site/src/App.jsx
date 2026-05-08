@@ -141,6 +141,8 @@ export default function App() {
   const [createPrefill, setCreatePrefill] = useState(null)
   const [pendingSuggestId, setPendingSuggestId] = useState(null)
   const [recentlyChanged, setRecentlyChanged] = useState(() => new Set())
+  const [orphanShifts, setOrphanShifts] = useState([])
+  const [showOrphans, setShowOrphans] = useState(false)
 
 
   // ── Init ──────────────────────────────────────────────────
@@ -220,12 +222,22 @@ export default function App() {
     api('/team').then(setTeam).catch(console.error)
   }, [])
 
+  const loadOrphans = useCallback(() => {
+    api('/orphan-shifts').then(setOrphanShifts).catch(console.error)
+  }, [])
+
   useEffect(() => {
     if (!loading) {
       loadSchedule()
       loadTeam()
+      if (isAdmin) loadOrphans()
     }
-  }, [loading, loadSchedule, loadTeam])
+  }, [loading, isAdmin, loadSchedule, loadTeam, loadOrphans])
+
+  // Refresh orphan list whenever the schedule changes (events get cancelled/uncancelled).
+  useEffect(() => {
+    if (!loading && isAdmin && schedule.length) loadOrphans()
+  }, [schedule, loading, isAdmin, loadOrphans])
 
   const showFlash = (msg, type = 'success') => {
     setFlash({ msg, type })
@@ -446,6 +458,17 @@ export default function App() {
                 </span>
               </button>
               <button
+                className="manager-btn orphan-btn"
+                onClick={() => setShowOrphans(true)}
+                title={`Collected shifts${orphanShifts.length ? ` (${orphanShifts.length})` : ''}`}
+                aria-label="Collected shifts"
+              >
+                <span className="manager-btn-icon">{'\uD83D\uDCCB'}</span>
+                {orphanShifts.length > 0 && (
+                  <span className="orphan-badge">{orphanShifts.length}</span>
+                )}
+              </button>
+              <button
                 className="manager-btn settings-btn"
                 onClick={openRoleSettings}
                 title="Scheduling settings"
@@ -547,6 +570,18 @@ export default function App() {
           onSubmitted={() => {
             setShowSuggest(false)
             showFlash("Thanks! Your suggestion was sent.")
+          }}
+          showFlash={showFlash}
+        />
+      )}
+      {showOrphans && (
+        <OrphanShiftsModal
+          orphans={orphanShifts}
+          onClose={() => setShowOrphans(false)}
+          onRedeemed={() => {
+            loadSchedule()
+            loadOrphans()
+            showFlash('Shift redeemed')
           }}
           showFlash={showFlash}
         />
@@ -3367,6 +3402,150 @@ function Counter({ label, value, onChange, max = 5 }) {
           disabled={value >= max}
           aria-label={`Increase ${label}`}
         >+</button>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Orphan Shifts Modal
+// ═══════════════════════════════════════════════════════════════
+
+function OrphanShiftsModal({ orphans, onClose, onRedeemed, showFlash }) {
+  const [pickerForId, setPickerForId] = useState(null)
+  const [openSlots, setOpenSlots] = useState([])
+  const [loadingSlots, setLoadingSlots] = useState(false)
+  const [submittingId, setSubmittingId] = useState(null)
+  const overlayRef = useRef(null)
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const formatDateLine = (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso + 'T12:00:00')
+    return d.toLocaleString('en', { weekday: 'short', month: 'short', day: 'numeric' })
+  }
+
+  const openPicker = async (orphanId) => {
+    setPickerForId(orphanId)
+    setLoadingSlots(true)
+    try {
+      const slots = await api('/orphan-shifts/open-slots')
+      setOpenSlots(slots)
+    } catch (e) {
+      showFlash(e.message, 'error')
+      setOpenSlots([])
+    } finally {
+      setLoadingSlots(false)
+    }
+  }
+
+  const closePicker = () => {
+    setPickerForId(null)
+    setOpenSlots([])
+  }
+
+  const redeem = async (orphanId, targetAssignmentId) => {
+    setSubmittingId(orphanId)
+    try {
+      await api(`/orphan-shifts/${orphanId}/redeem`, {
+        method: 'POST',
+        body: JSON.stringify({ target_assignment_id: targetAssignmentId }),
+      })
+      onRedeemed()
+      closePicker()
+    } catch (e) {
+      showFlash(e.message, 'error')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Collected shifts"
+    >
+      <div className="modal-card orphan-modal-card">
+        <div className="modal-header">
+          <div>
+            <h2>📋 Collected Shifts</h2>
+            <p className="modal-subtitle">
+              People scheduled to events that got cancelled. Redeem them onto an upcoming swap or unfilled slot.
+            </p>
+          </div>
+          <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'✕'}</button>
+        </div>
+        <div className="modal-body">
+          {orphans.length === 0 ? (
+            <div className="orphan-empty">No collected shifts. ✨</div>
+          ) : (
+            <ul className="orphan-list">
+              {orphans.map(o => {
+                const isPicking = pickerForId === o.id
+                const isSubmitting = submittingId === o.id
+                return (
+                  <li key={o.id} className={`orphan-item ${isPicking ? 'open' : ''}`}>
+                    <div className="orphan-row">
+                      <div className="orphan-info">
+                        <div className="orphan-person">{o.person}</div>
+                        <div className="orphan-meta">
+                          {o.role} · {o.event_title} · {formatDateLine(o.event_date)}
+                        </div>
+                      </div>
+                      {isPicking ? (
+                        <button className="action-btn undo" onClick={closePicker} disabled={isSubmitting}>Cancel</button>
+                      ) : (
+                        <button className="action-btn confirm" onClick={() => openPicker(o.id)} disabled={isSubmitting}>Assign to…</button>
+                      )}
+                    </div>
+                    {isPicking && (
+                      <div className="orphan-picker">
+                        {loadingSlots ? (
+                          <div className="orphan-picker-empty">Loading open slots…</div>
+                        ) : openSlots.length === 0 ? (
+                          <div className="orphan-picker-empty">No upcoming open slots.</div>
+                        ) : (
+                          <ul className="orphan-slot-list">
+                            {openSlots.map(s => (
+                              <li key={s.assignment_id} className="orphan-slot-row">
+                                <div className="orphan-slot-info">
+                                  <div className="orphan-slot-title">
+                                    {s.event_title} · {formatDateLine(s.event_date)}
+                                  </div>
+                                  <div className="orphan-slot-meta">
+                                    {s.role} · {s.kind === 'swap_needed'
+                                      ? <>🔴 needs cover{s.current_person ? ` (${s.current_person})` : ''}</>
+                                      : <>⏳ unfilled</>}
+                                  </div>
+                                </div>
+                                <button
+                                  className="action-btn pickup"
+                                  onClick={() => redeem(o.id, s.assignment_id)}
+                                  disabled={isSubmitting}
+                                >
+                                  {isSubmitting ? '…' : 'Pick'}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   )

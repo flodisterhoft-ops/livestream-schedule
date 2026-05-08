@@ -350,6 +350,132 @@ body {
   transform: rotate(90deg);
 }
 
+.manager-btn.orphan-btn .manager-btn-icon {
+  font-size: 1.35rem;
+}
+
+.orphan-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ── Orphan Shifts Modal ────────────────────────────────────── */
+
+.orphan-modal-card {
+  max-width: 560px;
+}
+
+.orphan-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.orphan-list,
+.orphan-slot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.orphan-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.orphan-item.open {
+  border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.12);
+}
+
+.orphan-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.orphan-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.orphan-person {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.orphan-meta {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.orphan-picker {
+  background: var(--bg-hover);
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+}
+
+.orphan-picker-empty {
+  padding: 10px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.orphan-slot-list {
+  gap: 6px;
+}
+
+.orphan-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.orphan-slot-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.orphan-slot-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.orphan-slot-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
 .manager-btn.settings-btn:active .manager-btn-icon {
   transform: rotate(360deg);
   transition-duration: 0.5s;

@@ -758,6 +758,167 @@ def toggle_assignment_lock(assignment_id):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  Orphan Shifts (cancelled-event assignments waiting for redeployment)
+# ═══════════════════════════════════════════════════════════════════
+
+def _orphan_query():
+    """Assignments that belong to a cancelled event and haven't been redeemed."""
+    return (
+        Assignment.query
+        .join(Event, Assignment.event_id == Event.id)
+        .filter(Event.cancelled.is_(True))
+        .filter(Assignment.redeemed_for_id.is_(None))
+        .filter(~Assignment.person.in_(("TBD", "Select Helper")))
+    )
+
+
+def _orphan_to_dict(orphan):
+    event = orphan.event
+    title = event.custom_title if event and event.custom_title else (
+        "Bible Study" if event and event.day_type == "Friday" else
+        "Sunday Service" if event and event.day_type == "Sunday" else
+        "Event"
+    )
+    return {
+        "id": orphan.id,
+        "person": orphan.cover or orphan.person,
+        "role": orphan.role,
+        "event_date": event.date.isoformat() if event else None,
+        "event_title": title,
+    }
+
+
+def _open_slot_to_dict(assignment):
+    event = assignment.event
+    title = event.custom_title if event and event.custom_title else (
+        "Bible Study" if event and event.day_type == "Friday" else
+        "Sunday Service" if event and event.day_type == "Sunday" else
+        "Event"
+    )
+    worker = assignment.cover or assignment.person
+    is_unfilled = worker in ("TBD", "Select Helper")
+    return {
+        "assignment_id": assignment.id,
+        "event_date": event.date.isoformat() if event else None,
+        "event_title": title,
+        "role": assignment.role,
+        "status": assignment.status,
+        "current_person": worker if not is_unfilled else None,
+        "kind": "swap_needed" if assignment.status == "swap_needed" else "unfilled",
+    }
+
+
+@api_v2.route("/orphan-shifts")
+def list_orphan_shifts():
+    """List unredeemed orphan shifts (people from cancelled events)."""
+    orphans = _orphan_query().order_by(Assignment.id).all()
+    return jsonify([_orphan_to_dict(o) for o in orphans])
+
+
+@api_v2.route("/orphan-shifts/open-slots")
+def list_orphan_open_slots():
+    """List upcoming assignments where an orphan can be redeemed.
+
+    Includes swap_needed shifts and any unfilled (TBD/Select Helper) slots
+    on future, non-cancelled events.
+    """
+    today = vancouver_today()
+    slots = (
+        Assignment.query
+        .join(Event, Assignment.event_id == Event.id)
+        .filter(Event.cancelled.is_(False))
+        .filter(Event.date >= today)
+        .filter(
+            db.or_(
+                Assignment.status == "swap_needed",
+                Assignment.person.in_(("TBD", "Select Helper")),
+            )
+        )
+        .order_by(Event.date, Assignment.id)
+        .all()
+    )
+    return jsonify([_open_slot_to_dict(s) for s in slots])
+
+
+@api_v2.route("/orphan-shifts/<int:orphan_id>/redeem", methods=["POST"])
+def redeem_orphan_shift(orphan_id):
+    """Spend an orphan onto a target assignment.
+
+    Body: {"target_assignment_id": int}
+
+    If the target is swap_needed, the orphan's person becomes the cover.
+    If the target is TBD/Select Helper, the orphan's person becomes the assignee.
+    """
+    if not session.get("manager"):
+        return jsonify({"error": "Manager only"}), 403
+
+    orphan = Assignment.query.get(orphan_id)
+    if not orphan:
+        return jsonify({"error": "Orphan not found"}), 404
+    if not orphan.event or not getattr(orphan.event, "cancelled", False):
+        return jsonify({"error": "Source event is not cancelled"}), 400
+    if orphan.redeemed_for_id is not None:
+        return jsonify({"error": "Already redeemed"}), 409
+
+    data = request.json or {}
+    try:
+        target_id = int(data.get("target_assignment_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "target_assignment_id required"}), 400
+
+    target = Assignment.query.get(target_id)
+    if not target:
+        return jsonify({"error": "Target not found"}), 404
+    if target.event and getattr(target.event, "cancelled", False):
+        return jsonify({"error": "Target event is cancelled"}), 400
+
+    person = orphan.cover or orphan.person
+    curr = session.get("user_name") or "manager"
+
+    history_entry = {
+        "from": "orphan",
+        "to": person,
+        "by": curr,
+        "ts": str(vancouver_now()),
+        "redeemed_from_assignment_id": orphan.id,
+        "redeemed_from_date": orphan.event.date.isoformat() if orphan.event else None,
+    }
+
+    if target.status == "swap_needed":
+        target.cover = person
+        target.status = "confirmed"
+        # Resolve the SwapRequest if there's an active one
+        swap = (
+            SwapRequest.query
+            .filter_by(assignment_id=target.id, status="active")
+            .order_by(SwapRequest.id.desc())
+            .first()
+        )
+        if swap:
+            swap.status = "accepted"
+            swap.accepted_by = person
+            swap.accepted_at = datetime.datetime.utcnow()
+    elif target.person in ("TBD", "Select Helper"):
+        target.person = person
+        target.status = "pending"
+    else:
+        return jsonify({"error": "Target is neither swap_needed nor unfilled"}), 400
+
+    h = target.history
+    h.append(history_entry)
+    target.history = h
+
+    orphan.redeemed_for_id = target.id
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "orphan_id": orphan.id,
+        "target": _assignment_to_dict(target),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  Team Management
 # ═══════════════════════════════════════════════════════════════════
 

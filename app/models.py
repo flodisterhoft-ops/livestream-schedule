@@ -93,6 +93,9 @@ class Assignment(db.Model):
     _history_json = db.Column(db.Text, default="[]")
     telegram_message_id = db.Column(db.Integer)  # Track Telegram msg for edit/delete
     locked = db.Column(db.Boolean, default=False, nullable=False)  # Manager pin: never auto-replace
+    # When this row is an orphan from a cancelled event and the manager redeemed
+    # it onto another assignment, this points to that target. NULL = unspent.
+    redeemed_for_id = db.Column(db.Integer, db.ForeignKey('assignment.id', ondelete="SET NULL"))
 
     @property
     def history(self):
