@@ -64,6 +64,31 @@ def _parse_start_time(value):
         raise ValueError("start_time must be HH:MM")
 
 
+def _refresh_telegram_for_events(events, dates=None):
+    seen_event_ids = set()
+    for event in events or []:
+        if not event or event.id in seen_event_ids:
+            continue
+        seen_event_ids.add(event.id)
+        try:
+            tg.update_event_reminder(event)
+        except Exception as e:
+            print(f"[telegram] update_event_reminder failed: {e}")
+
+    seen_dates = set()
+    for event in events or []:
+        if event and event.date:
+            seen_dates.add(event.date)
+    for date_obj in dates or []:
+        if date_obj:
+            seen_dates.add(date_obj)
+    for date_obj in seen_dates:
+        try:
+            tg.update_weekly_schedule_for_date(date_obj)
+        except Exception as e:
+            print(f"[telegram] update_weekly_schedule_for_date failed: {e}")
+
+
 def _auth_serializer():
     return URLSafeSerializer(current_app.secret_key, salt="v2-auth")
 
@@ -314,6 +339,7 @@ def do_action():
         return jsonify({"error": "Assignment not found"}), 404
 
     event = assignment.event
+    changed_events = [event]
 
     def push_history():
         h = assignment.history
@@ -360,7 +386,6 @@ def do_action():
         if event.date >= vancouver_today():
             try:
                 tg._notify_admin_text(f"❌ {assignment.person} can't make it\n{tg._event_title(event)} · {assignment.role}")
-                tg.refresh_event_telegram(event)
                 if swap:
                     tg.send_swap_request_temp_groups(assignment, swap)
             except Exception as e:
@@ -452,6 +477,7 @@ def do_action():
         my_assign.person = them
         my_assign.swapped_with = curr
         my_assign.status = "confirmed"
+        changed_events.append(other_event)
 
         push_history()
         db.session.commit()
@@ -459,6 +485,7 @@ def do_action():
     else:
         return jsonify({"error": f"Unknown action: {action}"}), 400
 
+    _refresh_telegram_for_events(changed_events)
     return jsonify(_assignment_to_dict(assignment))
 
 
@@ -602,6 +629,7 @@ def add_event():
         db.session.add(Assignment(event_id=event.id, role="Camera", person="Select Helper", status="pending"))
 
     db.session.commit()
+    _refresh_telegram_for_events([event])
 
     if suggestion_id:
         try:
@@ -629,6 +657,7 @@ def delete_event(date_str):
 
     db.session.delete(event)
     db.session.commit()
+    _refresh_telegram_for_events([], dates=[d])
     return jsonify({"ok": True})
 
 
@@ -644,6 +673,7 @@ def update_event(date_str):
         return jsonify({"error": "Not found"}), 404
 
     data = request.json or {}
+    original_date = event.date
     if "custom_title" in data:
         event.custom_title = data["custom_title"] or None
     if "day_type" in data:
@@ -728,16 +758,7 @@ def update_event(date_str):
     db.session.commit()
 
     # Refresh the Telegram reminder if one was already sent (best-effort).
-    for changed_event in [event, *future_events]:
-        try:
-            tg.update_event_reminder(changed_event)
-        except Exception as e:
-            print(f"[telegram] update_event_reminder failed: {e}")
-        # Refresh the weekly schedule message that included this event (best-effort).
-        try:
-            tg.update_weekly_schedule_for_event(changed_event)
-        except Exception as e:
-            print(f"[telegram] update_weekly_schedule_for_event failed: {e}")
+    _refresh_telegram_for_events([event, *future_events], dates=[original_date])
 
     result = _event_to_dict(event)
     result["future_events_updated"] = updated_future_count
@@ -767,6 +788,7 @@ def update_assignment(assignment_id):
             assignment.swapped_with = None
             assignment.status = "pending"
             db.session.commit()
+            _refresh_telegram_for_events([assignment.event])
         else:
             return jsonify({"error": "Unauthorized"}), 403
 

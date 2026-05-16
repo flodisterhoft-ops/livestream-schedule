@@ -785,7 +785,7 @@ def format_weekly_schedule(today=None):
     lines.extend(_weekly_event_block(
         sunday_event,
         default_header="Sunday Service",
-        default_time="2:00 PM",
+        default_time="2:30 PM",
         missing_label="No Sunday Service scheduled.",
     ))
 
@@ -879,15 +879,15 @@ def _parse_weekly_schedule_log(log):
     return chat_id, msg_id
 
 
-def update_weekly_schedule_for_event(event):
-    """Re-render and edit the weekly schedule message that contains this event.
+def update_weekly_schedule_for_date(date_obj):
+    """Re-render and edit the weekly schedule message that contains this date.
 
-    No-op if no weekly schedule was sent for this event's week. Logged for
+    No-op if no weekly schedule was sent for this date's week. Logged for
     debug.
     """
-    if not event:
+    if not date_obj:
         return False
-    monday = event.date - datetime.timedelta(days=event.date.weekday())
+    monday = date_obj - datetime.timedelta(days=date_obj.weekday())
     key = f"weekly_schedule:{monday.isoformat()}"
     log = (
         InteractionLog.query
@@ -905,6 +905,13 @@ def update_weekly_schedule_for_event(event):
     text = format_weekly_schedule(today=monday)
     buttons = _make_inline_keyboard([[_schedule_button()]])
     return bool(edit_message(chat_id, msg_id, text, reply_markup=buttons))
+
+
+def update_weekly_schedule_for_event(event):
+    """Re-render and edit the weekly schedule message that contains this event."""
+    if not event:
+        return False
+    return update_weekly_schedule_for_date(event.date)
 
 
 def send_personal_question_temp_group(assignment):
@@ -1501,6 +1508,10 @@ def handle_callback_query(data):
     # ── Rebuild the event message with updated statuses ─────────
     # Find the original reminder message and update it
     _refresh_event_message(event, chat_id, message_id)
+    try:
+        update_weekly_schedule_for_event(event)
+    except Exception as e:
+        print(f"[Telegram] Failed to refresh weekly schedule message: {e}")
 
 
 def _resolve_person(telegram_user_id, fallback_name):
@@ -1546,14 +1557,19 @@ def refresh_event_telegram(event):
     Called from v1 routes so status changes made through the web UI
     are reflected in the Telegram inline message.
     """
+    if not event:
+        return
     chat_id = event.telegram_chat_id
     message_id = event.telegram_message_id
-    if not chat_id or not message_id:
-        return
+    if chat_id and message_id:
+        try:
+            _refresh_event_message(event, chat_id, message_id)
+        except Exception as e:
+            print(f"[Telegram] Failed to refresh event message: {e}")
     try:
-        _refresh_event_message(event, chat_id, message_id)
+        update_weekly_schedule_for_event(event)
     except Exception as e:
-        print(f"[Telegram] Failed to refresh event message: {e}")
+        print(f"[Telegram] Failed to refresh weekly schedule message: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════
