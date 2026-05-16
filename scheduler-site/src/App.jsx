@@ -383,7 +383,7 @@ export default function App() {
     : (months.includes(currentMonth) ? currentMonth : months[0])
   const activeMonth = selectedMonth && months.includes(selectedMonth)
     ? selectedMonth
-    : null
+    : defaultMonth
   const pastMonths = new Set(
     months.filter(m => !schedule.some(e => e.date.startsWith(m) && e.date >= today))
   )
@@ -690,19 +690,34 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
 
   useEffect(() => {
     if (didInitialScheduleScrollRef.current || viewMode !== 'cards' || !autoScrollTargetDate) return
-    const target = eventsListRef.current?.querySelector(`[data-event-date="${autoScrollTargetDate}"]`)
+    const list = eventsListRef.current
+    const target = list?.querySelector(`[data-event-date="${autoScrollTargetDate}"]`)
+    if (!list) return
     if (!target) return
     didInitialScheduleScrollRef.current = true
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     let timeoutId
     const frameId = window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: 'auto' })
+      list.scrollTop = 0
       timeoutId = window.setTimeout(() => {
-        target.scrollIntoView({
-          behavior: prefersReducedMotion ? 'auto' : 'smooth',
-          block: 'start',
-        })
-      }, 180)
+        const targetTop = target.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop
+        const destination = Math.max(0, targetTop - 8)
+        if (prefersReducedMotion) {
+          list.scrollTop = destination
+          return
+        }
+        const start = list.scrollTop
+        const distance = destination - start
+        const duration = 1800
+        const startedAt = performance.now()
+        const animate = (now) => {
+          const progress = Math.min(1, (now - startedAt) / duration)
+          const eased = 1 - Math.pow(1 - progress, 3)
+          list.scrollTop = start + distance * eased
+          if (progress < 1) window.requestAnimationFrame(animate)
+        }
+        window.requestAnimationFrame(animate)
+      }, 500)
     })
     return () => {
       window.cancelAnimationFrame(frameId)

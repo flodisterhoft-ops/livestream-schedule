@@ -1020,6 +1020,12 @@ body {
   color: var(--accent);
 }
 
+.schedule-tab {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .person-filter {
   position: relative;
   z-index: 20;
@@ -1605,6 +1611,12 @@ body {
   flex-direction: column;
   gap: 6px;
   isolation: isolate;
+  max-height: calc(100dvh - 260px);
+  min-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 3px;
+  scroll-behavior: auto;
 }
 
 .event-card {
