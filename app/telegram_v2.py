@@ -252,7 +252,7 @@ def _event_title(event):
 def _event_time(event):
     start_time = event.start_time
     if not start_time:
-        start_time = datetime.time(14, 0) if _is_sunday_event(event) else datetime.time(19, 0)
+        start_time = datetime.time(14, 30) if _is_sunday_event(event) else datetime.time(19, 0)
     return start_time.strftime("%I:%M %p").lstrip("0")
 
 
@@ -269,7 +269,7 @@ def _is_sunday_event(event):
 
 
 def _event_start_dt(event):
-    start_time = event.start_time or (datetime.time(14, 0) if _is_sunday_event(event) else datetime.time(19, 0))
+    start_time = event.start_time or (datetime.time(14, 30) if _is_sunday_event(event) else datetime.time(19, 0))
     return datetime.datetime.combine(event.date, start_time, tzinfo=VANCOUVER_TZ)
 
 
@@ -337,7 +337,7 @@ def send_suggestion_alert(suggestion):
     return msg_id
 
 
-def _delete_temp_group_later(temp_chat_id, chat_id, delay=10, app=None):
+def _delete_temp_group_later(temp_chat_id, chat_id, delay=5, app=None):
     def _delete():
         time.sleep(delay)
         ok = False
@@ -1151,10 +1151,10 @@ def handle_callback_query(data):
             edit_message(chat_id, message_id, (
                 f"✅ <b>Confirmed</b>\n\n"
                 f"Thanks {assignment.person} - you're marked as coming for {_event_title(event)} today.\n\n"
-                f"<i>This chat will auto-destruct in 10 seconds.</i>"
+                f"<i>This chat will auto-destruct in 5 seconds.</i>"
             ))
             refresh_event_telegram(event)
-            _delete_temp_chat(temp_chat, delay=10)
+            _delete_temp_chat(temp_chat, delay=5)
             return
         if action == "weekday_ack":
             if assignment.status == "pending":
@@ -1166,9 +1166,9 @@ def handle_callback_query(data):
             db.session.commit()
             _notify_admin_text(f"👍 {assignment.person} acknowledged\n{_event_title(event)} · {assignment.role}")
             answer_callback(callback_id, "Thanks for confirming! 😊", show_alert=True)
-            edit_message(chat_id, message_id, "👍 <b>Sounds good</b>\n\nSee you tonight!\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
+            edit_message(chat_id, message_id, "👍 <b>Sounds good</b>\n\nSee you tonight!\n\n<i>This chat will auto-destruct in 5 seconds.</i>")
             refresh_event_telegram(event)
-            _delete_temp_chat(temp_chat, delay=10)
+            _delete_temp_chat(temp_chat, delay=5)
             return
         assignment.status = "swap_needed"
         h = assignment.history
@@ -1194,11 +1194,11 @@ def handle_callback_query(data):
         edit_message(chat_id, message_id, (
             "Thanks for letting us know.\n\n"
             "We'll ask the team if someone can swap into your shift today.\n\n"
-            "<i>This chat will auto-destruct in 10 seconds.</i>"
+            "<i>This chat will auto-destruct in 5 seconds.</i>"
         ))
+        _delete_temp_chat(temp_chat, delay=5)
         refresh_event_telegram(event)
         send_swap_request_temp_groups(assignment, swap)
-        _delete_temp_chat(temp_chat, delay=10)
         return
 
     if action in ("swap_cover", "swap_accept", "swap_decline"):
@@ -1208,8 +1208,8 @@ def handle_callback_query(data):
             answer_callback(callback_id, "This shift has already been covered. Thanks!", show_alert=True)
             temp_chat = TempChat.query.filter_by(chat_id=str(chat_id)).order_by(TempChat.id.desc()).first()
             if temp_chat:
-                edit_message(chat_id, message_id, "✅ <b>Already covered</b>\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
-                _delete_temp_chat(temp_chat, delay=10)
+                edit_message(chat_id, message_id, "✅ <b>Already covered</b>\n\n<i>This chat will auto-destruct in 5 seconds.</i>")
+                _delete_temp_chat(temp_chat, delay=5)
             return
         assignment = Assignment.query.get(swap.assignment_id)
         if not assignment:
@@ -1223,8 +1223,8 @@ def handle_callback_query(data):
             db.session.commit()
             _notify_admin_text(f"👍 {person_name} declined swap\n{_event_title(event)} · {assignment.role}")
             answer_callback(callback_id, "No problem - thanks for responding.", show_alert=True)
-            edit_message(chat_id, message_id, "👍 <b>No problem</b>\n\nThanks for letting us know.\n\n<i>This chat will auto-destruct in 10 seconds.</i>")
-            _delete_temp_chat(temp_chat, delay=10)
+            edit_message(chat_id, message_id, "👍 <b>No problem</b>\n\nThanks for letting us know.\n\n<i>This chat will auto-destruct in 5 seconds.</i>")
+            _delete_temp_chat(temp_chat, delay=5)
             return
         original_person = assignment.person
         if action == "swap_cover":
@@ -1250,7 +1250,7 @@ def handle_callback_query(data):
                 f"🗓 {_date_line(event.date)}\n"
                 f"{ROLE_EMOJI.get(assignment.role, '👤')} Role: {assignment.role}\n\n"
                 f"Your future shifts stay unchanged.\n\n"
-                f"<i>This chat will auto-destruct in 10 seconds.</i>"
+                f"<i>This chat will auto-destruct in 5 seconds.</i>"
             ))
             refresh_event_telegram(event)
             for other in TempChat.query.filter(
@@ -1263,10 +1263,10 @@ def handle_callback_query(data):
                         f"✅ <b>Covered</b>\n\n"
                         f"{person_name} volunteered to cover {original_person}, so this shift is taken care of.\n\n"
                         f"Thanks for being available!\n\n"
-                        f"<i>This chat will auto-destruct in 10 seconds.</i>"
+                        f"<i>This chat will auto-destruct in 5 seconds.</i>"
                     ))
-                _delete_temp_chat(other, delay=10)
-            _delete_temp_chat(temp_chat, delay=10)
+                _delete_temp_chat(other, delay=5)
+            _delete_temp_chat(temp_chat, delay=5)
             return
         future_assignment_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         future_assignment = Assignment.query.get(future_assignment_id) if future_assignment_id else None
@@ -1299,7 +1299,7 @@ def handle_callback_query(data):
             f"📅 <b>{_event_title(future_event)}</b>\n"
             f"🗓 {_date_line(future_event.date)}\n"
             f"{ROLE_EMOJI.get(future_assignment.role, '👤')} Role: {future_assignment.role}\n\n"
-            f"<i>This chat will auto-destruct in 10 seconds.</i>"
+            f"<i>This chat will auto-destruct in 5 seconds.</i>"
         ))
         refresh_event_telegram(event)
         refresh_event_telegram(future_event)
@@ -1313,9 +1313,9 @@ def handle_callback_query(data):
                     f"✅ <b>Covered</b>\n\n"
                     f"{person_name} already swapped with {original_person}, so this shift is taken care of.\n\n"
                     f"Thanks for being available!\n\n"
-                    f"<i>This chat will auto-destruct in 10 seconds.</i>"
+                    f"<i>This chat will auto-destruct in 5 seconds.</i>"
                 ))
-            _delete_temp_chat(other, delay=10)
+            _delete_temp_chat(other, delay=5)
         _send_temp_group(
             "swap_notice",
             original_person,
@@ -1323,7 +1323,7 @@ def handle_callback_query(data):
                 f"👍 <b>Sounds good</b>\n\n"
                 f"Thanks {original_person}.\n\n"
                 f"{person_name} swapped with you and will cover your shift today.\n\n"
-                f"<i>This message will auto-delete in 10 seconds.</i>"
+                f"<i>This message will auto-delete in 5 seconds.</i>"
             ),
             [[{"text": "👍 Sounds good", "callback_data": "noop"}]],
             assignment=assignment,
@@ -1332,8 +1332,8 @@ def handle_callback_query(data):
         )
         notice = TempChat.query.filter_by(kind="swap_notice", assignment_id=assignment.id, recipient=original_person, status="active").order_by(TempChat.id.desc()).first()
         if notice:
-            _delete_temp_chat(notice, delay=10)
-        _delete_temp_chat(temp_chat, delay=10)
+            _delete_temp_chat(notice, delay=5)
+        _delete_temp_chat(temp_chat, delay=5)
         return
 
     # ── Resolve the assignment ──────────────────────────────────
@@ -1620,9 +1620,14 @@ def sweep_expired_swaps(chat_id=None):
 def sweep_expired_temp_chats():
     now_utc = datetime.datetime.utcnow()
     expired = TempChat.query.filter(
-        TempChat.status == "active",
-        TempChat.expires_at.isnot(None),
-        TempChat.expires_at <= now_utc,
+        db.or_(
+            TempChat.status == "deleting",
+            db.and_(
+                TempChat.status == "active",
+                TempChat.expires_at.isnot(None),
+                TempChat.expires_at <= now_utc,
+            ),
+        )
     ).all()
 
     processed = 0

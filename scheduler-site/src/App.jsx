@@ -51,7 +51,7 @@ const timeAgo = (input) => {
   return new Date(input).toLocaleDateString()
 }
 
-const defaultStartTime = (type) => type === 'Sunday' ? '14:00' : '19:00'
+const defaultStartTime = (type) => type === 'Sunday' ? '14:30' : '19:00'
 
 const formatDisplayTime = (value) => {
   if (!value) return ''
@@ -383,7 +383,7 @@ export default function App() {
     : (months.includes(currentMonth) ? currentMonth : months[0])
   const activeMonth = selectedMonth && months.includes(selectedMonth)
     ? selectedMonth
-    : defaultMonth
+    : null
   const pastMonths = new Set(
     months.filter(m => !schedule.some(e => e.date.startsWith(m) && e.date >= today))
   )
@@ -510,6 +510,7 @@ export default function App() {
         months={months}
         pastMonths={pastMonths}
         activeMonth={activeMonth}
+        defaultMonth={defaultMonth}
         isAdmin={isAdmin}
         onMonthChange={setSelectedMonth}
         user={user}
@@ -587,9 +588,11 @@ export default function App() {
 //  Schedule Tab
 // ═══════════════════════════════════════════════════════════════
 
-function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, recentlyChanged, onAddEvent }) {
+function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, recentlyChanged, onAddEvent }) {
   const navRef = useRef(null)
   const filterRef = useRef(null)
+  const eventsListRef = useRef(null)
+  const didInitialScheduleScrollRef = useRef(false)
   const [indicator, setIndicator] = useState(null)
   const [selectedPerson, setSelectedPerson] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
@@ -635,12 +638,13 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
 
   const handleEventUpdate = async (event, updates) => {
     try {
-      await api(`/event/${event.date}`, {
+      const updated = await api(`/event/${event.date}`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
       })
       loadSchedule()
-      showFlash('Event updated')
+      const futureCount = updated.future_events_updated || 0
+      showFlash(futureCount ? `Event updated — ${futureCount} future Sunday service${futureCount === 1 ? '' : 's'} updated` : 'Event updated')
     } catch (e) {
       showFlash(e.message, 'error')
     }
@@ -677,6 +681,34 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
     ? schedule.filter(event => event.assignments.some(a => a.person === selectedPerson || a.cover === selectedPerson))
     : schedule
   const selectedPersonCount = filteredSchedule.length
+  const autoScrollTargetDate = useMemo(() => {
+    if (filteredSchedule.length === 0) return null
+    const todayKey = toDateKey(new Date())
+    const upcoming = filteredSchedule.find(event => event.date >= todayKey)
+    return (upcoming || filteredSchedule[filteredSchedule.length - 1]).date
+  }, [filteredSchedule])
+
+  useEffect(() => {
+    if (didInitialScheduleScrollRef.current || viewMode !== 'cards' || !autoScrollTargetDate) return
+    const target = eventsListRef.current?.querySelector(`[data-event-date="${autoScrollTargetDate}"]`)
+    if (!target) return
+    didInitialScheduleScrollRef.current = true
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    let timeoutId
+    const frameId = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'auto' })
+      timeoutId = window.setTimeout(() => {
+        target.scrollIntoView({
+          behavior: prefersReducedMotion ? 'auto' : 'smooth',
+          block: 'start',
+        })
+      }, 180)
+    })
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      if (timeoutId) window.clearTimeout(timeoutId)
+    }
+  }, [autoScrollTargetDate, viewMode])
 
   useEffect(() => {
     if (!filterOpen) return
@@ -697,7 +729,8 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
 
   const currentYear = new Date().getFullYear()
   const yearList = [...new Set(months.map(m => m.slice(0, 4)))].sort()
-  const activeYear = (activeMonth && activeMonth.slice(0, 4)) || String(currentYear)
+  const displayMonth = activeMonth || defaultMonth
+  const activeYear = (displayMonth && displayMonth.slice(0, 4)) || String(currentYear)
   const isYearPast = (year) => {
     const ms = months.filter(m => m.slice(0, 4) === year)
     return ms.length > 0 && ms.every(m => pastMonths && pastMonths.has(m))
@@ -716,7 +749,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
     return (
       <button
         key={month}
-        className={`month-pill ${month === activeMonth ? 'active' : ''} ${isPast ? 'past' : ''}`}
+        className={`month-pill ${month === displayMonth ? 'active' : ''} ${isPast ? 'past' : ''}`}
         onClick={() => onMonthChange(month)}
       >
         {label}
@@ -830,9 +863,9 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, onMonthChange,
       </div>
 
       {viewMode === 'calendar' ? (
-        <MonthCalendar activeMonth={activeMonth} events={filteredSchedule} selectedPerson={selectedPerson} />
+        <MonthCalendar activeMonth={activeMonth || defaultMonth} events={filteredSchedule} selectedPerson={selectedPerson} />
       ) : (
-        <div className="events-list">
+        <div className="events-list" ref={eventsListRef}>
           {filteredSchedule.length === 0 && (
             <div className="empty-state">
               <p>{selectedPerson ? `No shifts for ${selectedPerson} this month.` : 'No events for this month.'}</p>
@@ -988,21 +1021,26 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
   const [editTime, setEditTime] = useState(event.start_time || defaultStartTime(event.day_type))
   const [editCancelled, setEditCancelled] = useState(Boolean(event.cancelled))
   const [editRoles, setEditRoles] = useState(() => event.assignments.map(a => ({ id: a.id, role: a.role, person: a.person })))
+  const [applySundayTimeToFuture, setApplySundayTimeToFuture] = useState(false)
   const editorRef = useRef(null)
   const d = new Date(event.date + 'T12:00:00')
   const dayNum = d.getDate()
   const dayName = d.toLocaleString('en', { weekday: 'short' })
   const monthName = d.toLocaleString('en', { month: 'short' })
+  const originalStartTime = event.start_time || defaultStartTime(event.day_type)
+  const showSundayFutureTimeOption = event.day_type === 'Sunday' && editType === 'Sunday' && editTime !== originalStartTime
 
   useEffect(() => {
     if (editingEvent) return
     setEditCancelled(Boolean(event.cancelled))
     setEditType(detectInitialEditType(event))
     setEditRoles(event.assignments.map(a => ({ id: a.id, role: a.role, person: a.person })))
+    setApplySundayTimeToFuture(false)
   }, [event, editingEvent])
 
   const handleTypeChange = (nextType) => {
     setEditType(nextType)
+    setApplySundayTimeToFuture(false)
     if (nextType === 'Communion') {
       setEditTime('19:00')
       setEditCancelled(true)
@@ -1043,7 +1081,11 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
     }
     if (remove_assignment_ids.length) updates.remove_assignment_ids = remove_assignment_ids
     if (add_roles.length) updates.add_roles = add_roles
+    if (showSundayFutureTimeOption) {
+      updates.apply_start_time_to_future = applySundayTimeToFuture
+    }
     onEventUpdate(event, updates)
+    setApplySundayTimeToFuture(false)
     setEditingEvent(false)
   }
 
@@ -1088,7 +1130,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
     isCancelled ? 'cancelled' : '',
   ].filter(Boolean).join(' ')
   return (
-    <div className={cardClasses}>
+    <div className={cardClasses} data-event-date={event.date}>
       <DateTag
         className={`event-date-col ${canEdit ? 'editable' : ''}`}
         {...editProps}
@@ -1173,6 +1215,16 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               />
               <span>{editCancelled ? '✅' : '🚫'} No livestream needed</span>
             </label>
+            {showSundayFutureTimeOption && (
+              <label className="event-default-time-option">
+                <input
+                  type="checkbox"
+                  checked={applySundayTimeToFuture}
+                  onChange={e => setApplySundayTimeToFuture(e.target.checked)}
+                />
+                <span>Use this time for all future Sunday services</span>
+              </label>
+            )}
             {!editCancelled && (
               <div className="event-helpers-edit">
                 <div className="event-helpers-label">Helpers needed</div>
@@ -1202,7 +1254,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               </div>
             )}
             <div className="event-editor-actions">
-              <button className="event-editor-btn cancel" type="button" onClick={() => setEditingEvent(false)}>Cancel</button>
+              <button className="event-editor-btn cancel" type="button" onClick={() => { setApplySundayTimeToFuture(false); setEditingEvent(false) }}>Cancel</button>
               <button className="event-editor-btn save" type="button" onClick={saveEvent}>Save</button>
             </div>
           </div>

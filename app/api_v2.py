@@ -51,7 +51,7 @@ def _optional_bool(value, field_name):
 
 def _default_start_time(day_type):
     if day_type == "Sunday":
-        return datetime.time(14, 0)
+        return datetime.time(14, 30)
     return datetime.time(19, 0)
 
 
@@ -650,9 +650,11 @@ def update_event(date_str):
         event.day_type = data["day_type"]
         if "start_time" not in data and event.start_time is None:
             event.start_time = _default_start_time(event.day_type)
+    parsed_start_time = None
     if "start_time" in data:
         try:
-            event.start_time = _parse_start_time(data.get("start_time")) or _default_start_time(event.day_type)
+            parsed_start_time = _parse_start_time(data.get("start_time")) or _default_start_time(event.day_type)
+            event.start_time = parsed_start_time
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
     if "notes" in data:
@@ -707,20 +709,39 @@ def update_event(date_str):
                 status="pending",
             ))
 
+    updated_future_count = 0
+    future_events = []
+    if (
+        parsed_start_time
+        and data.get("apply_start_time_to_future")
+        and event.day_type == "Sunday"
+    ):
+        future_events = Event.query.filter(
+            Event.id != event.id,
+            Event.day_type == "Sunday",
+            Event.date > event.date,
+        ).all()
+        for future_event in future_events:
+            future_event.start_time = parsed_start_time
+        updated_future_count = len(future_events)
+
     db.session.commit()
 
     # Refresh the Telegram reminder if one was already sent (best-effort).
-    try:
-        tg.update_event_reminder(event)
-    except Exception as e:
-        print(f"[telegram] update_event_reminder failed: {e}")
-    # Refresh the weekly schedule message that included this event (best-effort).
-    try:
-        tg.update_weekly_schedule_for_event(event)
-    except Exception as e:
-        print(f"[telegram] update_weekly_schedule_for_event failed: {e}")
+    for changed_event in [event, *future_events]:
+        try:
+            tg.update_event_reminder(changed_event)
+        except Exception as e:
+            print(f"[telegram] update_event_reminder failed: {e}")
+        # Refresh the weekly schedule message that included this event (best-effort).
+        try:
+            tg.update_weekly_schedule_for_event(changed_event)
+        except Exception as e:
+            print(f"[telegram] update_weekly_schedule_for_event failed: {e}")
 
-    return jsonify(_event_to_dict(event))
+    result = _event_to_dict(event)
+    result["future_events_updated"] = updated_future_count
+    return jsonify(result)
 
 
 @api_v2.route("/assignment/<int:assignment_id>", methods=["PATCH"])

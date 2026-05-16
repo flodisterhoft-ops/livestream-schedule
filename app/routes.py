@@ -1,3 +1,5 @@
+import datetime
+
 from flask import Blueprint, make_response, request
 from .models import Event, Assignment
 
@@ -17,7 +19,13 @@ def _event_title(event):
 def _event_times(event):
     if event.day_type == "Friday":
         return "190000", "210000"
-    return "100000", "120000"
+    if event.start_time:
+        start = event.start_time
+    else:
+        start = datetime.time(14, 30)
+    end_hour = start.hour + 2
+    end = start.replace(hour=end_hour) if end_hour < 24 else start
+    return start.strftime("%H%M%S"), end.strftime("%H%M%S")
 
 
 def _escape_ical(value):

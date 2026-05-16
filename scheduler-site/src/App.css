@@ -1845,6 +1845,25 @@ body {
   min-width: 0;
 }
 
+.event-default-time-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--accent-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.event-default-time-option input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
 .event-editor-btn {
   flex: 1;
   padding: 8px 12px;

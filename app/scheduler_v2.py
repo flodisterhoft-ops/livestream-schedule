@@ -623,7 +623,8 @@ def generate_month_v2(year, month):
 
         assigned_today = []
 
-        new_event = Event(date=date_obj, day_type=day_type)
+        start_time = datetime.time(14, 30) if day_type == "Sunday" else datetime.time(19, 0)
+        new_event = Event(date=date_obj, day_type=day_type, start_time=start_time)
         db.session.add(new_event)
         db.session.flush()  # Get ID without full commit
 
