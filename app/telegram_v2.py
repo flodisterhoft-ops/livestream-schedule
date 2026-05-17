@@ -357,9 +357,75 @@ def _delete_temp_group_later(temp_chat_id, chat_id, delay=5, app=None):
     threading.Thread(target=_delete, daemon=True).start()
 
 
-def _delete_temp_chat(temp_chat, delay=0):
+def _delete_temp_message_later(temp_chat_id, chat_id, message_id, delay=5, app=None):
+    """Schedule deletion of a single message (not the whole group) after `delay` seconds.
+
+    Used when a TempChat row's group is shared with sibling TempChats that should
+    keep living (for example, two concurrent swap requests broadcast into the same
+    helper chat).
+    """
+    def _delete():
+        time.sleep(delay)
+        try:
+            delete_message(chat_id, message_id)
+        except Exception as e:
+            print(f"[TempChat] delayed delete message failed: {e}")
+        if app:
+            with app.app_context():
+                temp_chat = TempChat.query.get(temp_chat_id)
+                if temp_chat:
+                    temp_chat.status = "deleted"
+                    db.session.commit()
+    threading.Thread(target=_delete, daemon=True).start()
+
+
+def _has_active_siblings(temp_chat):
+    """True if other active TempChat rows share this TempChat's chat_id."""
     if not temp_chat or not temp_chat.chat_id:
         return False
+    return TempChat.query.filter(
+        TempChat.chat_id == temp_chat.chat_id,
+        TempChat.id != temp_chat.id,
+        TempChat.status == "active",
+    ).first() is not None
+
+
+def _delete_temp_chat(temp_chat, delay=0):
+    """Tear down (or merely deactivate) a TempChat.
+
+    If the underlying Telegram group is shared with other active TempChats, only
+    this row's message is removed (immediately or after `delay`); the group is
+    preserved so siblings stay reachable.  Otherwise the whole group is deleted
+    as before.
+    """
+    if not temp_chat or not temp_chat.chat_id:
+        return False
+
+    if _has_active_siblings(temp_chat):
+        # Preserve the group for the other active swap/notice; only retire this
+        # message + row.
+        if delay and temp_chat.message_id:
+            temp_chat.status = "deleting"
+            db.session.commit()
+            try:
+                app = current_app._get_current_object()
+            except RuntimeError:
+                app = None
+            _delete_temp_message_later(
+                temp_chat.id, temp_chat.chat_id, temp_chat.message_id,
+                delay=delay, app=app,
+            )
+            return True
+        if temp_chat.message_id:
+            try:
+                delete_message(temp_chat.chat_id, temp_chat.message_id)
+            except Exception as e:
+                print(f"[TempChat] delete message failed: {e}")
+        temp_chat.status = "deleted"
+        db.session.commit()
+        return True
+
+    # No siblings: tear down the whole group as before.
     temp_chat.status = "deleting" if delay else temp_chat.status
     db.session.commit()
     if delay:
@@ -376,7 +442,37 @@ def _delete_temp_chat(temp_chat, delay=0):
 
 
 def _send_temp_group(kind, person, text, buttons, assignment=None, swap_request=None,
-                     future_assignment=None, expires_at=None, title=None):
+                     future_assignment=None, expires_at=None, title=None,
+                     reuse_chat_id=None):
+    """Send a message into a per-person temp group.
+
+    If `reuse_chat_id` is provided, the message is sent into that existing chat
+    and a new TempChat row is created pointing at the same chat_id.  Otherwise a
+    fresh group is created via `telegram_temp_groups`.
+    """
+    if expires_at and expires_at.tzinfo is not None:
+        expires_at = expires_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+
+    if reuse_chat_id:
+        chat_id = str(reuse_chat_id)
+        message_id = send_message(text, chat_id=chat_id, reply_markup=_make_inline_keyboard(buttons))
+        if not message_id:
+            return None
+        temp_chat = TempChat(
+            chat_id=chat_id,
+            message_id=message_id,
+            kind=kind,
+            assignment_id=assignment.id if assignment else None,
+            swap_request_id=swap_request.id if swap_request else None,
+            future_assignment_id=future_assignment.id if future_assignment else None,
+            person=assignment.person if assignment else None,
+            recipient=person,
+            expires_at=expires_at,
+        )
+        db.session.add(temp_chat)
+        db.session.commit()
+        return temp_chat
+
     member = TeamMember.query.filter_by(name=person).first()
     if not member or not member.telegram_user_id:
         _notify_admin_text(f"⚠️ No Telegram ID for {person}")
@@ -394,8 +490,6 @@ def _send_temp_group(kind, person, text, buttons, assignment=None, swap_request=
     if not chat_id:
         _notify_admin_text(f"⚠️ Could not create temp chat for {person}")
         return None
-    if expires_at and expires_at.tzinfo is not None:
-        expires_at = expires_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     message_id = send_message(text, chat_id=str(chat_id), reply_markup=_make_inline_keyboard(buttons))
     temp_chat = TempChat(
         chat_id=str(chat_id),
@@ -1088,6 +1182,25 @@ def _swap_buttons(swap_request, recipient, future_assignment):
 def send_swap_request_temp_groups(assignment, swap_request):
     sent = 0
     for recipient, future_assignment in _eligible_swap_members(assignment):
+        # Same-swap dedup: if this recipient already has an active broadcast for
+        # THIS swap_request, do not send another (handles double-tap of decline).
+        already = TempChat.query.filter_by(
+            swap_request_id=swap_request.id,
+            recipient=recipient,
+            kind="swap_request",
+            status="active",
+        ).first()
+        if already:
+            continue
+        # Reuse any other active swap-request chat with this recipient (so a
+        # second person's decline appends a new message into the existing
+        # chat instead of spawning another group).
+        reusable = TempChat.query.filter_by(
+            recipient=recipient,
+            kind="swap_request",
+            status="active",
+        ).order_by(TempChat.id.desc()).first()
+        reuse_id = reusable.chat_id if reusable else None
         temp = _send_temp_group(
             "swap_request",
             recipient,
@@ -1098,6 +1211,7 @@ def send_swap_request_temp_groups(assignment, swap_request):
             future_assignment=future_assignment,
             expires_at=swap_request.expires_at,
             title=f"🎬 Swap Request {recipient}",
+            reuse_chat_id=reuse_id,
         )
         if temp:
             sent += 1
@@ -1434,12 +1548,20 @@ def handle_callback_query(data):
             assignment.status = "swap_needed"
         elif assignment.status == "swap_needed":
             assignment.status = "confirmed"
-            # Undo of a previous decline — cancel the active swap request
+            # Undo of a previous decline — cancel the active swap request and
+            # tear down the broadcast chats so re-declines start clean.
             active_swap = SwapRequest.query.filter_by(
                 assignment_id=assignment.id, status="active"
             ).first()
             if active_swap:
                 active_swap.status = "cancelled"
+                for tc in TempChat.query.filter_by(
+                    swap_request_id=active_swap.id, status="active"
+                ).all():
+                    try:
+                        _delete_temp_chat(tc)
+                    except Exception as e:
+                        print(f"Temp chat cleanup error: {e}")
         elif assignment.status == "confirmed":
             assignment.status = "pending"
         h = assignment.history
