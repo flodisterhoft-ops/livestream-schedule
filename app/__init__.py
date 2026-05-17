@@ -134,48 +134,6 @@ def ensure_schedule_horizon():
     print(f"[Horizon] Done — created {total_created} events across horizon")
 
 
-def apply_data_hotfixes():
-    """Apply idempotent production data fixes."""
-    from .models import Event, Assignment
-
-    changed = False
-    for event in Event.query.filter_by(day_type="Friday").all():
-        leader = Assignment.query.filter_by(event_id=event.id, role="Leader").order_by(Assignment.id).first()
-        if leader:
-            leader.role = "Computer"
-            changed = True
-
-        helper = Assignment.query.filter_by(event_id=event.id, role="Helper").order_by(Assignment.id).first()
-        if helper:
-            helper.role = "Camera"
-            changed = True
-
-        computers = Assignment.query.filter_by(event_id=event.id, role="Computer").order_by(Assignment.id).all()
-        if computers:
-            for extra in computers[1:]:
-                db.session.delete(extra)
-                changed = True
-        else:
-            db.session.add(Assignment(event_id=event.id, role="Computer", person="Select Helper", status="pending"))
-            changed = True
-
-        cameras = Assignment.query.filter_by(event_id=event.id, role="Camera").order_by(Assignment.id).all()
-        if cameras:
-            for extra in cameras[1:]:
-                db.session.delete(extra)
-                changed = True
-        else:
-            db.session.add(Assignment(event_id=event.id, role="Camera", person="Select Helper", status="pending"))
-            changed = True
-
-        for assignment in Assignment.query.filter_by(event_id=event.id).all():
-            if assignment.role not in ("Computer", "Camera"):
-                db.session.delete(assignment)
-                changed = True
-
-    if changed:
-        db.session.commit()
-
 def create_app(config_class='config.Config'):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -265,9 +223,6 @@ def create_app(config_class='config.Config'):
             # Top up known Telegram IDs on existing rows (idempotent)
             sync_telegram_ids()
         sync_team_scheduling_defaults()
-
-        # Apply one-time corrective fixes on existing deployments.
-        apply_data_hotfixes()
 
         # Keep the schedule generated through the active schedule year.
         ensure_schedule_horizon()
