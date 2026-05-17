@@ -730,10 +730,16 @@ def _assignment_line(assignment, role_label=None):
     if not worker or worker in ("TBD", "Select Helper"):
         worker = "TBD"
     icon = "\U0001F4F9" if "Camera" in assignment.role else ROLE_EMOJI.get(assignment.role, "\U0001F464")
+    if assignment.status == "swap_needed":
+        return f"🔴 {icon} {worker}"
+    if assignment.cover:
+        return f"{icon} <s>{assignment.person}</s> → {assignment.cover}"
+    if assignment.status == "confirmed":
+        return f"{icon} ✅ {worker}"
     return f"{icon} {worker}"
 
 
-def _weekly_event_block(event, default_header=None, default_time=None, missing_label=None):
+def _weekly_event_block(event, default_header=None, default_time=None, missing_label=None, default_day_type=None):
     """Render one event's block in the weekly schedule.
 
     Header rule: when an event has a custom title (e.g. 'Communion'), use it
@@ -750,7 +756,7 @@ def _weekly_event_block(event, default_header=None, default_time=None, missing_l
         ]
 
     title = _event_title(event)
-    if event.custom_title:
+    if event.custom_title or (default_day_type and event.day_type != default_day_type):
         header = f"<b>{title}</b>"
     elif default_header:
         header = f"<b>{default_header}</b>"
@@ -779,6 +785,7 @@ def format_weekly_schedule(today=None):
         default_header="Friday - Bible Study",
         default_time="7:00 PM",
         missing_label="No Bible Study scheduled.",
+        default_day_type="Friday",
     ))
     lines.append("")
 
@@ -787,6 +794,7 @@ def format_weekly_schedule(today=None):
         default_header="Sunday Service",
         default_time="2:30 PM",
         missing_label="No Sunday Service scheduled.",
+        default_day_type="Sunday",
     ))
 
     return "\n".join(lines).strip()
