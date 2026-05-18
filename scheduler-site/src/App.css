@@ -2267,6 +2267,16 @@ body {
   flex-shrink: 0;
 }
 
+.past-attendance-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
 /* ── Action Buttons ───────────────────────────────────────── */
 
 .action-btn {
@@ -2296,9 +2306,11 @@ body {
 
 .action-btn.confirm { background: var(--success-light); color: var(--success); }
 .action-btn.confirm:hover { background: var(--success); color: white; }
+.action-btn.confirm.past-attendance-btn.active { background: var(--success); color: white; }
 
 .action-btn.decline { background: var(--danger-light); color: var(--danger); }
 .action-btn.decline:hover { background: var(--danger); color: white; }
+.action-btn.decline.past-attendance-btn.active { background: var(--danger); color: white; }
 
 .action-btn.pickup { background: var(--accent-light); color: var(--accent); }
 .action-btn.pickup:hover { background: var(--accent); color: white; }

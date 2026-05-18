@@ -343,7 +343,9 @@ export default function App() {
         body: JSON.stringify({ action, assignment_id: assignmentId, ...extra }),
       })
       loadSchedule()
-      if (action === 'confirm') showFlash('Confirmed!')
+      if (extra.past_attendance && action === 'confirm') showFlash('Attendance marked present.')
+      else if (extra.past_attendance && action === 'decline') showFlash('Attendance marked absent.')
+      else if (action === 'confirm') showFlash('Confirmed!')
       else if (action === 'pickup') showFlash('Shift picked up! Thank you!')
       else if (action === 'decline') showFlash("Thanks for letting us know! We'll ask the others to cover your shift.")
       else if (action === 'volunteer') showFlash('Volunteered! Thank you!')
@@ -1318,6 +1320,7 @@ function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, 
   const isUnassigned = a.person === 'Select Helper' || a.person === 'TBD'
   const isConfirmed = a.status === 'confirmed'
   const isFilteredPerson = selectedPerson && worker === selectedPerson
+  const canManagePastAttendance = Boolean(isPast && isManager && !isUnassigned)
   const nameOptions = [...new Set([...(isUnassigned ? [] : [a.person]), ...teamNames].filter(Boolean))]
   const chooseName = (name) => {
     onAssign(a.id, name)
@@ -1425,6 +1428,29 @@ function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, 
         )}
       </div>
       <div className="assignment-right">
+        {canManagePastAttendance && (
+          <div className="past-attendance-actions" aria-label="Past attendance controls">
+            <button
+              type="button"
+              className={`action-btn confirm past-attendance-btn ${a.status === 'confirmed' ? 'active' : ''}`}
+              onClick={() => doAction('confirm', a.id, { past_attendance: true })}
+              title="Mark attended"
+              aria-label={`Mark ${worker} attended`}
+            >
+              {'\u2713'}
+            </button>
+            <button
+              type="button"
+              className={`action-btn decline past-attendance-btn ${a.status === 'swap_needed' ? 'active' : ''}`}
+              onClick={() => doAction('decline', a.id, { past_attendance: true })}
+              title="Mark absent"
+              aria-label={`Mark ${worker} absent`}
+            >
+              {'\u2717'}
+            </button>
+          </div>
+        )}
+
         {!isPast && (
           <>
             {isManager && !isUnassigned && onToggleLock && (
@@ -1480,7 +1506,7 @@ function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, 
           </>
         )}
 
-        {isPast && !isUnassigned && (
+        {isPast && !canManagePastAttendance && !isUnassigned && (
           <div className={`status-dot ${a.status}`} title={STATUS_LABELS[a.status]} />
         )}
       </div>
