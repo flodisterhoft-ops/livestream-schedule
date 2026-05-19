@@ -819,17 +819,18 @@ def _weekly_schedule_events(today=None):
     return monday, sunday, friday, sunday_event, extras
 
 
-def _assignment_line(assignment, role_label=None):
+def _assignment_line(assignment, index=0):
     worker = _worker_name(assignment)
     if not worker or worker in ("TBD", "Select Helper"):
         worker = "TBD"
-    icon = "\U0001F4F9" if "Camera" in assignment.role else ROLE_EMOJI.get(assignment.role, "\U0001F464")
+    icon = _role_icon(assignment, index)
     if assignment.status == "swap_needed":
-        return f"🔴 {icon} {worker}"
+        return f"{icon} {worker} 🔴"
     if assignment.cover:
-        return f"{icon} <s>{assignment.person}</s> → {assignment.cover}"
+        status = " ✅" if assignment.status == "confirmed" else ""
+        return f"{icon} <s>{assignment.person}</s> → {assignment.cover}{status}"
     if assignment.status == "confirmed":
-        return f"{icon} ✅ {worker}"
+        return f"{icon} {worker} ✅"
     return f"{icon} {worker}"
 
 
@@ -843,9 +844,8 @@ def _weekly_event_block(event, default_header=None, default_time=None, missing_l
     if not event:
         if default_header is None:
             return []
-        time = default_time or "7:00 PM"
         return [
-            f"<b>{default_header}</b> <code>@ {time}</code>",
+            f"<b>{default_header}</b>",
             f"<i>{missing_label or 'Not scheduled.'}</i>",
         ]
 
@@ -857,12 +857,15 @@ def _weekly_event_block(event, default_header=None, default_time=None, missing_l
     else:
         header = f"<b>{title}</b>"
 
-    lines = [f"{header} <code>@ {_event_time(event)}</code>"]
+    lines = [
+        header,
+        f"{_short_date(event.date)} @ {_event_time(event)}",
+    ]
     if getattr(event, "cancelled", False):
         lines.append("✅ <i>No livestream needed</i>")
     else:
-        for assignment in event.assignments:
-            lines.append(_assignment_line(assignment))
+        for index, assignment in enumerate(event.assignments):
+            lines.append(_assignment_line(assignment, index))
     return lines
 
 
@@ -876,7 +879,7 @@ def format_weekly_schedule(today=None):
 
     lines.extend(_weekly_event_block(
         friday,
-        default_header="Friday - Bible Study",
+        default_header="Bible Study",
         default_time="7:00 PM",
         missing_label="No Bible Study scheduled.",
         default_day_type="Friday",
