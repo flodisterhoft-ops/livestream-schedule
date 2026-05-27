@@ -976,7 +976,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                       const chipLabel = (event.day_type === 'Friday' && !event.custom_title) ? 'Bible Study' : event.title
                       return (
                         <div className={`calendar-event ${event.is_past ? 'past' : ''} ${isCancelled ? 'cancelled' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
-                          <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={isCancelled ? `${chipLabel} - No livestream needed` : chipLabel}>
+                          <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={isCancelled ? `${chipLabel} - No live stream` : chipLabel}>
                             <span className="calendar-chip-text">{isCancelled ? `\u2705 ${chipLabel}` : chipLabel}</span>
                           </div>
                           {isCancelled ? null : (
@@ -1230,7 +1230,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
                 checked={editCancelled}
                 onChange={e => setEditCancelled(e.target.checked)}
               />
-              <span>{editCancelled ? '✅' : '🚫'} No livestream needed</span>
+              <span>No live stream</span>
             </label>
             {showSundayFutureTimeOption && (
               <label className="event-default-time-option">
@@ -1277,7 +1277,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
           </div>
         )}
         {editingEvent ? null : isCancelled ? (
-          <div className="event-cancelled-banner">✅ No livestream needed</div>
+          <div className="event-cancelled-banner">No live stream</div>
         ) : (
           <div className="assignments">
             {event.assignments.map(a => (
@@ -1327,13 +1327,25 @@ function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, 
     setShowNames(false)
   }
 
+  const optionCount = nameOptions.length + (isUnassigned ? 1 : 0)
   const computePos = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect()
     if (!rect) return
     const menuWidth = Math.min(220, window.innerWidth - 24)
     const left = Math.max(12, Math.min(rect.left, window.innerWidth - menuWidth - 12))
-    setMenuPos({ top: rect.bottom + 4, left, width: menuWidth })
-  }, [])
+    const margin = 8
+    const gap = 4
+    // Estimated menu height: 12px container padding + ~32px per row, capped at CSS max-height (240px)
+    const estimatedHeight = Math.min(240, Math.max(40, 12 + Math.max(1, optionCount) * 32))
+    const spaceBelow = window.innerHeight - rect.bottom - margin - gap
+    const spaceAbove = rect.top - margin - gap
+    const fitsBelow = spaceBelow >= estimatedHeight
+    const openAbove = !fitsBelow && spaceAbove > spaceBelow
+    const maxHeight = Math.min(240, Math.max(80, openAbove ? spaceAbove : spaceBelow))
+    const renderedHeight = Math.min(estimatedHeight, maxHeight)
+    const top = openAbove ? rect.top - gap - renderedHeight : rect.bottom + gap
+    setMenuPos({ top, left, width: menuWidth, maxHeight })
+  }, [optionCount])
 
   const openMenu = () => {
     if (showNames) {
@@ -1401,7 +1413,7 @@ function AssignmentRow({ assignment: a, eventAssignments = [], user, isManager, 
               <div
                 ref={menuRef}
                 className="name-menu"
-                style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+                style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width, maxHeight: menuPos.maxHeight }}
               >
                 {isUnassigned && (
                   <button type="button" onClick={() => chooseName('Select Helper')}>Unassigned</button>
