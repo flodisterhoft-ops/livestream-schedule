@@ -976,7 +976,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                       const chipLabel = (event.day_type === 'Friday' && !event.custom_title) ? 'Bible Study' : event.title
                       return (
                         <div className={`calendar-event ${event.is_past ? 'past' : ''} ${isCancelled ? 'cancelled' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
-                          <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={isCancelled ? `${chipLabel} - No live stream` : chipLabel}>
+                          <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={isCancelled ? `${chipLabel} - No livestream` : chipLabel}>
                             <span className="calendar-chip-text">{isCancelled ? `\u2705 ${chipLabel}` : chipLabel}</span>
                           </div>
                           {isCancelled ? null : (
@@ -1230,7 +1230,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
                 checked={editCancelled}
                 onChange={e => setEditCancelled(e.target.checked)}
               />
-              <span>No live stream</span>
+              <span>No livestream</span>
             </label>
             {showSundayFutureTimeOption && (
               <label className="event-default-time-option">
@@ -1277,7 +1277,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
           </div>
         )}
         {editingEvent ? null : isCancelled ? (
-          <div className="event-cancelled-banner">No live stream</div>
+          <div className="event-cancelled-banner">No livestream</div>
         ) : (
           <div className="assignments">
             {event.assignments.map(a => (
