@@ -880,7 +880,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
       </div>
 
       {viewMode === 'calendar' ? (
-        <MonthCalendar activeMonth={activeMonth || defaultMonth} events={filteredSchedule} selectedPerson={selectedPerson} />
+        <MonthCalendar activeMonth={activeMonth || defaultMonth} events={filteredSchedule} selectedPerson={selectedPerson} scrollTargetDate={autoScrollTargetDate} />
       ) : (
         <div className="events-list" ref={eventsListRef}>
           {filteredSchedule.length === 0 && (
@@ -912,7 +912,8 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
   )
 }
 
-function MonthCalendar({ activeMonth, events, selectedPerson }) {
+function MonthCalendar({ activeMonth, events, selectedPerson, scrollTargetDate }) {
+  const calendarRef = useRef(null)
   const todayKey = toDateKey(new Date())
   const eventsByDate = useMemo(() => {
     const map = new Map()
@@ -944,9 +945,29 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
     return result
   }, [days])
   const weekdays = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+  const targetDate = (() => {
+    if (scrollTargetDate && scrollTargetDate.startsWith(activeMonth)) return scrollTargetDate
+    if (todayKey.startsWith(activeMonth)) return todayKey
+    const upcomingInMonth = events.find(event => event.date >= todayKey && event.date.startsWith(activeMonth))
+    if (upcomingInMonth) return upcomingInMonth.date
+    return events.find(event => event.date.startsWith(activeMonth))?.date || null
+  })()
 
+  useEffect(() => {
+    if (!targetDate) return
+    const target = calendarRef.current?.querySelector(`[data-calendar-date="${targetDate}"]`)
+    if (!target) return
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const timeoutId = window.setTimeout(() => {
+      const filterHeight = document.querySelector('.person-filter')?.getBoundingClientRect().height || 0
+      const topOffset = Math.max(12, filterHeight + 12)
+      const destination = Math.max(0, window.scrollY + target.getBoundingClientRect().top - topOffset)
+      window.scrollTo({ top: destination, behavior: prefersReducedMotion ? 'auto' : 'smooth' })
+    }, 450)
+    return () => window.clearTimeout(timeoutId)
+  }, [activeMonth, selectedPerson, targetDate])
   return (
-    <div className="calendar-view">
+    <div className="calendar-view" ref={calendarRef}>
       <div className="calendar-weekdays">
         {weekdays.map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
       </div>
@@ -966,7 +987,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                 dayEvents.length ? 'has-event' : '',
               ].filter(Boolean).join(' ')
               return (
-                <div key={dateKey} className={dayClasses}>
+                <div key={dateKey} className={dayClasses} data-calendar-date={dateKey}>
                   <div className="calendar-day-number">{day.getDate()}</div>
                   <div className="calendar-day-events">
                     {dayEvents.map(event => {

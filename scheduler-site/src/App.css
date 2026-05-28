@@ -51,7 +51,7 @@ body {
 .app {
   max-width: 600px;
   margin: 0 auto;
-  padding: 0 16px 80px;
+  padding: 0 16px calc(140px + env(safe-area-inset-bottom, 0px));
   min-height: 100vh;
 }
 
@@ -1264,6 +1264,7 @@ body {
   border-radius: 0;
   box-shadow: none;
   overflow: visible;
+  padding-bottom: calc(65vh + env(safe-area-inset-bottom, 0px));
   animation: cardIn 0.32s cubic-bezier(.2,.8,.2,1) both;
 }
 
@@ -1431,7 +1432,9 @@ body {
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 
 .calendar-event-chip {
@@ -1445,7 +1448,9 @@ body {
   display: inline;
   overflow: visible;
   line-height: 1.08;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 
 .calendar-event-chip.sunday {
@@ -1467,12 +1472,22 @@ body {
 
 .calendar-assignment {
   gap: 3px;
-  padding: 2px 5px;
+  width: max-content;
+  max-width: none;
+  padding: 2px 3px;
   border-radius: 5px;
   background: #d8c8bf;
   color: #111827;
   font-size: 0.62rem;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.calendar-assignment .calendar-chip-text {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .calendar-role-icon {
@@ -1557,6 +1572,15 @@ body {
   .calendar-role-icon {
     display: none;
   }
+}
+
+.calendar-assignment {
+  width: max-content;
+  max-width: none;
+}
+
+.calendar-assignment .calendar-chip-text {
+  white-space: nowrap;
 }
 
 .year-nav {
