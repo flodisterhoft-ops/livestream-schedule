@@ -87,6 +87,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 14px 0 10px;
+  min-height: 100px;
   background: rgba(248, 250, 252, 0.85);
   backdrop-filter: saturate(140%) blur(12px);
   -webkit-backdrop-filter: saturate(140%) blur(12px);
@@ -161,7 +162,7 @@ body {
   position: absolute;
   top: 14px;
   right: 4px;
-  z-index: 5;
+  z-index: 60;
 }
 
 .header-actions.admin-actions .manager-btn {
