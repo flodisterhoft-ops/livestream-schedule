@@ -144,8 +144,8 @@ function EventTypePicker({ value, onChange, ariaLabel }) {
         aria-expanded={open}
         aria-label={ariaLabel || 'Select event type'}
       >
-        <span className="event-type-trigger-emoji" aria-hidden="true">{current.emoji}</span>
         <span className="event-type-trigger-label">{current.label}</span>
+        <span className="event-type-trigger-emoji" aria-hidden="true">{current.emoji}</span>
         <span className={`event-type-trigger-chev ${open ? 'open' : ''}`} aria-hidden="true">{'\u203A'}</span>
       </button>
       {open && (
@@ -159,8 +159,8 @@ function EventTypePicker({ value, onChange, ariaLabel }) {
               className={`event-type-option ${t.id === value ? 'active' : ''}`}
               onClick={() => { onChange(t.id); setOpen(false) }}
             >
-              <span className="event-type-option-emoji" aria-hidden="true">{t.emoji}</span>
               <span className="event-type-option-label">{t.label}</span>
+              <span className="event-type-option-emoji" aria-hidden="true">{t.emoji}</span>
             </button>
           ))}
         </div>

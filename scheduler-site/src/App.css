@@ -1728,8 +1728,6 @@ body {
   display: grid;
   gap: 2px;
   padding: 6px;
-  max-height: 320px;
-  overflow-y: auto;
   animation: eventTypeMenuIn 0.16s cubic-bezier(.2,.8,.2,1) both;
 }
 
