@@ -775,7 +775,8 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
   }
 
   return (
-    <div className="schedule-tab">
+    <div className={`schedule-tab ${viewMode === 'cards' ? 'cards-view' : 'calendar-view-mode'}`}>
+      <div className="schedule-sticky-controls">
       {/* Year navigation */}
       <div className="year-nav">
         {yearList.map(year => (
@@ -879,8 +880,9 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
         </button>
       </div>
 
+      </div>
       {viewMode === 'calendar' ? (
-        <MonthCalendar activeMonth={activeMonth || defaultMonth} events={filteredSchedule} selectedPerson={selectedPerson} scrollTargetDate={autoScrollTargetDate} />
+        <MonthCalendar activeMonth={activeMonth || defaultMonth} events={filteredSchedule} selectedPerson={selectedPerson} />
       ) : (
         <div className="events-list" ref={eventsListRef}>
           {filteredSchedule.length === 0 && (
@@ -912,8 +914,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
   )
 }
 
-function MonthCalendar({ activeMonth, events, selectedPerson, scrollTargetDate }) {
-  const calendarRef = useRef(null)
+function MonthCalendar({ activeMonth, events, selectedPerson }) {
   const todayKey = toDateKey(new Date())
   const eventsByDate = useMemo(() => {
     const map = new Map()
@@ -945,29 +946,8 @@ function MonthCalendar({ activeMonth, events, selectedPerson, scrollTargetDate }
     return result
   }, [days])
   const weekdays = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-  const targetDate = (() => {
-    if (scrollTargetDate && scrollTargetDate.startsWith(activeMonth)) return scrollTargetDate
-    if (todayKey.startsWith(activeMonth)) return todayKey
-    const upcomingInMonth = events.find(event => event.date >= todayKey && event.date.startsWith(activeMonth))
-    if (upcomingInMonth) return upcomingInMonth.date
-    return events.find(event => event.date.startsWith(activeMonth))?.date || null
-  })()
-
-  useEffect(() => {
-    if (!targetDate) return
-    const target = calendarRef.current?.querySelector(`[data-calendar-date="${targetDate}"]`)
-    if (!target) return
-    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    const timeoutId = window.setTimeout(() => {
-      const filterHeight = document.querySelector('.person-filter')?.getBoundingClientRect().height || 0
-      const topOffset = Math.max(12, filterHeight + 12)
-      const destination = Math.max(0, window.scrollY + target.getBoundingClientRect().top - topOffset)
-      window.scrollTo({ top: destination, behavior: prefersReducedMotion ? 'auto' : 'smooth' })
-    }, 450)
-    return () => window.clearTimeout(timeoutId)
-  }, [activeMonth, selectedPerson, targetDate])
   return (
-    <div className="calendar-view" ref={calendarRef}>
+    <div className="calendar-view">
       <div className="calendar-weekdays">
         {weekdays.map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
       </div>
@@ -978,25 +958,28 @@ function MonthCalendar({ activeMonth, events, selectedPerson, scrollTargetDate }
               const dateKey = toDateKey(day)
               const dayEvents = eventsByDate.get(dateKey) || []
               const isOutside = activeMonth && !dateKey.startsWith(activeMonth)
+              const isPastDay = dateKey < todayKey
               const dayClasses = [
                 'calendar-day',
                 isOutside ? 'outside' : '',
                 day.getDay() === 0 ? 'sunday' : '',
                 day.getDay() === 6 ? 'saturday' : '',
                 dateKey === todayKey ? 'today' : '',
+                isPastDay ? 'past-day' : '',
                 dayEvents.length ? 'has-event' : '',
               ].filter(Boolean).join(' ')
               return (
-                <div key={dateKey} className={dayClasses} data-calendar-date={dateKey}>
+                <div key={dateKey} className={dayClasses}>
                   <div className="calendar-day-number">{day.getDate()}</div>
                   <div className="calendar-day-events">
                     {dayEvents.map(event => {
                       const assignments = event.assignments.filter(a => !selectedPerson || a.person === selectedPerson || a.cover === selectedPerson)
                       const eventKind = event.day_type === 'Friday' ? 'friday' : event.day_type === 'Sunday' ? 'sunday' : 'custom'
                       const isCancelled = Boolean(event.cancelled)
+                      const isPastEvent = event.is_past || event.date < todayKey
                       const chipLabel = (event.day_type === 'Friday' && !event.custom_title) ? 'Bible Study' : event.title
                       return (
-                        <div className={`calendar-event ${event.is_past ? 'past' : ''} ${isCancelled ? 'cancelled' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
+                        <div className={`calendar-event ${isPastEvent ? 'past' : ''} ${isCancelled ? 'cancelled' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
                           <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={isCancelled ? `${chipLabel} - No livestream` : chipLabel}>
                             <span className="calendar-chip-text">{chipLabel}</span>
                           </div>
