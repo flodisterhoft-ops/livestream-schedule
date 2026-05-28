@@ -1247,10 +1247,11 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             {...editProps}
           >
             {event.title}
+            {' '}
+            <span className="event-type-badge" aria-hidden="true">{findEventType(event).emoji}</span>
             {isToday && <span className="today-pill">TODAY</span>}
           </TitleTag>
           <div className="event-header-actions">
-            <span className="event-type-badge" aria-hidden="true">{findEventType(event).emoji}</span>
             <TimeTag
               className={`event-time-pill ${canEdit ? 'editable' : ''}`}
               {...editProps}

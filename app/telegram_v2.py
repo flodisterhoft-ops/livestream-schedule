@@ -234,6 +234,35 @@ def _schedule_button(label="\U0001F4C5 View Schedule", person=None):
     }
 
 
+# Map of preset custom_title -> emoji, mirroring the frontend EVENT_TYPES list.
+EVENT_TYPE_EMOJI = {
+    "sunday service":        "\u26EA",
+    "bible study":           "\U0001F4D6",
+    "communion service":     "\U0001F377",
+    "members meeting":       "\U0001F465",
+    "good friday":           "\u271D\uFE0F",
+    "easter sunday":         "\U0001F305",
+    "baptism":               "\U0001F4A6",
+    "thanksgiving":          "\U0001F342",
+    "baby dedication":       "\U0001F476",
+    "christmas eve service": "\U0001F56F\uFE0F",
+    "christmas service":     "\U0001F384",
+}
+
+
+def _event_emoji(event):
+    title = (event.custom_title or "").strip().lower()
+    if title and title in EVENT_TYPE_EMOJI:
+        return EVENT_TYPE_EMOJI[title]
+    if not title:
+        if event.day_type == "Sunday":
+            return EVENT_TYPE_EMOJI["sunday service"]
+        if event.day_type == "Friday":
+            return EVENT_TYPE_EMOJI["bible study"]
+    # Unknown custom title -> "Other" pencil
+    return "\u270F\uFE0F"
+
+
 def _event_title(event):
     if event.custom_title:
         title = event.custom_title
@@ -243,9 +272,9 @@ def _event_title(event):
         title = "Sunday Service"
     else:
         title = event.day_type or "Event"
-    # Decorate Communion events with a wine emoji on the right side.
-    if "communion" in title.lower() and "🍷" not in title:
-        title = f"{title} 🍷"
+    emoji = _event_emoji(event)
+    if emoji and emoji not in title:
+        title = f"{title} {emoji}"
     return title
 
 
@@ -1448,7 +1477,7 @@ def handle_callback_query(data):
                     f"<i>This chat will auto-destruct in 5 seconds.</i>"
                 ))
             _delete_temp_chat(other, delay=5)
-        _send_temp_group(
+        notice = _send_temp_group(
             "swap_notice",
             original_person,
             (
@@ -1462,7 +1491,6 @@ def handle_callback_query(data):
             expires_at=_swap_deadline(event),
             title=f"🎬 Swap Covered {original_person}",
         )
-        notice = TempChat.query.filter_by(kind="swap_notice", assignment_id=assignment.id, recipient=original_person, status="active").order_by(TempChat.id.desc()).first()
         if notice:
             _delete_temp_chat(notice, delay=5)
         _delete_temp_chat(temp_chat, delay=5)
@@ -1533,8 +1561,12 @@ def handle_callback_query(data):
         db.session.commit()
         _notify_admin("decline", person_name, assignment, event)
 
-        deadline_str = deadline_local.strftime("%a %b %d at %-I:%M %p") \
-            if hasattr(deadline_local, "strftime") else str(deadline_local)
+        if hasattr(deadline_local, "strftime"):
+            deadline_str = deadline_local.strftime("%a %b %d at %I:%M %p")
+            # Strip leading zero from hour (cross-platform; %-I is Linux-only)
+            deadline_str = deadline_str.replace(" at 0", " at ")
+        else:
+            deadline_str = str(deadline_local)
         answer_callback(
             callback_id,
             f"Got it - {person_name} can't make it. The shift is now open for someone "
