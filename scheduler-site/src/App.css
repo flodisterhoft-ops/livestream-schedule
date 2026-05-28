@@ -1662,6 +1662,152 @@ body {
   opacity: 0.5;
 }
 
+/* ── Event Type Picker (inline dropdown) ─────────────────── */
+
+.event-type-picker {
+  position: relative;
+  width: 100%;
+}
+
+.event-type-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.event-type-trigger:hover,
+.event-type-trigger.open {
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.14);
+}
+
+.event-type-trigger-emoji {
+  font-size: 1.05rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.event-type-trigger-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-type-trigger-chev {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.2s ease;
+}
+
+.event-type-trigger-chev.open {
+  transform: rotate(270deg);
+}
+
+.event-type-menu {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  animation: eventTypeMenuIn 0.16s cubic-bezier(.2,.8,.2,1) both;
+}
+
+@keyframes eventTypeMenuIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.event-type-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.event-type-option:hover,
+.event-type-option.active {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.event-type-option-emoji {
+  font-size: 1.05rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.event-type-option-label {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Editor collapse animation (No livestream) ───────────── */
+
+.event-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 0.28s ease, opacity 0.22s ease, margin 0.22s ease, padding 0.22s ease;
+}
+
+.event-collapse > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.event-collapse.hidden {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.event-collapse-inline {
+  transition: max-width 0.28s ease, opacity 0.22s ease, padding 0.22s ease, border-color 0.22s ease, margin 0.22s ease;
+  max-width: 180px;
+  opacity: 1;
+}
+
+.event-collapse-inline.hidden {
+  max-width: 0;
+  opacity: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-color: transparent;
+  margin: 0;
+  pointer-events: none;
+}
+
 /* ── Event Cards ──────────────────────────────────────────── */
 
 .events-list {

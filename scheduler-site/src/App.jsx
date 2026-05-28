@@ -80,6 +80,96 @@ const normalizeSuggestedTime = (value) => {
   return `${String(hour).padStart(2, '0')}:${minute}`
 }
 
+// ===============================================================
+//  Event Types (selectable presets)
+// ===============================================================
+
+const EVENT_TYPES = [
+  { id: 'sunday',          label: 'Sunday Service',         emoji: '\u26EA',                   day_type: 'Sunday', custom_title: null,                       defaultTime: '14:30', defaultRoles: ['Computer', 'Camera 1', 'Camera 2'] },
+  { id: 'bible-study',     label: 'Bible Study',            emoji: '\uD83D\uDCD6',             day_type: 'Friday', custom_title: null,                       defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'communion',       label: 'Communion Service',      emoji: '\uD83C\uDF5E\uD83C\uDF77', day_type: 'Custom', custom_title: 'Communion Service',         defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'members-meeting', label: 'Members Meeting',        emoji: '\uD83D\uDC65',             day_type: 'Custom', custom_title: 'Members Meeting',           defaultTime: '19:00', defaultRoles: [] },
+  { id: 'good-friday',     label: 'Good Friday',            emoji: '\u271D\uFE0F',             day_type: 'Custom', custom_title: 'Good Friday',               defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'easter-sunday',   label: 'Easter Sunday',          emoji: '\uD83C\uDF05',             day_type: 'Sunday', custom_title: 'Easter Sunday',             defaultTime: '14:30', defaultRoles: ['Computer', 'Camera 1', 'Camera 2'] },
+  { id: 'baptism',         label: 'Baptism',                emoji: '\uD83D\uDCA6',             day_type: 'Custom', custom_title: 'Baptism',                   defaultTime: '14:30', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'thanksgiving',    label: 'Thanksgiving',           emoji: '\uD83C\uDF42',             day_type: 'Custom', custom_title: 'Thanksgiving',              defaultTime: '14:30', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'baby-dedication', label: 'Baby Dedication',        emoji: '\uD83D\uDC76',             day_type: 'Custom', custom_title: 'Baby Dedication',           defaultTime: '14:30', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'christmas-eve',   label: 'Christmas Eve Service',  emoji: '\uD83D\uDD6F\uFE0F',       day_type: 'Custom', custom_title: 'Christmas Eve Service',     defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'christmas',       label: 'Christmas Service',      emoji: '\uD83C\uDF84',             day_type: 'Custom', custom_title: 'Christmas Service',         defaultTime: '14:30', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'other',           label: 'Other',                  emoji: '\u270F\uFE0F',             day_type: 'Custom', custom_title: null,                       defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'], isOther: true },
+]
+
+function findEventType(event) {
+  if (!event) return EVENT_TYPES[0]
+  const title = (event.custom_title || '').trim().toLowerCase()
+  if (title) {
+    for (const t of EVENT_TYPES) {
+      if (t.custom_title && t.custom_title.toLowerCase() === title) return t
+    }
+  }
+  if (event.day_type === 'Sunday' && !title) return EVENT_TYPES.find(t => t.id === 'sunday')
+  if (event.day_type === 'Friday' && !title) return EVENT_TYPES.find(t => t.id === 'bible-study')
+  return EVENT_TYPES.find(t => t.id === 'other')
+}
+
+function EventTypePicker({ value, onChange, ariaLabel }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+  const current = EVENT_TYPES.find(t => t.id === value) || EVENT_TYPES[0]
+
+  useEffect(() => {
+    if (!open) return
+    const handlePointer = (e) => {
+      if (wrapRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const handleKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('touchstart', handlePointer)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('touchstart', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [open])
+
+  return (
+    <div className="event-type-picker" ref={wrapRef}>
+      <button
+        type="button"
+        className={`event-type-trigger ${open ? 'open' : ''}`}
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel || 'Select event type'}
+      >
+        <span className="event-type-trigger-emoji" aria-hidden="true">{current.emoji}</span>
+        <span className="event-type-trigger-label">{current.label}</span>
+        <span className={`event-type-trigger-chev ${open ? 'open' : ''}`} aria-hidden="true">{'\u203A'}</span>
+      </button>
+      {open && (
+        <div className="event-type-menu" role="listbox" aria-label="Event type">
+          {EVENT_TYPES.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              role="option"
+              aria-selected={t.id === value}
+              className={`event-type-option ${t.id === value ? 'active' : ''}`}
+              onClick={() => { onChange(t.id); setOpen(false) }}
+            >
+              <span className="event-type-option-emoji" aria-hidden="true">{t.emoji}</span>
+              <span className="event-type-option-label">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 // ═══════════════════════════════════════════════════════════════
 //  API Helpers
 // ═══════════════════════════════════════════════════════════════
@@ -1028,10 +1118,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
 const isCommunionTitle = (title) => /communion/i.test(title || '')
 
 function detectInitialEditType(event) {
-  if (isCommunionTitle(event.custom_title)) return 'Communion'
-  if (event.day_type === 'Sunday') return 'Sunday'
-  if (event.day_type === 'Friday') return 'Bible Study'
-  return 'Other'
+  return findEventType(event).id
 }
 
 function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, onToggleLock, teamNames, recentlyChanged, selectedPerson }) {
@@ -1049,7 +1136,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
   const dayName = d.toLocaleString('en', { weekday: 'short' })
   const monthName = d.toLocaleString('en', { month: 'short' })
   const originalStartTime = event.start_time || defaultStartTime(event.day_type)
-  const showSundayFutureTimeOption = event.day_type === 'Sunday' && editType === 'Sunday' && editTime !== originalStartTime
+  const showSundayFutureTimeOption = event.day_type === 'Sunday' && editType === 'sunday' && editTime !== originalStartTime
 
   useEffect(() => {
     if (editingEvent) return
@@ -1059,15 +1146,11 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
     setApplySundayTimeToFuture(false)
   }, [event, editingEvent])
 
-  const handleTypeChange = (nextType) => {
-    setEditType(nextType)
+  const handleTypeChange = (nextTypeId) => {
+    setEditType(nextTypeId)
     setApplySundayTimeToFuture(false)
-    if (nextType === 'Communion') {
-      setEditTime('19:00')
-      setEditCancelled(true)
-    } else {
-      setEditTime(defaultStartTime(nextType === 'Bible Study' ? 'Friday' : nextType))
-    }
+    const t = EVENT_TYPES.find(x => x.id === nextTypeId)
+    if (t) setEditTime(t.defaultTime)
   }
 
   const removeEditRole = (idx) => {
@@ -1087,12 +1170,9 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
     const keptIds = new Set(editRoles.filter(r => r.id).map(r => r.id))
     const remove_assignment_ids = event.assignments.filter(a => !keptIds.has(a.id)).map(a => a.id)
     const add_roles = editRoles.filter(r => !r.id).map(r => r.role)
-    let custom_title = null
-    let day_type = 'Custom'
-    if (editType === 'Sunday') { day_type = 'Sunday'; custom_title = null }
-    else if (editType === 'Bible Study') { day_type = 'Friday'; custom_title = null }
-    else if (editType === 'Communion') { day_type = 'Custom'; custom_title = 'Communion Service' }
-    else { day_type = 'Custom'; custom_title = editTitle }
+    const eventTypePreset = EVENT_TYPES.find(x => x.id === editType) || EVENT_TYPES[0]
+    const day_type = eventTypePreset.day_type
+    const custom_title = eventTypePreset.isOther ? (editTitle.trim() || null) : eventTypePreset.custom_title
     const updates = {
       new_date: editDate,
       day_type,
@@ -1205,29 +1285,25 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
                 type="time"
                 value={editTime}
                 onChange={e => setEditTime(e.target.value)}
-                className="event-edit-input"
-                disabled={editCancelled}
+                className={`event-edit-input event-collapse-inline ${editCancelled ? 'hidden' : ''}`}
+                aria-hidden={editCancelled}
+                tabIndex={editCancelled ? -1 : 0}
               />
             </div>
-            <select
-              value={editType}
-              onChange={e => handleTypeChange(e.target.value)}
-              className="event-edit-input"
-            >
-              <option value="Sunday">⛪ Sunday Service</option>
-              <option value="Bible Study">📖 Bible Study</option>
-              <option value="Communion">Communion Service 🍷</option>
-              <option value="Other">✏️ Other</option>
-            </select>
-            {editType === 'Other' && (
-              <input
-                type="text"
-                value={editTitle}
-                onChange={e => setEditTitle(e.target.value)}
-                placeholder="Event title"
-                className="event-edit-input"
-              />
-            )}
+            <div className={`event-collapse ${editCancelled ? 'hidden' : ''}`} aria-hidden={editCancelled}>
+              <div>
+                <EventTypePicker value={editType} onChange={handleTypeChange} />
+                {EVENT_TYPES.find(t => t.id === editType)?.isOther && (
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    placeholder="Event title"
+                    className="event-edit-input event-edit-title-input"
+                  />
+                )}
+              </div>
+            </div>
             <label className="event-cancel-toggle">
               <input
                 type="checkbox"
@@ -1236,7 +1312,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
               />
               <span>No livestream</span>
             </label>
-            {showSundayFutureTimeOption && (
+            {showSundayFutureTimeOption && !editCancelled && (
               <label className="event-default-time-option">
                 <input
                   type="checkbox"
@@ -1246,7 +1322,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
                 <span>Use this time for all future Sunday services</span>
               </label>
             )}
-            {!editCancelled && (
+            <div className={`event-collapse ${editCancelled ? 'hidden' : ''}`} aria-hidden={editCancelled}>
               <div className="event-helpers-edit">
                 <div className="event-helpers-label">Helpers needed</div>
                 {editRoles.length === 0 && (
@@ -1273,7 +1349,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
                   <button type="button" className="event-helpers-btn add" onClick={() => addEditRole('Camera')}>+ 📹 Camera</button>
                 </div>
               </div>
-            )}
+            </div>
             <div className="event-editor-actions">
               <button className="event-editor-btn cancel" type="button" onClick={() => { setApplySundayTimeToFuture(false); setEditingEvent(false) }}>Cancel</button>
               <button className="event-editor-btn save" type="button" onClick={saveEvent}>Save</button>
@@ -3151,7 +3227,7 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
   const today = new Date()
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   const initialDate = prefill?.date || todayKey
-  const initialType = 'Custom'
+  const initialTypeId = prefill ? 'other' : 'sunday'
   const suggestionTitle = (() => {
     if (!prefill) return ''
     if (prefill.event_type === 'Other') return prefill.custom_title || ''
@@ -3160,12 +3236,12 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
     return parts.join(' ')
   })()
   const [date, setDate] = useState(initialDate)
-  const [type, setType] = useState(prefill ? initialType : 'Sunday')
+  const [type, setType] = useState(initialTypeId)
   const [customTitle, setCustomTitle] = useState(prefill ? suggestionTitle : '')
-  const [startTime, setStartTime] = useState(normalizeSuggestedTime(prefill?.time) || defaultStartTime(prefill ? initialType : 'Sunday'))
-  const preset = PRESET_TYPES.find(p => p.value === type) || PRESET_TYPES[0]
-  const [computerCount, setComputerCount] = useState(preset.defaultRoles.filter(r => r === 'Computer').length || 1)
-  const [cameraCount, setCameraCount] = useState(preset.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
+  const initialPreset = EVENT_TYPES.find(t => t.id === initialTypeId) || EVENT_TYPES[0]
+  const [startTime, setStartTime] = useState(normalizeSuggestedTime(prefill?.time) || initialPreset.defaultTime)
+  const [computerCount, setComputerCount] = useState(initialPreset.defaultRoles.filter(r => r === 'Computer').length || 1)
+  const [cameraCount, setCameraCount] = useState(initialPreset.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
   const [people, setPeople] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const overlayRef = useRef(null)
@@ -3184,24 +3260,18 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
   if (cameraCount === 1) roles.push('Camera')
   else for (let i = 0; i < cameraCount; i++) roles.push(`Camera ${i + 1}`)
 
-  const applyTypeDefaults = (newType) => {
-    setType(newType)
-    setStartTime(defaultStartTime(newType))
-    if (newType === 'Sunday') {
-      setComputerCount(1)
-      setCameraCount(2)
-    } else if (newType === 'Friday') {
-      setComputerCount(1)
-      setCameraCount(1)
-    } else {
-      setComputerCount(1)
-      setCameraCount(1)
-    }
+  const applyTypeDefaults = (newTypeId) => {
+    setType(newTypeId)
+    const t = EVENT_TYPES.find(x => x.id === newTypeId) || EVENT_TYPES[0]
+    setStartTime(t.defaultTime)
+    setComputerCount(t.defaultRoles.filter(r => r === 'Computer').length || 1)
+    setCameraCount(t.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
   }
 
   const submit = async () => {
+    const preset = EVENT_TYPES.find(t => t.id === type) || EVENT_TYPES[0]
     if (!date) { showFlash('Pick a date', 'error'); return }
-    if (type === 'Custom' && !customTitle.trim()) { showFlash('Enter a title', 'error'); return }
+    if (preset.isOther && !customTitle.trim()) { showFlash('Enter a title', 'error'); return }
     if (roles.length === 0) { showFlash('Add at least one role', 'error'); return }
 
     setSubmitting(true)
@@ -3210,8 +3280,8 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
         method: 'POST',
         body: JSON.stringify({
           date,
-          day_type: type,
-          custom_title: type === 'Custom' ? customTitle.trim() : null,
+          day_type: preset.day_type,
+          custom_title: preset.isOther ? customTitle.trim() : preset.custom_title,
           start_time: startTime,
           roles,
           suggestion_id: prefill?.id,
@@ -3277,21 +3347,10 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
 
           <div className="modal-field">
             <span className="modal-label">Type</span>
-            <div className="segmented">
-              {PRESET_TYPES.map(p => (
-                <button
-                  key={p.value}
-                  type="button"
-                  className={`segment ${type === p.value ? 'active' : ''}`}
-                  onClick={() => applyTypeDefaults(p.value)}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <EventTypePicker value={type} onChange={applyTypeDefaults} />
           </div>
 
-          {type === 'Custom' && (
+          {EVENT_TYPES.find(t => t.id === type)?.isOther && (
             <label className="modal-field">
               <span className="modal-label">Title</span>
               <input
