@@ -4272,3 +4272,15 @@ body {
   .manager-row { flex-direction: column; }
   .manager-row .input-month { width: 100%; }
 }
+
+.event-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+  user-select: none;
+}

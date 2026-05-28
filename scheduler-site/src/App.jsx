@@ -87,7 +87,7 @@ const normalizeSuggestedTime = (value) => {
 const EVENT_TYPES = [
   { id: 'sunday',          label: 'Sunday Service',         emoji: '\u26EA',                   day_type: 'Sunday', custom_title: null,                       defaultTime: '14:30', defaultRoles: ['Computer', 'Camera 1', 'Camera 2'] },
   { id: 'bible-study',     label: 'Bible Study',            emoji: '\uD83D\uDCD6',             day_type: 'Friday', custom_title: null,                       defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
-  { id: 'communion',       label: 'Communion Service',      emoji: '\uD83C\uDF5E\uD83C\uDF77', day_type: 'Custom', custom_title: 'Communion Service',         defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
+  { id: 'communion',       label: 'Communion Service',      emoji: '\uD83C\uDF77', day_type: 'Custom', custom_title: 'Communion Service',         defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
   { id: 'members-meeting', label: 'Members Meeting',        emoji: '\uD83D\uDC65',             day_type: 'Custom', custom_title: 'Members Meeting',           defaultTime: '19:00', defaultRoles: [] },
   { id: 'good-friday',     label: 'Good Friday',            emoji: '\u271D\uFE0F',             day_type: 'Custom', custom_title: 'Good Friday',               defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
   { id: 'easter-sunday',   label: 'Easter Sunday',          emoji: '\uD83C\uDF05',             day_type: 'Sunday', custom_title: 'Easter Sunday',             defaultTime: '14:30', defaultRoles: ['Computer', 'Camera 1', 'Camera 2'] },
@@ -1247,12 +1247,10 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             {...editProps}
           >
             {event.title}
-            {isCommunionTitle(event.custom_title || event.title) && (
-              <span className="event-title-icon" aria-hidden="true">🍷</span>
-            )}
             {isToday && <span className="today-pill">TODAY</span>}
           </TitleTag>
           <div className="event-header-actions">
+            <span className="event-type-badge" aria-hidden="true">{findEventType(event).emoji}</span>
             <TimeTag
               className={`event-time-pill ${canEdit ? 'editable' : ''}`}
               {...editProps}
