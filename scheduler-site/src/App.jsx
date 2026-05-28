@@ -977,7 +977,7 @@ function MonthCalendar({ activeMonth, events, selectedPerson }) {
                       return (
                         <div className={`calendar-event ${event.is_past ? 'past' : ''} ${isCancelled ? 'cancelled' : ''}`} key={`${event.date}-${event.title}-${event.day_type}`}>
                           <div className={`calendar-chip calendar-event-chip ${eventKind}`} title={isCancelled ? `${chipLabel} - No livestream` : chipLabel}>
-                            <span className="calendar-chip-text">{isCancelled ? `\u2705 ${chipLabel}` : chipLabel}</span>
+                            <span className="calendar-chip-text">{chipLabel}</span>
                           </div>
                           {isCancelled ? null : (
                             <>
