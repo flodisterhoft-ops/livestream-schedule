@@ -1247,8 +1247,12 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             {...editProps}
           >
             {event.title}
-            {' '}
-            <span className="event-type-badge" aria-hidden="true">{findEventType(event).emoji}</span>
+            {findEventType(event).id !== 'other' && (
+              <>
+                {' '}
+                <span className="event-type-badge" aria-hidden="true">{findEventType(event).emoji}</span>
+              </>
+            )}
             {isToday && <span className="today-pill">TODAY</span>}
           </TitleTag>
           <div className="event-header-actions">

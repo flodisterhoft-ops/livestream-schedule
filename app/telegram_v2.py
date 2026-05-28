@@ -259,8 +259,8 @@ def _event_emoji(event):
             return EVENT_TYPE_EMOJI["sunday service"]
         if event.day_type == "Friday":
             return EVENT_TYPE_EMOJI["bible study"]
-    # Unknown custom title -> "Other" pencil
-    return "\u270F\uFE0F"
+    # Unknown custom title -> no decoration
+    return ""
 
 
 def _event_title(event):
