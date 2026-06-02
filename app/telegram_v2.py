@@ -1545,7 +1545,6 @@ def handle_callback_query(data):
         if action == "weekly_confirm":
             _log_interaction(telegram_user_id, first_name, "weekly_confirm_tap", person_name)
             db.session.commit()
-            _notify_admin_text(f"👆 <b>Weekly confirm tapped</b> - {html.escape(person_name or 'Unknown')}")
             _weekly_select_shift(
                 callback_id, chat_id, message_id, person_name, "confirm",
                 telegram_user_id=telegram_user_id, first_name=first_name,
@@ -1555,7 +1554,6 @@ def handle_callback_query(data):
         if action == "weekly_decline":
             _log_interaction(telegram_user_id, first_name, "weekly_decline_tap", person_name)
             db.session.commit()
-            _notify_admin_text(f"👆 <b>Weekly can't-make-it tapped</b> - {html.escape(person_name or 'Unknown')}")
             _weekly_select_shift(
                 callback_id, chat_id, message_id, person_name, "decline",
                 telegram_user_id=telegram_user_id, first_name=first_name,
