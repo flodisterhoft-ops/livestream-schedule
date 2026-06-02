@@ -1254,6 +1254,37 @@ def _event_decline_assignment(callback_id, chat_id, message_id, assignment, pers
     return True
 
 
+def _event_undo_decline_assignment(callback_id, chat_id, message_id, assignment, person_name,
+                                   telegram_user_id=None, first_name=None):
+    event = assignment.event
+    active_swap = SwapRequest.query.filter_by(
+        assignment_id=assignment.id, status="active"
+    ).first()
+    cover_chat_id = None
+    cover_message_id = assignment.telegram_message_id
+    if active_swap:
+        active_swap.status = "cancelled"
+        cover_chat_id = active_swap.telegram_chat_id
+        cover_message_id = active_swap.telegram_message_id or cover_message_id
+
+    assignment.status = "pending"
+    assignment.cover = None
+    h = assignment.history
+    h.append({"action": "undo_decline", "by": person_name, "via": "event_reminder", "ts": str(vancouver_now())})
+    assignment.history = h
+    assignment.telegram_message_id = None
+    _log_interaction(telegram_user_id, first_name, "undo_decline", person_name, assignment, event,
+                     details="event_reminder")
+    db.session.commit()
+
+    answer_callback(callback_id)
+    if cover_message_id:
+        delete_message(cover_chat_id or chat_id, cover_message_id)
+    _restore_event_reminder_message(chat_id, message_id, event)
+    update_weekly_schedule_for_event(event)
+    return True
+
+
 def _event_select_shift(callback_id, chat_id, message_id, event, person_name, mode,
                         telegram_user_id=None, first_name=None):
     rows = _event_assignments_for_person(event, person_name)
@@ -1264,6 +1295,11 @@ def _event_select_shift(callback_id, chat_id, message_id, event, person_name, mo
         assignment, _index = rows[0]
         if mode == "confirm":
             return _event_confirm_assignment(
+                callback_id, chat_id, message_id, assignment, person_name,
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+        if _can_undo_event_decline(assignment, person_name):
+            return _event_undo_decline_assignment(
                 callback_id, chat_id, message_id, assignment, person_name,
                 telegram_user_id=telegram_user_id, first_name=first_name,
             )
@@ -1281,6 +1317,17 @@ def _event_select_shift(callback_id, chat_id, message_id, event, person_name, mo
     edit_message_markup(chat_id, message_id, _make_inline_keyboard(button_rows))
     answer_callback(callback_id)
     return True
+
+
+def _can_undo_event_decline(assignment, person_name):
+    if not assignment or assignment.status != "swap_needed":
+        return False
+    active_swap = SwapRequest.query.filter_by(
+        assignment_id=assignment.id, status="active"
+    ).first()
+    if active_swap:
+        return active_swap.requestor == person_name
+    return assignment.person == person_name
 
 
 def _weekly_schedule_already_sent(monday):
@@ -1464,6 +1511,12 @@ def send_swap_needed(event, assignment, chat_id=None, pickup_url=None, source_me
 
     if msg_id:
         assignment.telegram_message_id = msg_id
+        active_swap = SwapRequest.query.filter_by(
+            assignment_id=assignment.id, status="active"
+        ).first()
+        if active_swap:
+            active_swap.telegram_message_id = msg_id
+            active_swap.telegram_chat_id = str(chat_id or TELEGRAM_CHAT_ID)
         db.session.commit()
 
     return msg_id
@@ -1714,6 +1767,12 @@ def handle_callback_query(data):
             return
 
         if action == "event_decline_shift":
+            if _can_undo_event_decline(assignment, person_name):
+                _event_undo_decline_assignment(
+                    callback_id, chat_id, source_message_id, assignment, person_name,
+                    telegram_user_id=telegram_user_id, first_name=first_name,
+                )
+                return
             _event_show_decline_confirmation(callback_id, chat_id, source_message_id, assignment)
             return
 
