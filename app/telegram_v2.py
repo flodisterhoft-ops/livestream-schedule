@@ -1332,8 +1332,8 @@ def send_swap_needed(event, assignment, chat_id=None, pickup_url=None):
     title = _event_title_without_emoji(event)
 
     text = (
-        f"{_weekly_decline_status_icon()} {assignment.person} can't make it to his shift on:\n"
-        f"<b>{title} - {_short_date(event.date)}:</b> {role_icon} {assignment.role}\n\n"
+        f"{_weekly_decline_status_icon()} {assignment.person} can't make it to his shift:\n"
+        f"<b>{title} - {_short_date(event.date)} ({role_icon} {assignment.role})</b>\n\n"
         "Could someone please jump in for him?"
     )
 
