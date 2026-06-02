@@ -1047,7 +1047,7 @@ def _weekly_select_shift(callback_id, chat_id, message_id, person_name, mode,
         }])
     button_rows.append([{"text": "Never mind", "callback_data": "weekly_back"}])
     edit_message_markup(chat_id, message_id, _make_inline_keyboard(button_rows))
-    answer_callback(callback_id, "Select a shift")
+    answer_callback(callback_id)
     return True
 
 
@@ -1063,7 +1063,7 @@ def _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignme
         [{"text": "Never mind", "callback_data": "weekly_back"}],
     ])
     edit_message_markup(chat_id, message_id, buttons)
-    answer_callback(callback_id, "Confirm below")
+    answer_callback(callback_id)
     return True
 
 
@@ -1071,8 +1071,16 @@ def _weekly_confirm_assignment(callback_id, chat_id, message_id, assignment, per
                                telegram_user_id=None, first_name=None):
     event = assignment.event
     if assignment.status == "confirmed":
-        answer_callback(callback_id, "Already confirmed")
+        assignment.status = "pending"
+        h = assignment.history
+        h.append({"action": "undo", "by": person_name, "via": "weekly_telegram", "ts": str(vancouver_now())})
+        assignment.history = h
+        _log_interaction(telegram_user_id, first_name, "undo", person_name, assignment, event, details="weekly_button")
+        db.session.commit()
+        _notify_admin("undo", person_name, assignment, event)
+        answer_callback(callback_id)
         _restore_weekly_message(chat_id, message_id, today=event.date)
+        refresh_event_telegram(event)
         return True
     assignment.status = "confirmed"
     h = assignment.history
@@ -1081,7 +1089,7 @@ def _weekly_confirm_assignment(callback_id, chat_id, message_id, assignment, per
     _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event, details="weekly_button")
     db.session.commit()
     _notify_admin("confirm", person_name, assignment, event)
-    answer_callback(callback_id, "Confirmed")
+    answer_callback(callback_id)
     _restore_weekly_message(chat_id, message_id, today=event.date)
     refresh_event_telegram(event)
     return True
