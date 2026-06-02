@@ -1501,7 +1501,7 @@ def handle_callback_query(data):
       confirm:{id}         — Confirm assignment
       decline:{id}         — Mark as can't make it
       undo:{id}            — Undo confirmation
-      pickup:{id}          — Pick up a shift (shows name selection)
+      pickup:{id}          — Pick up a shift as the Telegram user who tapped
       pickup_as:{id}:{name} — Pick up shift as specific person
       cancel_pickup:{id}   — Cancel pickup selection
       noop:{id}            — No action (info-only button)
@@ -1899,13 +1899,38 @@ def handle_callback_query(data):
         answer_callback(callback_id, f"↩️ Undone by {person_name}")
 
     elif action == "pickup":
-        # Show name selection for pickup
-        _log_interaction(telegram_user_id, first_name, "pickup", person_name, assignment, event)
+        cover_name = _resolve_person(telegram_user_id, first_name, use_override=False)
+        if not cover_name or cover_name == "Unknown":
+            answer_callback(callback_id, "I couldn't tell who tapped this.", show_alert=True)
+            return
+        if cover_name == assignment.person:
+            answer_callback(callback_id, "You are already assigned to this shift.", show_alert=True)
+            return
+        if any(a.id != assignment.id and (a.cover or a.person) == cover_name for a in event.assignments):
+            answer_callback(callback_id, f"{cover_name} is already scheduled for this event.", show_alert=True)
+            return
+        assignment.cover = cover_name
+        assignment.status = "confirmed"
+        h = assignment.history
+        h.append({"action": "pickup", "by": cover_name, "via": "telegram", "ts": str(vancouver_now())})
+        assignment.history = h
+
+        active_swap = SwapRequest.query.filter_by(
+            assignment_id=assignment.id, status="active"
+        ).first()
+        if active_swap:
+            active_swap.status = "accepted"
+            active_swap.accepted_by = cover_name
+            active_swap.accepted_at = datetime.datetime.utcnow()
+
+        _log_interaction(telegram_user_id, first_name, "pickup", cover_name, assignment, event,
+                         details=f"Covered by {cover_name}")
+        assignment.telegram_message_id = None
         db.session.commit()
-        buttons = _build_pickup_buttons(assignment)
-        edit_message_markup(chat_id, message_id, buttons)
-        answer_callback(callback_id, "Select who's covering:")
-        return  # Don't rebuild event buttons
+        answer_callback(callback_id)
+        delete_message(chat_id, message_id)
+        refresh_event_telegram(event)
+        return
 
     elif action == "pickup_as":
         cover_name = parts[2] if len(parts) > 2 else person_name
@@ -1986,7 +2011,7 @@ def handle_callback_query(data):
         print(f"[Telegram] Failed to refresh weekly schedule message: {e}")
 
 
-def _resolve_person(telegram_user_id, fallback_name):
+def _resolve_person(telegram_user_id, fallback_name, use_override=True):
     """Try to match a Telegram user ID to a team member name.
 
     If the user ID isn't linked yet, attempt to auto-link by matching
@@ -1994,7 +2019,7 @@ def _resolve_person(telegram_user_id, fallback_name):
     """
     if telegram_user_id:
         override = TELEGRAM_PERSON_OVERRIDE.get(str(telegram_user_id))
-        if override:
+        if use_override and override:
             return override
 
         member = TeamMember.query.filter_by(telegram_user_id=telegram_user_id).first()
