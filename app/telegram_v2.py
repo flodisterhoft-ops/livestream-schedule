@@ -1017,6 +1017,11 @@ def _weekly_assignment_label(event, assignment, index, prefix=""):
     return f"{prefix}{icon} {_short_date(event.date)} · {role}"
 
 
+def _weekly_need_cover_label(event, assignment, index):
+    icon = _role_icon(assignment, index)
+    return f"{_short_date(event.date)} · {icon}"
+
+
 def _restore_weekly_message(chat_id, message_id, today=None):
     text = format_weekly_schedule(today=today or vancouver_today())
     return edit_message(chat_id, message_id, text, reply_markup=_weekly_schedule_buttons())
@@ -1057,7 +1062,7 @@ def _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignme
         index = list(event.assignments).index(assignment)
     except ValueError:
         index = 0
-    label = _weekly_assignment_label(event, assignment, index)
+    label = _weekly_need_cover_label(event, assignment, index)
     buttons = _make_inline_keyboard([
         [{"text": f"❌ Need cover for {label}", "callback_data": f"weekly_decline_yes:{assignment.id}"}],
         [{"text": "Never mind", "callback_data": "weekly_back"}],
