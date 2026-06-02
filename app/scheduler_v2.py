@@ -483,7 +483,7 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
     ]
 
     if not valid:
-        return "TBD"
+        return _select_available(pool, role, date_obj, day_type, role_tracking, overall, roster, exclude)
 
     # Step 2: Apply caps and gap rules
     constrained = [
@@ -512,7 +512,7 @@ def _select_best(pool, role, date_obj, day_type, role_tracking, overall, roster,
             and _check_strict_person_caps(p, date_obj, day_type, overall, roster)
         ]
     if not constrained:
-        return "TBD"
+        return _select_available(pool, role, date_obj, day_type, role_tracking, overall, roster, exclude)
 
     # Step 5: Sort by priority and pick best
     constrained.sort(key=lambda p: _schedule_priority(p, role, day_type, role_tracking, overall, roster, date_obj))
@@ -530,6 +530,20 @@ def _select_relaxed(pool, role, date_obj, day_type, role_tracking, overall, rost
         and _check_consecutive_event_streak(p, date_obj, overall)
         and (day_type != "Sunday" or _check_sunday_gap(p, date_obj, overall))
         and (day_type != "Friday" or _check_friday_gap(p, date_obj, overall))
+    ]
+    if not candidates:
+        return _select_available(pool, role, date_obj, day_type, role_tracking, overall, roster, exclude)
+    candidates.sort(key=lambda p: _schedule_priority(p, role, day_type, role_tracking, overall, roster, date_obj))
+    return candidates[0]
+
+
+def _select_available(pool, role, date_obj, day_type, role_tracking, overall, roster, exclude):
+    """Last-resort fill: keep eligibility/availability, but relax caps and spacing."""
+    candidates = [
+        p for p in pool
+        if p not in exclude
+        and is_available(p, date_obj)
+        and _person_is_active(p, date_obj, roster)
     ]
     if not candidates:
         return "TBD"
@@ -695,9 +709,11 @@ def _assignment_schedule_type(event, role):
 
 def _assignment_pool_role(day_type, role):
     if day_type == "Friday":
-        return "Camera" if role in ("Camera", "Helper") else "Computer"
-    if role in ("Camera 1", "Camera 2"):
-        return role
+        return "Camera" if role in ("Camera", "Helper") or role.startswith("Camera") else "Computer"
+    if role == "Camera 1":
+        return "Camera 1"
+    if role.startswith("Camera") or role == "Helper":
+        return "Camera 2"
     return "Computer"
 
 
