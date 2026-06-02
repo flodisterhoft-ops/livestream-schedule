@@ -986,7 +986,6 @@ def _weekly_event_block(event, default_header=None, default_time=None, missing_l
     lines = [
         header,
         f"{_short_date(event.date)} @ {_event_time(event)}",
-        "",
     ]
     if getattr(event, "cancelled", False):
         lines.append("✅ <i>No livestream needed</i>")
