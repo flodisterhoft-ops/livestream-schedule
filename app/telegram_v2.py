@@ -1323,23 +1323,19 @@ def send_swap_needed(event, assignment, chat_id=None, pickup_url=None):
     Includes inline buttons for other team members to pick up the shift.
     Returns message_id on success.
     """
-    title = event.custom_title or event.day_type
-    date_str = event.date.strftime("%A, %B %d")
     role_icon = ROLE_EMOJI.get(assignment.role, "👤")
 
     text = (
-        f"🔴 <b>Coverage Needed!</b>\n\n"
-        f"{assignment.person} can't make it:\n"
-        f"📆 <b>{title}</b> - {date_str}\n"
-        f"{role_icon} <b>{assignment.role}</b>\n"
+        f"{_weekly_decline_status_icon()} {assignment.person} can't make it to his "
+        f"{role_icon} slot on {event.date.strftime('%A')}, can anyone jump in for him?"
     )
 
     if pickup_url:
         text += f'\n🔗 <a href="{pickup_url}">Pick up via web</a>'
 
-    text += "\nOr tap a name below to cover:"
-
-    buttons = _build_pickup_buttons(assignment)
+    buttons = _make_inline_keyboard([[
+        {"text": "I Can", "callback_data": f"pickup:{assignment.id}"},
+    ]])
     msg_id = send_message(text, chat_id=chat_id, reply_markup=buttons)
 
     if msg_id:
