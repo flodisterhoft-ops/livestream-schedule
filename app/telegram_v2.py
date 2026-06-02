@@ -1019,7 +1019,11 @@ def _weekly_assignment_label(event, assignment, index, prefix=""):
 
 def _weekly_need_cover_label(event, assignment, index):
     icon = _role_icon(assignment, index)
-    return f"{_short_date(event.date)} · {icon} {assignment.person}"
+    title = _event_title(event)
+    event_emoji = _event_emoji(event)
+    if event_emoji:
+        title = title.replace(f" {event_emoji}", "").strip()
+    return f"{title} ({_short_date(event.date)}) · {icon} {assignment.person}"
 
 
 def _restore_weekly_message(chat_id, message_id, today=None):
