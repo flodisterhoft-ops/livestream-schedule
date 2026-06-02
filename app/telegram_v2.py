@@ -1159,7 +1159,7 @@ def _weekly_decline_assignment(callback_id, chat_id, message_id, assignment, per
     answer_callback(callback_id)
     _restore_weekly_message(chat_id, message_id, today=event.date)
     refresh_event_telegram(event)
-    send_swap_needed(event, assignment, chat_id=chat_id)
+    send_swap_needed(event, assignment, chat_id=chat_id, source_message_id=message_id)
     return True
 
 
@@ -1322,7 +1322,7 @@ def send_monthly_schedule(year=None, month=None, chat_id=None):
     return send_message(text, chat_id=chat_id)
 
 
-def send_swap_needed(event, assignment, chat_id=None, pickup_url=None):
+def send_swap_needed(event, assignment, chat_id=None, pickup_url=None, source_message_id=None):
     """
     Send alert when someone marks they can't make it.
     Includes inline buttons for other team members to pick up the shift.
@@ -1340,8 +1340,11 @@ def send_swap_needed(event, assignment, chat_id=None, pickup_url=None):
     if pickup_url:
         text += f'\n🔗 <a href="{pickup_url}">Pick up via web</a>'
 
+    callback_data = f"pickup:{assignment.id}"
+    if source_message_id:
+        callback_data = f"{callback_data}:{source_message_id}"
     buttons = _make_inline_keyboard([[
-        {"text": "👋 I can", "callback_data": f"pickup:{assignment.id}"},
+        {"text": "👋 I can", "callback_data": callback_data},
     ]])
     msg_id = send_message(text, chat_id=chat_id, reply_markup=buttons)
 
@@ -1899,6 +1902,7 @@ def handle_callback_query(data):
         answer_callback(callback_id, f"↩️ Undone by {person_name}")
 
     elif action == "pickup":
+        weekly_message_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         cover_name = _resolve_person(telegram_user_id, first_name, use_override=False)
         if not cover_name or cover_name == "Unknown":
             answer_callback(callback_id, "I couldn't tell who tapped this.", show_alert=True)
@@ -1929,6 +1933,8 @@ def handle_callback_query(data):
         db.session.commit()
         answer_callback(callback_id)
         delete_message(chat_id, message_id)
+        if weekly_message_id:
+            _restore_weekly_message(chat_id, weekly_message_id, today=event.date)
         refresh_event_telegram(event)
         return
 
