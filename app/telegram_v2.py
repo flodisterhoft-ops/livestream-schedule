@@ -33,6 +33,7 @@ PERSONAL_CHAT_ID = os.environ.get("TELEGRAM_PERSONAL_CHAT_ID", "27859948")
 WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
 BASE_API = "https://api.telegram.org/bot"
+REMINDER_CUSTOM_EMOJI_ID = "5314354612357055779"
 CONFIRM_CUSTOM_EMOJI_ID = "5447642621671386392"
 DECLINE_CUSTOM_EMOJI_ID = "5474188341354180347"
 
@@ -745,38 +746,31 @@ def format_event_message(event, header=None):
 
 
 def format_today_group_post(event):
-    title = _event_title(event)
+    title = _event_title_without_emoji(event)
     if getattr(event, "cancelled", False):
-        # Keep the original header (title / date / time) and just replace the
-        # assignment list with a single "no livestream" line.
         return "\n".join([
-            f"📅 <b>{title}</b>",
-            f"🗓 {_date_line(event.date)}",
-            f"🕖 {_event_time(event)}",
-            "",
+            f"{_reminder_icon()} <b>Reminder</b>",
+            f"{title} @ {_event_time(event)}",
             "✅ <i>No livestream needed</i>",
         ])
 
     lines = [
-        f"📅 <b>{title}</b>",
-        f"🗓 {_date_line(event.date)}",
-        f"🕖 {_event_time(event)}",
-        "",
+        f"{_reminder_icon()} <b>Reminder</b>",
+        f"{title} @ {_event_time(event)}",
     ]
     for i, assignment in enumerate(event.assignments):
-        icon = _role_icon(assignment, i)
-        worker = _worker_name(assignment)
-        if assignment.status == "swap_needed":
-            lines.append(f"{icon} {assignment.role} - 🔴 <s>{assignment.person}</s> needs coverage")
-        elif assignment.cover:
-            lines.append(f"{icon} {assignment.role} - <s>{assignment.person}</s> -> now swapped with {assignment.cover}")
-        else:
-            prefix = "✅ " if assignment.status == "confirmed" else ""
-            lines.append(f"{icon} {assignment.role} - {prefix}{worker}")
-    if any(a.cover for a in event.assignments):
-        helper = next((a.cover for a in event.assignments if a.cover), None)
-        lines.extend(["", f"Thank you {helper} for helping cover. 🙏"])
+        lines.append(_assignment_line(assignment, i))
     return "\n".join(lines)
+
+
+def _event_reminder_buttons(event):
+    return _make_inline_keyboard([
+        [
+            {"text": "✅", "callback_data": f"event_confirm:{event.id}"},
+            {"text": "❌", "callback_data": f"event_decline:{event.id}"},
+        ],
+        [_schedule_button("\U0001F4C5 View Schedule")],
+    ])
 
 
 def format_interactive_event_post(event):
@@ -935,6 +929,10 @@ def _weekly_confirm_status_icon():
 
 def _weekly_decline_status_icon():
     return _custom_emoji_html(DECLINE_CUSTOM_EMOJI_ID, "🔴")
+
+
+def _reminder_icon():
+    return _custom_emoji_html(REMINDER_CUSTOM_EMOJI_ID, "🔔")
 
 
 def _assignment_line(assignment, index=0):
@@ -1166,6 +1164,115 @@ def _weekly_decline_assignment(callback_id, chat_id, message_id, assignment, per
     return True
 
 
+def _restore_event_reminder_message(chat_id, message_id, event):
+    return edit_message(chat_id, message_id, format_today_group_post(event), reply_markup=_event_reminder_buttons(event))
+
+
+def _event_assignments_for_person(event, person_name):
+    if not event or not person_name:
+        return []
+    rows = []
+    for index, assignment in enumerate(event.assignments):
+        worker = _worker_name(assignment)
+        if worker == person_name and worker not in ("TBD", "Select Helper"):
+            rows.append((assignment, index))
+    return rows
+
+
+def _event_confirm_assignment(callback_id, chat_id, message_id, assignment, person_name,
+                              telegram_user_id=None, first_name=None):
+    event = assignment.event
+    if assignment.status == "confirmed":
+        assignment.status = "pending"
+        action = "undo"
+    else:
+        assignment.status = "confirmed"
+        action = "confirm"
+    h = assignment.history
+    h.append({"action": action, "by": person_name, "via": "event_reminder", "ts": str(vancouver_now())})
+    assignment.history = h
+    _log_interaction(telegram_user_id, first_name, action, person_name, assignment, event, details="event_reminder")
+    db.session.commit()
+    answer_callback(callback_id)
+    _restore_event_reminder_message(chat_id, message_id, event)
+    update_weekly_schedule_for_event(event)
+    return True
+
+
+def _event_show_decline_confirmation(callback_id, chat_id, message_id, assignment):
+    event = assignment.event
+    try:
+        index = list(event.assignments).index(assignment)
+    except ValueError:
+        index = 0
+    label = _weekly_need_cover_label(event, assignment, index)
+    buttons = _make_inline_keyboard([
+        [{"text": f"❌ {label}", "callback_data": f"event_decline_yes:{assignment.id}:{message_id}"}],
+        [{"text": "Never mind", "callback_data": f"event_back:{event.id}"}],
+    ])
+    edit_message_markup(chat_id, message_id, buttons)
+    answer_callback(callback_id)
+    return True
+
+
+def _event_decline_assignment(callback_id, chat_id, message_id, assignment, person_name,
+                              telegram_user_id=None, first_name=None, source_message_id=None):
+    event = assignment.event
+    assignment.status = "swap_needed"
+    h = assignment.history
+    h.append({"action": "decline", "by": person_name, "via": "event_reminder", "ts": str(vancouver_now())})
+    assignment.history = h
+    deadline_local = compute_pickup_deadline(event.date, event.day_type)
+    deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    swap = SwapRequest.query.filter_by(assignment_id=assignment.id, status="active").first()
+    if not swap:
+        swap = SwapRequest(
+            assignment_id=assignment.id,
+            requestor=person_name,
+            event_date=event.date,
+            role=assignment.role,
+            expires_at=deadline_utc,
+            status="active",
+        )
+        db.session.add(swap)
+    _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event, details="event_reminder")
+    db.session.commit()
+    answer_callback(callback_id)
+    _restore_event_reminder_message(chat_id, source_message_id or message_id, event)
+    update_weekly_schedule_for_event(event)
+    send_swap_needed(event, assignment, chat_id=chat_id, source_message_id=source_message_id or message_id)
+    return True
+
+
+def _event_select_shift(callback_id, chat_id, message_id, event, person_name, mode,
+                        telegram_user_id=None, first_name=None):
+    rows = _event_assignments_for_person(event, person_name)
+    if not rows:
+        answer_callback(callback_id, "I don't see you scheduled for this event.", show_alert=True)
+        return True
+    if len(rows) == 1:
+        assignment, _index = rows[0]
+        if mode == "confirm":
+            return _event_confirm_assignment(
+                callback_id, chat_id, message_id, assignment, person_name,
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+        return _event_show_decline_confirmation(callback_id, chat_id, message_id, assignment)
+
+    button_rows = []
+    for assignment, index in rows:
+        action = "event_confirm_shift" if mode == "confirm" else "event_decline_shift"
+        prefix = "✅ " if mode == "confirm" else "❌ "
+        button_rows.append([{
+            "text": _weekly_assignment_label(event, assignment, index, prefix=prefix),
+            "callback_data": f"{action}:{assignment.id}:{message_id}",
+        }])
+    button_rows.append([{"text": "Never mind", "callback_data": f"event_back:{event.id}"}])
+    edit_message_markup(chat_id, message_id, _make_inline_keyboard(button_rows))
+    answer_callback(callback_id)
+    return True
+
+
 def _weekly_schedule_already_sent(monday):
     key = f"weekly_schedule:{monday.isoformat()}"
     return InteractionLog.query.filter(
@@ -1210,7 +1317,7 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
 def send_event_reminder(event, chat_id=None):
     """Send the public 9 AM event post to the group chat."""
     text = format_today_group_post(event)
-    buttons = _make_inline_keyboard([[_schedule_button()]])
+    buttons = _event_reminder_buttons(event)
     target = chat_id or TELEGRAM_CHAT_ID
     msg_id = send_message(text, chat_id=target, reply_markup=buttons)
 
@@ -1232,7 +1339,7 @@ def update_event_reminder(event):
     if not event or not event.telegram_message_id or not event.telegram_chat_id:
         return False
     text = format_today_group_post(event)
-    buttons = _make_inline_keyboard([[_schedule_button()]])
+    buttons = _event_reminder_buttons(event)
     return bool(edit_message(event.telegram_chat_id, event.telegram_message_id, text, reply_markup=buttons))
 
 
@@ -1547,6 +1654,64 @@ def handle_callback_query(data):
             _weekly_decline_assignment(
                 callback_id, chat_id, message_id, assignment, person_name,
                 telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+            return
+
+    if action in (
+        "event_confirm",
+        "event_decline",
+        "event_confirm_shift",
+        "event_decline_shift",
+        "event_decline_yes",
+        "event_back",
+    ):
+        person_name = _resolve_person(telegram_user_id, first_name)
+        if action == "event_back":
+            event_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+            event = Event.query.get(event_id) if event_id else None
+            if not event:
+                answer_callback(callback_id, "❌ Event not found", show_alert=True)
+                return
+            _restore_event_reminder_message(chat_id, message_id, event)
+            answer_callback(callback_id)
+            return
+
+        if action in ("event_confirm", "event_decline"):
+            event_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+            event = Event.query.get(event_id) if event_id else None
+            if not event:
+                answer_callback(callback_id, "❌ Event not found", show_alert=True)
+                return
+            _event_select_shift(
+                callback_id, chat_id, message_id, event, person_name,
+                "confirm" if action == "event_confirm" else "decline",
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+            return
+
+        assignment_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+        assignment = Assignment.query.get(assignment_id) if assignment_id else None
+        source_message_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else message_id
+        if not assignment:
+            answer_callback(callback_id, "❌ Assignment not found", show_alert=True)
+            return
+
+        if action == "event_confirm_shift":
+            _event_confirm_assignment(
+                callback_id, chat_id, source_message_id, assignment, person_name,
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+            return
+
+        if action == "event_decline_shift":
+            _event_show_decline_confirmation(callback_id, chat_id, source_message_id, assignment)
+            return
+
+        if action == "event_decline_yes":
+            _event_decline_assignment(
+                callback_id, chat_id, message_id, assignment, person_name,
+                telegram_user_id=telegram_user_id, first_name=first_name,
+                source_message_id=source_message_id,
             )
             return
 
