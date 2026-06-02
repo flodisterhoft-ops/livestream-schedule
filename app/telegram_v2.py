@@ -776,8 +776,8 @@ def _reminder_event_line(title, event_time):
 def _event_reminder_buttons(event):
     return _make_inline_keyboard([
         [
-            {"text": "✅", "callback_data": f"event_confirm:{event.id}"},
-            {"text": "❌", "callback_data": f"event_decline:{event.id}"},
+            {"text": "✅ Confirm", "callback_data": f"event_confirm:{event.id}"},
+            {"text": "❌ Can't make it", "callback_data": f"event_decline:{event.id}"},
         ],
         [_schedule_button("\U0001F4C5 View Schedule")],
     ])
