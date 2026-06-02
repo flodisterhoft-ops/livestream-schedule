@@ -221,7 +221,7 @@ def _schedule_url(person=None):
         try:
             token = URLSafeSerializer(current_app.secret_key, salt="v2-auth").dumps({
                 "name": person,
-                "manager": person == "Florian",
+                "manager": False,
             })
             url += "?" + urlencode({
                 "auth": token,
@@ -259,7 +259,7 @@ def _weekly_schedule_buttons():
             {"text": "✅ Confirm", "callback_data": "weekly_confirm"},
             {"text": "❌ Can't make it", "callback_data": "weekly_decline"},
         ],
-        [_schedule_button("\U0001F4C5 View Schedule", person="Florian")],
+        [_schedule_button("\U0001F4C5 View Schedule")],
     ])
 
 
