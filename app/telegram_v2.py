@@ -523,6 +523,9 @@ def _send_temp_group(kind, person, text, buttons, assignment=None, swap_request=
     and a new TempChat row is created pointing at the same chat_id.  Otherwise a
     fresh group is created via `telegram_temp_groups`.
     """
+    print(f"[TempGroup] Suppressed temp chat for {person} ({kind}); using main chat flows only")
+    return None
+
     if expires_at and expires_at.tzinfo is not None:
         expires_at = expires_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
 
@@ -1285,29 +1288,23 @@ def update_weekly_schedule_for_event(event):
     return update_weekly_schedule_for_date(event.date)
 
 
+def _send_or_refresh_group_event_reminder(event, chat_id=None):
+    """Keep reminders in the main chat instead of creating per-person chats."""
+    if not event or getattr(event, "cancelled", False):
+        return False
+    if chat_id:
+        return bool(send_event_reminder(event, chat_id=chat_id))
+    if event.telegram_chat_id and event.telegram_message_id:
+        return update_event_reminder(event)
+    return bool(send_event_reminder(event))
+
+
 def send_personal_question_temp_group(assignment):
-    return _send_temp_group(
-        "question",
-        assignment.person,
-        format_personal_question(assignment),
-        _personal_question_buttons(assignment),
-        assignment=assignment,
-        expires_at=_swap_deadline(assignment.event),
-        title=f"🎬 Livestream {assignment.person}",
-    )
+    return _send_or_refresh_group_event_reminder(assignment.event)
 
 
 def send_weekday_ack_temp_group(assignment):
-    worker = assignment.cover or assignment.person
-    return _send_temp_group(
-        "weekday_ack",
-        worker,
-        format_weekday_ack_reminder(assignment.event, assignment),
-        _ack_buttons(assignment),
-        assignment=assignment,
-        expires_at=_swap_deadline(assignment.event),
-        title=f"🎬 Reminder {worker}",
-    )
+    return _send_or_refresh_group_event_reminder(assignment.event)
 
 
 def send_monthly_schedule(year=None, month=None, chat_id=None):
@@ -1450,44 +1447,8 @@ def _swap_buttons(swap_request, recipient, future_assignment):
 
 
 def send_swap_request_temp_groups(assignment, swap_request):
-    sent = 0
-    for recipient, future_assignment in _eligible_swap_members(assignment):
-        # Same-swap dedup: if this recipient already has an active broadcast for
-        # THIS swap_request, do not send another (handles double-tap of decline).
-        already = TempChat.query.filter_by(
-            swap_request_id=swap_request.id,
-            recipient=recipient,
-            kind="swap_request",
-            status="active",
-        ).first()
-        if already:
-            continue
-        # Reuse any other active swap-request chat with this recipient (so a
-        # second person's decline appends a new message into the existing
-        # chat instead of spawning another group).
-        reusable = TempChat.query.filter_by(
-            recipient=recipient,
-            kind="swap_request",
-            status="active",
-        ).order_by(TempChat.id.desc()).first()
-        reuse_id = reusable.chat_id if reusable else None
-        temp = _send_temp_group(
-            "swap_request",
-            recipient,
-            _format_swap_request(assignment, recipient, future_assignment),
-            _swap_buttons(swap_request, recipient, future_assignment),
-            assignment=assignment,
-            swap_request=swap_request,
-            future_assignment=future_assignment,
-            expires_at=swap_request.expires_at,
-            title=f"🎬 Swap Request {recipient}",
-            reuse_chat_id=reuse_id,
-        )
-        if temp:
-            sent += 1
-    if sent == 0:
-        _notify_admin_text(f"⚠️ No eligible swap recipients\n{assignment.person} · {_event_title(assignment.event)} · {assignment.role}")
-    return sent
+    msg_id = send_swap_needed(assignment.event, assignment)
+    return 1 if msg_id else 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1649,15 +1610,15 @@ def handle_callback_query(data):
         _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event)
         db.session.commit()
         _notify_admin_text(f"❌ {assignment.person} can't make it\n{_event_title(event)} · {assignment.role}")
-        answer_callback(callback_id, "Got it - we'll ask the team if someone can swap with you.", show_alert=True)
+        answer_callback(callback_id)
         edit_message(chat_id, message_id, (
             "Thanks for letting us know.\n\n"
-            "We'll ask the team if someone can swap into your shift today.\n\n"
+            "We'll ask the team if someone can cover your shift.\n\n"
             "<i>This chat will auto-destruct in 5 seconds.</i>"
         ))
         _delete_temp_chat(temp_chat, delay=5)
         refresh_event_telegram(event)
-        send_swap_request_temp_groups(assignment, swap)
+        send_swap_needed(event, assignment)
         return
 
     if action in ("swap_cover", "swap_accept", "swap_decline"):
@@ -2101,7 +2062,7 @@ def _inside_daily_reminder_window(now=None):
 
 
 def send_daily_reminders_v2(chat_id=None):
-    """Send 8 AM temp-group personal questions."""
+    """Send or refresh 8 AM event reminders in the main chat."""
     now = vancouver_now()
     if not _inside_daily_reminder_window(now):
         print(f"[Scheduler] Skipping daily reminders outside 8AM window ({now.isoformat()})")
@@ -2112,14 +2073,8 @@ def send_daily_reminders_v2(chat_id=None):
     for event in events:
         if getattr(event, "cancelled", False):
             continue
-        for assignment in event.assignments:
-            worker = assignment.cover or assignment.person
-            if worker in ("TBD", "Select Helper") or assignment.status == "swap_needed":
-                continue
-            if assignment.cover:
-                continue
-            if send_personal_question_temp_group(assignment):
-                sent += 1
+        if _send_or_refresh_group_event_reminder(event, chat_id=chat_id):
+            sent += 1
     return sent
 
 
@@ -2176,42 +2131,7 @@ def sweep_expired_temp_chats():
 
 
 def send_noon_response_followups(chat_id=None):
-    today = vancouver_today()
-    now_utc = datetime.datetime.utcnow()
-    temp_chats = TempChat.query.join(
-        Assignment,
-        TempChat.assignment_id == Assignment.id,
-    ).join(
-        Event,
-        Assignment.event_id == Event.id,
-    ).filter(
-        TempChat.status == "active",
-        TempChat.kind.in_(("question", "weekday_ack")),
-        TempChat.expires_at.isnot(None),
-        TempChat.expires_at > now_utc,
-        Event.date == today,
-        Assignment.status == "pending",
-        Assignment.cover.is_(None),
-    ).all()
-
-    sent = 0
-    for temp_chat in temp_chats:
-        target = chat_id or temp_chat.chat_id
-        msg_id = send_message("Just a reminder to tap on a response :) Thank you!", chat_id=target)
-        if not msg_id:
-            continue
-        temp_chat.kind = f"{temp_chat.kind}_followup"
-        db.session.add(InteractionLog(
-            action="followup_reminder",
-            person_name=temp_chat.recipient or temp_chat.person,
-            assignment_id=temp_chat.assignment_id,
-            details=f"temp_chat:{temp_chat.id}",
-        ))
-        sent += 1
-
-    if sent:
-        db.session.commit()
-    return sent
+    return 0
 
 
 def send_weekday_5pm_reminders_v2(chat_id=None):
@@ -2223,12 +2143,8 @@ def send_weekday_5pm_reminders_v2(chat_id=None):
             continue
         if getattr(event, "cancelled", False):
             continue
-        for assignment in event.assignments:
-            worker = assignment.cover or assignment.person
-            if worker in ("TBD", "Select Helper") or assignment.status == "swap_needed":
-                continue
-            if send_weekday_ack_temp_group(assignment):
-                sent += 1
+        if _send_or_refresh_group_event_reminder(event, chat_id=chat_id):
+            sent += 1
     return sent
 
 

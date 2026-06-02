@@ -385,9 +385,8 @@ def do_action():
 
         if event.date >= vancouver_today():
             try:
-                tg._notify_admin_text(f"❌ {assignment.person} can't make it\n{tg._event_title(event)} · {assignment.role}")
                 if swap:
-                    tg.send_swap_request_temp_groups(assignment, swap)
+                    tg.send_swap_needed(event, assignment)
             except Exception as e:
                 print(f"Telegram error: {e}")
 
