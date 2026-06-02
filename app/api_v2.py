@@ -210,7 +210,7 @@ def telegram_login():
         details="telegram_login_url",
     ))
     db.session.commit()
-    return _auth_response(member.name, manager=member.name == "Florian")
+    return _auth_response(member.name, manager=False)
 
 
 @api_v2.route("/auth/logout", methods=["POST"])
