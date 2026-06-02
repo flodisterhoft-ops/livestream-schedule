@@ -1059,7 +1059,7 @@ def _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignme
         index = 0
     label = _weekly_assignment_label(event, assignment, index)
     buttons = _make_inline_keyboard([
-        [{"text": f"❌ Yes, need cover for {label}", "callback_data": f"weekly_decline_yes:{assignment.id}"}],
+        [{"text": f"❌ Need cover for {label}", "callback_data": f"weekly_decline_yes:{assignment.id}"}],
         [{"text": "Never mind", "callback_data": "weekly_back"}],
     ])
     edit_message_markup(chat_id, message_id, buttons)
