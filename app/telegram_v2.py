@@ -34,7 +34,8 @@ WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
 BASE_API = "https://api.telegram.org/bot"
 REMINDER_CUSTOM_EMOJI_ID = "5314354612357055779"
-REMINDER_WIDTH_PAD = "\u2800" * 8
+REMINDER_WIDTH_PAD_CHAR = "\u2800"
+REMINDER_WIDTH_TARGET = 27
 CONFIRM_CUSTOM_EMOJI_ID = "5447642621671386392"
 DECLINE_CUSTOM_EMOJI_ID = "5474188341354180347"
 
@@ -748,20 +749,27 @@ def format_event_message(event, header=None):
 
 def format_today_group_post(event):
     title = _event_title_without_emoji(event)
+    event_line = _reminder_event_line(title, _event_time(event))
     if getattr(event, "cancelled", False):
         return "\n".join([
             f"{_reminder_icon()} <b>Reminder</b>",
-            f"{title} @ {_event_time(event)}{REMINDER_WIDTH_PAD}",
+            event_line,
             "✅ <i>No livestream needed</i>",
         ])
 
     lines = [
         f"{_reminder_icon()} <b>Reminder</b>",
-        f"{title} @ {_event_time(event)}{REMINDER_WIDTH_PAD}",
+        event_line,
     ]
     for i, assignment in enumerate(event.assignments):
         lines.append(_assignment_line(assignment, i))
     return "\n".join(lines)
+
+
+def _reminder_event_line(title, event_time):
+    line = f"{title} @ {event_time}"
+    pad = max(0, REMINDER_WIDTH_TARGET - len(line))
+    return f"{line}{REMINDER_WIDTH_PAD_CHAR * pad}"
 
 
 def _event_reminder_buttons(event):
