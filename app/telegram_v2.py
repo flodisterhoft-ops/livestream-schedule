@@ -235,6 +235,14 @@ def _schedule_button(label="\U0001F4C5 View Schedule", person=None):
     }
 
 
+def _weekly_schedule_buttons():
+    return _make_inline_keyboard([[
+        _schedule_button("\U0001F4C5 View Schedule"),
+        {"text": "✅ Confirm", "callback_data": "weekly_confirm"},
+        {"text": "❌ Can't make it", "callback_data": "weekly_decline"},
+    ]])
+
+
 # Map of preset custom_title -> emoji, mirroring the frontend EVENT_TYPES list.
 EVENT_TYPE_EMOJI = {
     "sunday service":        "\u26EA",
@@ -976,6 +984,131 @@ def format_weekly_schedule(today=None):
     return "\n".join(lines).strip()
 
 
+def _weekly_assignments_for_person(person_name, today=None):
+    if not person_name:
+        return []
+    monday, sunday, _send_date = _weekly_schedule_anchor(today)
+    rows = []
+    events = Event.query.filter(
+        Event.date >= monday,
+        Event.date <= sunday,
+    ).order_by(Event.date).all()
+    for event in events:
+        if getattr(event, "cancelled", False):
+            continue
+        for index, assignment in enumerate(event.assignments):
+            worker = _worker_name(assignment)
+            if worker == person_name and worker not in ("TBD", "Select Helper"):
+                rows.append((event, assignment, index))
+    return rows
+
+
+def _weekly_assignment_label(event, assignment, index, prefix=""):
+    icon = _role_icon(assignment, index)
+    role = ROLE_SHORT.get(assignment.role, assignment.role)
+    return f"{prefix}{icon} {_short_date(event.date)} · {role}"
+
+
+def _restore_weekly_message(chat_id, message_id, today=None):
+    text = format_weekly_schedule(today=today or vancouver_today())
+    return edit_message(chat_id, message_id, text, reply_markup=_weekly_schedule_buttons())
+
+
+def _weekly_select_shift(callback_id, chat_id, message_id, person_name, mode,
+                         telegram_user_id=None, first_name=None, today=None):
+    rows = _weekly_assignments_for_person(person_name, today=today)
+    if not rows:
+        answer_callback(callback_id, "I don't see you scheduled this week.", show_alert=True)
+        return True
+    if len(rows) == 1:
+        event, assignment, _index = rows[0]
+        if mode == "confirm":
+            return _weekly_confirm_assignment(
+                callback_id, chat_id, message_id, assignment, person_name,
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+        return _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignment)
+
+    button_rows = []
+    for event, assignment, index in rows:
+        action = "weekly_confirm_shift" if mode == "confirm" else "weekly_decline_shift"
+        prefix = "✅ " if mode == "confirm" else "❌ "
+        button_rows.append([{
+            "text": _weekly_assignment_label(event, assignment, index, prefix=prefix),
+            "callback_data": f"{action}:{assignment.id}",
+        }])
+    button_rows.append([{"text": "Never mind", "callback_data": "weekly_back"}])
+    edit_message_markup(chat_id, message_id, _make_inline_keyboard(button_rows))
+    answer_callback(callback_id, "Select a shift")
+    return True
+
+
+def _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignment):
+    event = assignment.event
+    try:
+        index = list(event.assignments).index(assignment)
+    except ValueError:
+        index = 0
+    label = _weekly_assignment_label(event, assignment, index)
+    buttons = _make_inline_keyboard([
+        [{"text": f"❌ Yes, need cover for {label}", "callback_data": f"weekly_decline_yes:{assignment.id}"}],
+        [{"text": "Never mind", "callback_data": "weekly_back"}],
+    ])
+    edit_message_markup(chat_id, message_id, buttons)
+    answer_callback(callback_id, "Confirm below")
+    return True
+
+
+def _weekly_confirm_assignment(callback_id, chat_id, message_id, assignment, person_name,
+                               telegram_user_id=None, first_name=None):
+    event = assignment.event
+    if assignment.status == "confirmed":
+        answer_callback(callback_id, "Already confirmed")
+        _restore_weekly_message(chat_id, message_id, today=event.date)
+        return True
+    assignment.status = "confirmed"
+    h = assignment.history
+    h.append({"action": "confirm", "by": person_name, "via": "weekly_telegram", "ts": str(vancouver_now())})
+    assignment.history = h
+    _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event, details="weekly_button")
+    db.session.commit()
+    _notify_admin("confirm", person_name, assignment, event)
+    answer_callback(callback_id, "Confirmed")
+    _restore_weekly_message(chat_id, message_id, today=event.date)
+    refresh_event_telegram(event)
+    return True
+
+
+def _weekly_decline_assignment(callback_id, chat_id, message_id, assignment, person_name,
+                               telegram_user_id=None, first_name=None):
+    event = assignment.event
+    assignment.status = "swap_needed"
+    h = assignment.history
+    h.append({"action": "decline", "by": person_name, "via": "weekly_telegram", "ts": str(vancouver_now())})
+    assignment.history = h
+    deadline_local = compute_pickup_deadline(event.date, event.day_type)
+    deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    swap = SwapRequest.query.filter_by(assignment_id=assignment.id, status="active").first()
+    if not swap:
+        swap = SwapRequest(
+            assignment_id=assignment.id,
+            requestor=person_name,
+            event_date=event.date,
+            role=assignment.role,
+            expires_at=deadline_utc,
+            status="active",
+        )
+        db.session.add(swap)
+    _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event, details="weekly_button")
+    db.session.commit()
+    _notify_admin("decline", person_name, assignment, event)
+    answer_callback(callback_id, "Got it - we'll look for cover.", show_alert=True)
+    _restore_weekly_message(chat_id, message_id, today=event.date)
+    refresh_event_telegram(event)
+    send_swap_needed(event, assignment, chat_id=chat_id)
+    return True
+
+
 def _weekly_schedule_already_sent(monday):
     key = f"weekly_schedule:{monday.isoformat()}"
     return InteractionLog.query.filter(
@@ -997,7 +1130,7 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
         return 0
 
     text = format_weekly_schedule(today)
-    buttons = _make_inline_keyboard([[_schedule_button()]])
+    buttons = _weekly_schedule_buttons()
     target_chat_id = chat_id or TELEGRAM_CHAT_ID
     msg_id = send_message(text, chat_id=target_chat_id, reply_markup=buttons)
     if not msg_id:
@@ -1087,7 +1220,7 @@ def update_weekly_schedule_for_date(date_obj):
     if not chat_id or not msg_id:
         return False
     text = format_weekly_schedule(today=monday)
-    buttons = _make_inline_keyboard([[_schedule_button()]])
+    buttons = _weekly_schedule_buttons()
     return bool(edit_message(chat_id, msg_id, text, reply_markup=buttons))
 
 
@@ -1342,6 +1475,66 @@ def handle_callback_query(data):
         db.session.commit()
         answer_callback(callback_id, "ℹ️ Tap the buttons below to confirm or decline.")
         return
+
+    if action in (
+        "weekly_confirm",
+        "weekly_decline",
+        "weekly_confirm_shift",
+        "weekly_decline_shift",
+        "weekly_decline_yes",
+        "weekly_back",
+    ):
+        person_name = _resolve_person(telegram_user_id, first_name)
+        if action == "weekly_back":
+            _log_interaction(telegram_user_id, first_name, "weekly_back", person_name)
+            db.session.commit()
+            _restore_weekly_message(chat_id, message_id)
+            answer_callback(callback_id, "Cancelled")
+            return
+
+        if action == "weekly_confirm":
+            _log_interaction(telegram_user_id, first_name, "weekly_confirm_tap", person_name)
+            db.session.commit()
+            _notify_admin_text(f"👆 <b>Weekly confirm tapped</b> - {html.escape(person_name or 'Unknown')}")
+            _weekly_select_shift(
+                callback_id, chat_id, message_id, person_name, "confirm",
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+            return
+
+        if action == "weekly_decline":
+            _log_interaction(telegram_user_id, first_name, "weekly_decline_tap", person_name)
+            db.session.commit()
+            _notify_admin_text(f"👆 <b>Weekly can't-make-it tapped</b> - {html.escape(person_name or 'Unknown')}")
+            _weekly_select_shift(
+                callback_id, chat_id, message_id, person_name, "decline",
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+            return
+
+        assignment_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+        assignment = Assignment.query.get(assignment_id) if assignment_id else None
+        if not assignment:
+            answer_callback(callback_id, "❌ Assignment not found", show_alert=True)
+            return
+
+        if action == "weekly_confirm_shift":
+            _weekly_confirm_assignment(
+                callback_id, chat_id, message_id, assignment, person_name,
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+            return
+
+        if action == "weekly_decline_shift":
+            _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignment)
+            return
+
+        if action == "weekly_decline_yes":
+            _weekly_decline_assignment(
+                callback_id, chat_id, message_id, assignment, person_name,
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
+            return
 
     if action in ("personal_confirm", "personal_decline", "weekday_ack"):
         assignment_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
