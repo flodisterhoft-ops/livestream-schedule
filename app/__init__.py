@@ -333,6 +333,16 @@ def _start_daily_scheduler(app):
             except Exception as e:
                 print(f"[Scheduler] Deadline sweep failed: {e}")
 
+    def _fire_event_reminder_cleanup():
+        """Delete yesterday's group reminder messages shortly after midnight."""
+        with app.app_context():
+            try:
+                from .telegram_v2 import delete_past_event_reminders
+                deleted = delete_past_event_reminders()
+                print(f"[Scheduler] Event reminder cleanup fired — deleted {deleted} message(s)")
+            except Exception as e:
+                print(f"[Scheduler] Event reminder cleanup failed: {e}")
+
     def _fire_horizon_topup():
         """Daily check: keep the schedule generated through the active schedule year."""
         with app.app_context():
@@ -376,6 +386,13 @@ def _start_daily_scheduler(app):
         id="deadline_sweep",
         replace_existing=True,
         misfire_grace_time=1800,
+    )
+    scheduler.add_job(
+        _fire_event_reminder_cleanup,
+        trigger=CronTrigger(hour=0, minute=5, timezone="America/Vancouver"),
+        id="event_reminder_cleanup",
+        replace_existing=True,
+        misfire_grace_time=21600,
     )
     scheduler.add_job(
         _fire_horizon_topup,

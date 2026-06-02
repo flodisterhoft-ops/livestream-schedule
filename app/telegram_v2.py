@@ -1400,6 +1400,27 @@ def update_event_reminder(event):
     return bool(edit_message(event.telegram_chat_id, event.telegram_message_id, text, reply_markup=buttons))
 
 
+def delete_past_event_reminders(today=None):
+    """Delete stored event reminder messages for events before today."""
+    today = today or vancouver_today()
+    events = Event.query.filter(
+        Event.date < today,
+        Event.telegram_message_id.isnot(None),
+        Event.telegram_chat_id.isnot(None),
+    ).all()
+
+    deleted = 0
+    for event in events:
+        if delete_message(event.telegram_chat_id, event.telegram_message_id):
+            deleted += 1
+        event.telegram_message_id = None
+        event.telegram_chat_id = None
+    if events:
+        db.session.commit()
+        print(f"[cleanup] Cleared {len(events)} past event reminder(s); deleted {deleted} Telegram message(s)")
+    return deleted
+
+
 def _parse_weekly_schedule_log(log):
     """Pull (chat_id, message_id) out of an InteractionLog details string."""
     if not log or not log.details:
