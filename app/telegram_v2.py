@@ -1044,6 +1044,12 @@ def _weekly_need_cover_label(event, assignment, index):
     return f"{title} · {icon} {assignment.person}"
 
 
+def _event_need_cover_label(event, assignment, index):
+    icon = _role_icon(assignment, index)
+    weekday = event.date.strftime("%A")
+    return f"{weekday}{icon} {assignment.person}"
+
+
 def _event_title_without_emoji(event):
     title = _event_title(event)
     event_emoji = _event_emoji(event)
@@ -1205,7 +1211,7 @@ def _event_show_decline_confirmation(callback_id, chat_id, message_id, assignmen
         index = list(event.assignments).index(assignment)
     except ValueError:
         index = 0
-    label = _weekly_need_cover_label(event, assignment, index)
+    label = _event_need_cover_label(event, assignment, index)
     buttons = _make_inline_keyboard([
         [{"text": f"❌ {label}", "callback_data": f"event_decline_yes:{assignment.id}:{message_id}"}],
         [{"text": "Never mind", "callback_data": f"event_back:{event.id}"}],
