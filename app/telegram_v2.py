@@ -236,11 +236,13 @@ def _schedule_button(label="\U0001F4C5 View Schedule", person=None):
 
 
 def _weekly_schedule_buttons():
-    return _make_inline_keyboard([[
-        _schedule_button("\U0001F4C5 View Schedule"),
-        {"text": "✅", "callback_data": "weekly_confirm"},
-        {"text": "❌", "callback_data": "weekly_decline"},
-    ]])
+    return _make_inline_keyboard([
+        [
+            {"text": "✅ Confirm", "callback_data": "weekly_confirm"},
+            {"text": "❌ Can't make it", "callback_data": "weekly_decline"},
+        ],
+        [_schedule_button("\U0001F4C5 View Schedule")],
+    ])
 
 
 # Map of preset custom_title -> emoji, mirroring the frontend EVENT_TYPES list.
