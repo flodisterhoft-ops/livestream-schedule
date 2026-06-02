@@ -39,11 +39,7 @@ REMINDER_WIDTH_TARGET = 28
 CONFIRM_CUSTOM_EMOJI_ID = "5447642621671386392"
 DECLINE_CUSTOM_EMOJI_ID = "5474188341354180347"
 
-# TEMP TEST OVERRIDE: Florian asked to test the weekly buttons as Stefan.
-# Remove this override when the test is done.
-TELEGRAM_PERSON_OVERRIDE = {
-    "27859948": "Stefan",
-}
+TELEGRAM_PERSON_OVERRIDE = {}
 
 # ── Emoji maps ───────────────────────────────────────────────────────
 ROLE_EMOJI = {
