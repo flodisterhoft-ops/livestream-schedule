@@ -278,6 +278,13 @@ def _event_title(event):
     return title
 
 
+def _event_label_with_emoji(event, label):
+    emoji = _event_emoji(event)
+    if emoji and label and emoji not in label:
+        return f"{label} {emoji}"
+    return label
+
+
 def _event_time(event):
     start_time = event.start_time
     if not start_time:
@@ -882,7 +889,7 @@ def _weekly_event_block(event, default_header=None, default_time=None, missing_l
     if event.custom_title or (default_day_type and event.day_type != default_day_type):
         header = f"<b>{title}</b>"
     elif default_header:
-        header = f"<b>{default_header}</b>"
+        header = f"<b>{_event_label_with_emoji(event, default_header)}</b>"
     else:
         header = f"<b>{title}</b>"
 
