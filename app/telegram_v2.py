@@ -1043,7 +1043,7 @@ def _weekly_need_cover_label(event, assignment, index):
     event_emoji = _event_emoji(event)
     if event_emoji:
         title = title.replace(f" {event_emoji}", "").strip()
-    return f"{title} ({_short_date(event.date)}) · {icon} {assignment.person}"
+    return f"{title} · {icon} {assignment.person}"
 
 
 def _restore_weekly_message(chat_id, message_id, today=None):
