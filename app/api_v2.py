@@ -93,11 +93,11 @@ def _auth_serializer():
     return URLSafeSerializer(current_app.secret_key, salt="v2-auth")
 
 
-def _auth_response(name):
+def _auth_response(name, manager=None):
     session["user_name"] = name
-    session["manager"] = False
+    session["manager"] = bool(manager) if name == "Florian" else False
     session.permanent = True
-    token = _auth_serializer().dumps({"name": name, "manager": False})
+    token = _auth_serializer().dumps({"name": name, "manager": bool(session.get("manager"))})
     return jsonify({
         "name": name,
         "is_admin": name == "Florian",
@@ -163,7 +163,7 @@ def login():
     if name not in team and name not in ALL_NAMES:
         return jsonify({"error": "Unknown team member"}), 400
 
-    return _auth_response(name)
+    return _auth_response(name, manager=name == "Florian")
 
 
 @api_v2.route("/auth/token-login", methods=["POST"])
@@ -185,7 +185,7 @@ def token_login():
     if name not in team and name not in ALL_NAMES:
         return jsonify({"error": "Unknown team member"}), 400
 
-    return _auth_response(name)
+    return _auth_response(name, manager=payload.get("manager"))
 
 
 @api_v2.route("/auth/telegram-login", methods=["POST"])
@@ -210,7 +210,7 @@ def telegram_login():
         details="telegram_login_url",
     ))
     db.session.commit()
-    return _auth_response(member.name)
+    return _auth_response(member.name, manager=member.name == "Florian")
 
 
 @api_v2.route("/auth/logout", methods=["POST"])
