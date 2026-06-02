@@ -18,6 +18,7 @@ import hashlib
 import html
 import threading
 import time
+from urllib.parse import urlencode
 import requests
 from itsdangerous import URLSafeSerializer
 from flask import current_app
@@ -222,7 +223,11 @@ def _schedule_url(person=None):
                 "name": person,
                 "manager": person == "Florian",
             })
-            url += f"?auth={token}"
+            url += "?" + urlencode({
+                "auth": token,
+                "preview": person,
+                "t": int(time.time()),
+            })
         except RuntimeError:
             pass
     return url
