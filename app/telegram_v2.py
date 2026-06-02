@@ -15,6 +15,7 @@ import os
 import uuid
 import datetime
 import hashlib
+import html
 import threading
 import time
 import requests
@@ -334,6 +335,18 @@ def _notify_admin_text(text):
         print(f"[Telegram] Admin notification failed: {e}")
 
 
+def _notify_name_tap(person_name, assignment, event):
+    if not PERSONAL_CHAT_ID:
+        return
+    icon = ROLE_EMOJI.get(assignment.role, "👤")
+    text = (
+        f"👆 <b>Tapped name</b> - {html.escape(person_name or 'Unknown')}\n"
+        f"📆 {html.escape(_event_title(event))} · {event.date.strftime('%b %d')}\n"
+        f"{icon} {html.escape(assignment.person or '')} · {html.escape(assignment.role or '')}"
+    )
+    _notify_admin_text(text)
+
+
 def _suggestion_url(suggestion_id):
     base = _site_url().rstrip("/") + "/"
     return f"{base}?suggest={suggestion_id}"
@@ -555,7 +568,14 @@ def _make_inline_keyboard(buttons_rows):
     return {"inline_keyboard": buttons_rows}
 
 
-def _build_event_buttons(event, assignments=None, expanded_id=None):
+def _build_event_buttons(
+    event,
+    assignments=None,
+    expanded_id=None,
+    include_schedule_button=True,
+    inline_assignments=False,
+    compact_callbacks=False,
+):
     """
     Build the collapsed/expand-on-click keyboard for an event.
 
@@ -569,13 +589,20 @@ def _build_event_buttons(event, assignments=None, expanded_id=None):
       confirmed : [↩️ Undo]                          [⬅️ Back]
       swap_need : [🙋 I can cover] [↩️ Undo]        [⬅️ Back]
 
-    Always appends a "Show Schedule" URL button at the bottom.
+    By default, appends a schedule URL button at the bottom. Compact weekly
+    schedule previews can opt into one-row assignment buttons and omit that URL
+    because the header message carries it instead.
     """
     if assignments is None:
         assignments = event.assignments
 
     rows = []
+    inline_row = []
     is_friday = event.day_type == "Friday"
+    action_suffix = "_compact" if compact_callbacks else ""
+
+    def callback(action, assignment_id):
+        return f"{action}{action_suffix}:{assignment_id}"
 
     for i, a in enumerate(assignments):
         if a.person in ("TBD", "Select Helper"):
@@ -592,24 +619,24 @@ def _build_event_buttons(event, assignments=None, expanded_id=None):
         if expanded_id == a.id:
             if a.status == "confirmed":
                 rows.append([
-                    {"text": "↩️ Undo",  "callback_data": f"undo:{a.id}"},
-                    {"text": "⬅️ Back",  "callback_data": f"collapse:{a.id}"},
+                    {"text": "↩️ Undo",  "callback_data": callback("undo", a.id)},
+                    {"text": "⬅️ Back",  "callback_data": callback("collapse", a.id)},
                 ])
             elif a.status == "swap_needed":
                 rows.append([
-                    {"text": "🙋 I can cover", "callback_data": f"pickup:{a.id}"},
+                    {"text": "🙋 I can cover", "callback_data": callback("pickup", a.id)},
                 ])
                 rows.append([
-                    {"text": "↩️ Undo",  "callback_data": f"undo:{a.id}"},
-                    {"text": "⬅️ Back",  "callback_data": f"collapse:{a.id}"},
+                    {"text": "↩️ Undo",  "callback_data": callback("undo", a.id)},
+                    {"text": "⬅️ Back",  "callback_data": callback("collapse", a.id)},
                 ])
             else:  # pending
                 rows.append([
-                    {"text": "✅ Yes, I'll be there",  "callback_data": f"confirm:{a.id}"},
+                    {"text": "✅ Yes, I'll be there",  "callback_data": callback("confirm", a.id)},
                 ])
                 rows.append([
-                    {"text": "❌ Can't make it",       "callback_data": f"decline:{a.id}"},
-                    {"text": "⬅️ Back",                "callback_data": f"collapse:{a.id}"},
+                    {"text": "❌ Can't make it",       "callback_data": callback("decline", a.id)},
+                    {"text": "⬅️ Back",                "callback_data": callback("collapse", a.id)},
                 ])
             continue
 
@@ -621,13 +648,19 @@ def _build_event_buttons(event, assignments=None, expanded_id=None):
         else:
             label = f"{role_icon} {worker}"
 
-        rows.append([
-            {"text": label, "callback_data": f"expand:{a.id}"},
-        ])
+        button = {"text": label, "callback_data": callback("expand", a.id)}
+        if inline_assignments:
+            inline_row.append(button)
+        else:
+            rows.append([button])
 
-    rows.append([
-        _schedule_button("\U0001F4C5 Show Schedule")
-    ])
+    if inline_row:
+        rows.append(inline_row)
+
+    if include_schedule_button:
+        rows.append([
+            _schedule_button("\U0001F4C5 Show Schedule")
+        ])
 
     return _make_inline_keyboard(rows) if rows else None
 
@@ -1300,7 +1333,9 @@ def handle_callback_query(data):
     first_name = from_user.get("first_name", "Unknown")
 
     parts = callback_data.split(":")
-    action = parts[0] if parts else ""
+    raw_action = parts[0] if parts else ""
+    compact_callbacks = raw_action.endswith("_compact")
+    action = raw_action[:-8] if compact_callbacks else raw_action
 
     if action == "noop":
         _log_interaction(telegram_user_id, first_name, "noop", first_name)
@@ -1324,6 +1359,7 @@ def handle_callback_query(data):
             assignment.history = h
             _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
             db.session.commit()
+            _notify_admin_text(f"✅ {assignment.person} confirmed\n{_event_title(event)} · {assignment.role}")
             answer_callback(callback_id, "Confirmed")
             edit_message(chat_id, message_id, (
                 f"✅ <b>Confirmed</b>\n\n"
@@ -1341,6 +1377,7 @@ def handle_callback_query(data):
             assignment.history = h
             _log_interaction(telegram_user_id, first_name, "ack", person_name, assignment, event)
             db.session.commit()
+            _notify_admin_text(f"👍 {assignment.person} acknowledged\n{_event_title(event)} · {assignment.role}")
             answer_callback(callback_id, "Confirmed")
             edit_message(chat_id, message_id, "👍 <b>Sounds good</b>\n\nSee you tonight!\n\n<i>This chat will auto-destruct in 5 seconds.</i>")
             refresh_event_telegram(event)
@@ -1539,6 +1576,7 @@ def handle_callback_query(data):
         assignment.history = h
         _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
         db.session.commit()
+        _notify_admin("confirm", person_name, assignment, event)
         answer_callback(callback_id, "Confirmed")
 
     elif action == "decline":
@@ -1663,7 +1701,14 @@ def handle_callback_query(data):
     elif action == "expand":
         _log_interaction(telegram_user_id, first_name, "expand", person_name, assignment, event)
         db.session.commit()
-        buttons = _build_event_buttons(event, expanded_id=assignment.id)
+        _notify_name_tap(person_name, assignment, event)
+        buttons = _build_event_buttons(
+            event,
+            expanded_id=assignment.id,
+            include_schedule_button=not compact_callbacks,
+            inline_assignments=compact_callbacks,
+            compact_callbacks=compact_callbacks,
+        )
         edit_message_markup(chat_id, message_id, buttons)
         answer_callback(callback_id)
         return
@@ -1671,7 +1716,13 @@ def handle_callback_query(data):
     elif action == "collapse":
         _log_interaction(telegram_user_id, first_name, "collapse", person_name, assignment, event)
         db.session.commit()
-        buttons = _build_event_buttons(event, expanded_id=None)
+        buttons = _build_event_buttons(
+            event,
+            expanded_id=None,
+            include_schedule_button=not compact_callbacks,
+            inline_assignments=compact_callbacks,
+            compact_callbacks=compact_callbacks,
+        )
         edit_message_markup(chat_id, message_id, buttons)
         answer_callback(callback_id)
         return
@@ -1682,7 +1733,10 @@ def handle_callback_query(data):
 
     # ── Rebuild the event message with updated statuses ─────────
     # Find the original reminder message and update it
-    _refresh_interactive_event_message(event, chat_id, message_id)
+    if compact_callbacks:
+        _refresh_interactive_event_message(event, chat_id, message_id)
+    else:
+        _refresh_event_message(event, chat_id, message_id)
     try:
         update_weekly_schedule_for_event(event)
     except Exception as e:
@@ -1729,7 +1783,12 @@ def _refresh_event_message(event, chat_id, message_id):
 def _refresh_interactive_event_message(event, chat_id, message_id):
     """Re-render a compact event post that keeps name/status buttons attached."""
     text = format_interactive_event_post(event)
-    buttons = _build_event_buttons(event) or _make_inline_keyboard([[_schedule_button()]])
+    buttons = _build_event_buttons(
+        event,
+        include_schedule_button=False,
+        inline_assignments=True,
+        compact_callbacks=True,
+    )
     edit_message(chat_id, message_id, text, reply_markup=buttons)
 
 
