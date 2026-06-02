@@ -33,6 +33,7 @@ PERSONAL_CHAT_ID = os.environ.get("TELEGRAM_PERSONAL_CHAT_ID", "27859948")
 WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
 BASE_API = "https://api.telegram.org/bot"
+DECLINE_CUSTOM_EMOJI_ID = "5474188341354180347"
 
 # TEMP TEST OVERRIDE: Florian asked to test the weekly buttons as Stefan.
 # Remove this override when the test is done.
@@ -241,11 +242,17 @@ def _schedule_button(label="\U0001F4C5 View Schedule", person=None):
     }
 
 
+def _button(text, callback_data, **extra):
+    button = {"text": text, "callback_data": callback_data}
+    button.update({key: value for key, value in extra.items() if value})
+    return button
+
+
 def _weekly_schedule_buttons():
     return _make_inline_keyboard([
         [
             {"text": "✅ Confirm", "callback_data": "weekly_confirm"},
-            {"text": "❌ Can't make it", "callback_data": "weekly_decline"},
+            _button("Can't make it", "weekly_decline", icon_custom_emoji_id=DECLINE_CUSTOM_EMOJI_ID),
         ],
         [_schedule_button("\U0001F4C5 View Schedule")],
     ])
@@ -1049,11 +1056,17 @@ def _weekly_select_shift(callback_id, chat_id, message_id, person_name, mode,
     button_rows = []
     for event, assignment, index in rows:
         action = "weekly_confirm_shift" if mode == "confirm" else "weekly_decline_shift"
-        prefix = "✅ " if mode == "confirm" else "❌ "
-        button_rows.append([{
-            "text": _weekly_assignment_label(event, assignment, index, prefix=prefix),
-            "callback_data": f"{action}:{assignment.id}",
-        }])
+        if mode == "confirm":
+            button_rows.append([_button(
+                _weekly_assignment_label(event, assignment, index, prefix="✅ "),
+                f"{action}:{assignment.id}",
+            )])
+        else:
+            button_rows.append([_button(
+                _weekly_assignment_label(event, assignment, index),
+                f"{action}:{assignment.id}",
+                icon_custom_emoji_id=DECLINE_CUSTOM_EMOJI_ID,
+            )])
     button_rows.append([{"text": "Never mind", "callback_data": "weekly_back"}])
     edit_message_markup(chat_id, message_id, _make_inline_keyboard(button_rows))
     answer_callback(callback_id)
@@ -1068,7 +1081,7 @@ def _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignme
         index = 0
     label = _weekly_need_cover_label(event, assignment, index)
     buttons = _make_inline_keyboard([
-        [{"text": f"❌ Need cover for {label}", "callback_data": f"weekly_decline_yes:{assignment.id}"}],
+        [_button(label, f"weekly_decline_yes:{assignment.id}", icon_custom_emoji_id=DECLINE_CUSTOM_EMOJI_ID)],
         [{"text": "Never mind", "callback_data": "weekly_back"}],
     ])
     edit_message_markup(chat_id, message_id, buttons)
