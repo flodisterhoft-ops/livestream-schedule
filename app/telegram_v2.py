@@ -239,7 +239,7 @@ def _weekly_schedule_buttons():
     return _make_inline_keyboard([[
         _schedule_button("\U0001F4C5 View Schedule"),
         {"text": "✅", "callback_data": "weekly_confirm"},
-        {"text": "❌ Can't make it", "callback_data": "weekly_decline"},
+        {"text": "❌", "callback_data": "weekly_decline"},
     ]])
 
 
