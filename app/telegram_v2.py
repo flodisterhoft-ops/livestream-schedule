@@ -33,6 +33,7 @@ PERSONAL_CHAT_ID = os.environ.get("TELEGRAM_PERSONAL_CHAT_ID", "27859948")
 WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
 BASE_API = "https://api.telegram.org/bot"
+CONFIRM_CUSTOM_EMOJI_ID = "5447642621671386392"
 DECLINE_CUSTOM_EMOJI_ID = "5474188341354180347"
 
 # TEMP TEST OVERRIDE: Florian asked to test the weekly buttons as Stefan.
@@ -251,7 +252,7 @@ def _button(text, callback_data, **extra):
 def _weekly_schedule_buttons():
     return _make_inline_keyboard([
         [
-            {"text": "✅ Confirm", "callback_data": "weekly_confirm"},
+            _button("Confirm", "weekly_confirm", icon_custom_emoji_id=CONFIRM_CUSTOM_EMOJI_ID),
             _button("Can't make it", "weekly_decline", icon_custom_emoji_id=DECLINE_CUSTOM_EMOJI_ID),
         ],
         [_schedule_button("\U0001F4C5 View Schedule")],
@@ -1058,8 +1059,9 @@ def _weekly_select_shift(callback_id, chat_id, message_id, person_name, mode,
         action = "weekly_confirm_shift" if mode == "confirm" else "weekly_decline_shift"
         if mode == "confirm":
             button_rows.append([_button(
-                _weekly_assignment_label(event, assignment, index, prefix="✅ "),
+                _weekly_assignment_label(event, assignment, index),
                 f"{action}:{assignment.id}",
+                icon_custom_emoji_id=CONFIRM_CUSTOM_EMOJI_ID,
             )])
         else:
             button_rows.append([_button(
