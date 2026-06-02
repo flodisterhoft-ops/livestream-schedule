@@ -1039,11 +1039,16 @@ def _weekly_assignment_label(event, assignment, index, prefix=""):
 
 def _weekly_need_cover_label(event, assignment, index):
     icon = _role_icon(assignment, index)
+    title = _event_title_without_emoji(event)
+    return f"{title} · {icon} {assignment.person}"
+
+
+def _event_title_without_emoji(event):
     title = _event_title(event)
     event_emoji = _event_emoji(event)
     if event_emoji:
         title = title.replace(f" {event_emoji}", "").strip()
-    return f"{title} · {icon} {assignment.person}"
+    return title
 
 
 def _restore_weekly_message(chat_id, message_id, today=None):
@@ -1324,17 +1329,19 @@ def send_swap_needed(event, assignment, chat_id=None, pickup_url=None):
     Returns message_id on success.
     """
     role_icon = ROLE_EMOJI.get(assignment.role, "👤")
+    title = _event_title_without_emoji(event)
 
     text = (
-        f"{_weekly_decline_status_icon()} {assignment.person} can't make it to his "
-        f"{role_icon} slot on {event.date.strftime('%A')}, can anyone jump in for him?"
+        f"{_weekly_decline_status_icon()} {assignment.person} can't make it to his shift:\n"
+        f"<b>{title} ({_short_date(event.date)})</b> {role_icon} {assignment.role}\n"
+        "Could someone jump in for him?"
     )
 
     if pickup_url:
         text += f'\n🔗 <a href="{pickup_url}">Pick up via web</a>'
 
     buttons = _make_inline_keyboard([[
-        {"text": "I Can", "callback_data": f"pickup:{assignment.id}"},
+        {"text": "🙋 I Can", "callback_data": f"pickup:{assignment.id}"},
     ]])
     msg_id = send_message(text, chat_id=chat_id, reply_markup=buttons)
 
