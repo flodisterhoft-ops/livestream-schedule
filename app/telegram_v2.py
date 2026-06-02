@@ -34,6 +34,12 @@ WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
 BASE_API = "https://api.telegram.org/bot"
 
+# TEMP TEST OVERRIDE: Florian asked to test the weekly buttons as Stefan.
+# Remove this override when the test is done.
+TELEGRAM_PERSON_OVERRIDE = {
+    "27859948": "Stefan",
+}
+
 # ── Emoji maps ───────────────────────────────────────────────────────
 ROLE_EMOJI = {
     "Computer": "\U0001F5A5\uFE0F",
@@ -1945,6 +1951,10 @@ def _resolve_person(telegram_user_id, fallback_name):
     the Telegram first_name to a TeamMember.name.
     """
     if telegram_user_id:
+        override = TELEGRAM_PERSON_OVERRIDE.get(str(telegram_user_id))
+        if override:
+            return override
+
         member = TeamMember.query.filter_by(telegram_user_id=telegram_user_id).first()
         if member:
             return member.name
