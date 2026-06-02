@@ -34,6 +34,7 @@ WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
 BASE_API = "https://api.telegram.org/bot"
 REMINDER_CUSTOM_EMOJI_ID = "5314354612357055779"
+REMINDER_WIDTH_PAD = "\u2800" * 30
 CONFIRM_CUSTOM_EMOJI_ID = "5447642621671386392"
 DECLINE_CUSTOM_EMOJI_ID = "5474188341354180347"
 
@@ -752,6 +753,7 @@ def format_today_group_post(event):
             f"{_reminder_icon()} <b>Reminder</b>",
             f"{title} @ {_event_time(event)}",
             "✅ <i>No livestream needed</i>",
+            REMINDER_WIDTH_PAD,
         ])
 
     lines = [
@@ -760,6 +762,7 @@ def format_today_group_post(event):
     ]
     for i, assignment in enumerate(event.assignments):
         lines.append(_assignment_line(assignment, i))
+    lines.append(REMINDER_WIDTH_PAD)
     return "\n".join(lines)
 
 
@@ -1044,12 +1047,6 @@ def _weekly_need_cover_label(event, assignment, index):
     return f"{title} · {icon} {assignment.person}"
 
 
-def _event_need_cover_label(event, assignment, index):
-    icon = _role_icon(assignment, index)
-    weekday = event.date.strftime("%A")
-    return f"{weekday}{icon} {assignment.person}"
-
-
 def _event_title_without_emoji(event):
     title = _event_title(event)
     event_emoji = _event_emoji(event)
@@ -1211,7 +1208,7 @@ def _event_show_decline_confirmation(callback_id, chat_id, message_id, assignmen
         index = list(event.assignments).index(assignment)
     except ValueError:
         index = 0
-    label = _event_need_cover_label(event, assignment, index)
+    label = _weekly_need_cover_label(event, assignment, index)
     buttons = _make_inline_keyboard([
         [{"text": f"❌ {label}", "callback_data": f"event_decline_yes:{assignment.id}:{message_id}"}],
         [{"text": "Never mind", "callback_data": f"event_back:{event.id}"}],
