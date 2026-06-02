@@ -719,6 +719,16 @@ def format_today_group_post(event):
     return "\n".join(lines)
 
 
+def format_interactive_event_post(event):
+    lines = [
+        f"<b>{_event_title(event)}</b>",
+        f"{_date_line(event.date)} @ {_event_time(event)}",
+    ]
+    if getattr(event, "cancelled", False):
+        lines.append("✅ <i>No livestream needed</i>")
+    return "\n".join(lines)
+
+
 def format_personal_question(assignment):
     event = assignment.event
     title = _event_title(event)
@@ -1314,8 +1324,7 @@ def handle_callback_query(data):
             assignment.history = h
             _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
             db.session.commit()
-            _notify_admin_text(f"✅ {assignment.person} confirmed\n{_event_title(event)} · {assignment.role}")
-            answer_callback(callback_id, "Thanks for confirming! 😊", show_alert=True)
+            answer_callback(callback_id, "Confirmed")
             edit_message(chat_id, message_id, (
                 f"✅ <b>Confirmed</b>\n\n"
                 f"Thanks {assignment.person} - you're marked as coming for {_event_title(event)} today.\n\n"
@@ -1332,8 +1341,7 @@ def handle_callback_query(data):
             assignment.history = h
             _log_interaction(telegram_user_id, first_name, "ack", person_name, assignment, event)
             db.session.commit()
-            _notify_admin_text(f"👍 {assignment.person} acknowledged\n{_event_title(event)} · {assignment.role}")
-            answer_callback(callback_id, "Thanks for confirming! 😊", show_alert=True)
+            answer_callback(callback_id, "Confirmed")
             edit_message(chat_id, message_id, "👍 <b>Sounds good</b>\n\nSee you tonight!\n\n<i>This chat will auto-destruct in 5 seconds.</i>")
             refresh_event_telegram(event)
             _delete_temp_chat(temp_chat, delay=5)
@@ -1531,12 +1539,7 @@ def handle_callback_query(data):
         assignment.history = h
         _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
         db.session.commit()
-        _notify_admin("confirm", person_name, assignment, event)
-        answer_callback(
-            callback_id,
-            f"🙏 Thank you for confirming, {person_name}! See you there.",
-            show_alert=True,
-        )
+        answer_callback(callback_id, "Confirmed")
 
     elif action == "decline":
         assignment.status = "swap_needed"
@@ -1679,7 +1682,7 @@ def handle_callback_query(data):
 
     # ── Rebuild the event message with updated statuses ─────────
     # Find the original reminder message and update it
-    _refresh_event_message(event, chat_id, message_id)
+    _refresh_interactive_event_message(event, chat_id, message_id)
     try:
         update_weekly_schedule_for_event(event)
     except Exception as e:
@@ -1720,6 +1723,13 @@ def _refresh_event_message(event, chat_id, message_id):
     """Re-render the event message with current statuses and buttons."""
     text = format_today_group_post(event)
     buttons = _make_inline_keyboard([[_schedule_button()]])
+    edit_message(chat_id, message_id, text, reply_markup=buttons)
+
+
+def _refresh_interactive_event_message(event, chat_id, message_id):
+    """Re-render a compact event post that keeps name/status buttons attached."""
+    text = format_interactive_event_post(event)
+    buttons = _build_event_buttons(event) or _make_inline_keyboard([[_schedule_button()]])
     edit_message(chat_id, message_id, text, reply_markup=buttons)
 
 
