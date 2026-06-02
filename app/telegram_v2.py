@@ -35,7 +35,7 @@ WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 BASE_API = "https://api.telegram.org/bot"
 REMINDER_CUSTOM_EMOJI_ID = "5314354612357055779"
 REMINDER_WIDTH_PAD_CHAR = "\u2800"
-REMINDER_WIDTH_TARGET = 27
+REMINDER_WIDTH_TARGET = 28
 CONFIRM_CUSTOM_EMOJI_ID = "5447642621671386392"
 DECLINE_CUSTOM_EMOJI_ID = "5474188341354180347"
 
@@ -760,6 +760,7 @@ def format_today_group_post(event):
     lines = [
         f"{_reminder_icon()} <b>Reminder</b>",
         event_line,
+        "",
     ]
     for i, assignment in enumerate(event.assignments):
         lines.append(_assignment_line(assignment, i))
