@@ -1813,13 +1813,8 @@ body {
   flex-direction: column;
   gap: 6px;
   isolation: isolate;
-  max-height: calc(100svh - 260px - env(safe-area-inset-bottom, 0px));
   min-height: 280px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   padding-right: 3px;
-  padding-bottom: calc(75svh + env(safe-area-inset-bottom, 0px));
-  scroll-padding-bottom: calc(75svh + env(safe-area-inset-bottom, 0px));
   scroll-behavior: auto;
 }
 
