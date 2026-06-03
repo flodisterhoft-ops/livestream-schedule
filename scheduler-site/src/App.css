@@ -1038,8 +1038,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 40;
-  margin: 0 -16px 8px;
-  padding: 4px 16px 8px;
+  margin: 0 -16px 0;
+  padding: 4px 16px 2px;
   background: rgba(248, 250, 252, 0.96);
   border-bottom: 1px solid rgba(226, 232, 240, 0.85);
   backdrop-filter: saturate(140%) blur(12px);
@@ -1052,7 +1052,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 12px;
+  margin: 6px 0 12px;
 }
 
 .person-filter-pill-wrap {
