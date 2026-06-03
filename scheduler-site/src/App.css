@@ -1036,7 +1036,7 @@ body {
 
 .schedule-tab.cards-view .schedule-sticky-controls {
   position: sticky;
-  top: 0;
+  top: calc(var(--locked-header-h, 100px) + var(--locked-year-h, 33px));
   z-index: 40;
   margin: 0 -16px 0;
   padding: 4px 16px 2px;
@@ -1046,13 +1046,31 @@ body {
   -webkit-backdrop-filter: saturate(140%) blur(12px);
 }
 
+/* Lock header + year row + month pills as a single sticky block. */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
+  padding-top: 8px;
+}
+
+.schedule-tab.cards-view .year-nav {
+  position: sticky;
+  top: var(--locked-header-h, 100px);
+  z-index: 45;
+  background: var(--bg);
+  margin: 0 -16px;
+  padding: 4px 16px 0;
+}
+
 .person-filter {
   position: relative;
   z-index: 20;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 6px 0 12px;
+  margin: 2px 0 10px;
 }
 
 .person-filter-pill-wrap {
