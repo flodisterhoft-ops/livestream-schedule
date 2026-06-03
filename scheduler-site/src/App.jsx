@@ -866,7 +866,6 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
 
   return (
     <div className={`schedule-tab ${viewMode === 'cards' ? 'cards-view' : 'calendar-view-mode'}`}>
-      <div className="schedule-sticky-controls">
       {/* Year navigation */}
       <div className="year-nav">
         {yearList.map(year => (
@@ -880,22 +879,22 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
         ))}
       </div>
 
-      {/* Month navigation */}
-      <div className="month-nav" ref={navRef}>
-        {indicator && (
-          <span
-            className="month-indicator"
-            style={{
-              transform: `translate(${indicator.x}px, ${indicator.y}px)`,
-              width: indicator.w,
-              height: indicator.h,
-            }}
-            aria-hidden="true"
-          />
-        )}
-        {monthsForActiveYear.map(renderMonthPill)}
-      </div>
-
+      {/* Month navigation — only this stays sticky at the top while scrolling */}
+      <div className="schedule-sticky-controls">
+        <div className="month-nav" ref={navRef}>
+          {indicator && (
+            <span
+              className="month-indicator"
+              style={{
+                transform: `translate(${indicator.x}px, ${indicator.y}px)`,
+                width: indicator.w,
+                height: indicator.h,
+              }}
+              aria-hidden="true"
+            />
+          )}
+          {monthsForActiveYear.map(renderMonthPill)}
+        </div>
       </div>
       <div className="person-filter" ref={filterRef}>
         <div className="person-filter-pill-wrap">
