@@ -1029,8 +1029,8 @@ def get_team():
 @api_v2.route("/team", methods=["POST"])
 def add_team_member():
     """Add a new team member."""
-    if not session.get("manager"):
-        return jsonify({"error": "Manager only"}), 403
+    if not _is_admin_or_manager():
+        return jsonify({"error": "Admin only"}), 403
 
     data = request.json or {}
     name = data.get("name", "").strip()
@@ -1062,8 +1062,8 @@ def add_team_member():
 @api_v2.route("/team/<int:member_id>", methods=["PATCH"])
 def update_team_member(member_id):
     """Update a team member."""
-    if not session.get("manager"):
-        return jsonify({"error": "Manager only"}), 403
+    if not _is_admin_or_manager():
+        return jsonify({"error": "Admin only"}), 403
 
     member = TeamMember.query.get(member_id)
     if not member:
@@ -1091,8 +1091,8 @@ def update_team_member(member_id):
 
 @api_v2.route("/team/apply-role-settings", methods=["POST"])
 def apply_team_role_settings():
-    if not session.get("manager"):
-        return jsonify({"error": "Manager only"}), 403
+    if not _is_admin_or_manager():
+        return jsonify({"error": "Admin only"}), 403
 
     data = request.json or {}
     members = data.get("members", [])
@@ -1205,8 +1205,8 @@ def apply_team_role_settings():
 @api_v2.route("/team/<int:member_id>", methods=["DELETE"])
 def delete_team_member(member_id):
     """Remove a team member."""
-    if not session.get("manager"):
-        return jsonify({"error": "Manager only"}), 403
+    if not _is_admin_or_manager():
+        return jsonify({"error": "Admin only"}), 403
 
     member = TeamMember.query.get(member_id)
     if not member:

@@ -896,6 +896,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
         {monthsForActiveYear.map(renderMonthPill)}
       </div>
 
+      </div>
       <div className="person-filter" ref={filterRef}>
         <div className="person-filter-pill-wrap">
           <button
@@ -968,8 +969,6 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
         >
           {viewMode === 'calendar' ? '\ud83d\udccb' : '\ud83d\udcc5'}
         </button>
-      </div>
-
       </div>
       {viewMode === 'calendar' ? (
         <MonthCalendar activeMonth={activeMonth || defaultMonth} events={filteredSchedule} selectedPerson={selectedPerson} />
