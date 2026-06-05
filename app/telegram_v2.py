@@ -110,6 +110,8 @@ def _notify_admin(action, person_name, assignment=None, event=None):
     """Send a short DM to the admin when someone interacts."""
     if not PERSONAL_CHAT_ID:
         return
+    if (person_name or "").strip().lower() == "florian":
+        return
     label = ACTION_LABELS.get(action, action)
     parts = [f"🔔 <b>{label}</b> - {person_name}"]
     if event:
@@ -125,7 +127,7 @@ def _notify_admin(action, person_name, assignment=None, event=None):
             "chat_id": PERSONAL_CHAT_ID,
             "text": text,
             "parse_mode": "HTML",
-            "disable_notification": True,
+            "disable_notification": action not in ("confirm", "decline"),
         })
     except Exception as e:
         print(f"[Telegram] Admin notification failed: {e}")
@@ -1170,6 +1172,7 @@ def _weekly_decline_assignment(callback_id, chat_id, message_id, assignment, per
         db.session.add(swap)
     _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event, details="weekly_button")
     db.session.commit()
+    _notify_admin("decline", person_name, assignment, event)
     answer_callback(callback_id)
     _restore_weekly_message(chat_id, message_id, today=event.date)
     refresh_event_telegram(event)
@@ -1206,6 +1209,8 @@ def _event_confirm_assignment(callback_id, chat_id, message_id, assignment, pers
     assignment.history = h
     _log_interaction(telegram_user_id, first_name, action, person_name, assignment, event, details="event_reminder")
     db.session.commit()
+    if action == "confirm":
+        _notify_admin("confirm", person_name, assignment, event)
     answer_callback(callback_id)
     _restore_event_reminder_message(chat_id, message_id, event)
     update_weekly_schedule_for_event(event)
@@ -1250,6 +1255,7 @@ def _event_decline_assignment(callback_id, chat_id, message_id, assignment, pers
         db.session.add(swap)
     _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event, details="event_reminder")
     db.session.commit()
+    _notify_admin("decline", person_name, assignment, event)
     answer_callback(callback_id)
     _restore_event_reminder_message(chat_id, source_message_id or message_id, event)
     update_weekly_schedule_for_event(event)
