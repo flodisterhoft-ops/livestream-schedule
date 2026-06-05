@@ -952,12 +952,14 @@ def _assignment_line(assignment, index=0):
         worker = "TBD"
     icon = _role_icon(assignment, index)
     if assignment.status == "swap_needed":
-        return f"{icon} {worker} {_weekly_decline_status_icon()}"
+        return f"{icon} {_weekly_decline_status_icon()}{worker}"
     if assignment.cover:
-        status = f" {_weekly_confirm_status_icon()}" if assignment.status == "confirmed" else ""
-        return f"{icon} <s>{assignment.person}</s> → {assignment.cover}{status}"
+        cover = assignment.cover
+        if assignment.status == "confirmed":
+            cover = f"{_weekly_confirm_status_icon()}{cover}"
+        return f"{icon} <s>{assignment.person}</s> → {cover}"
     if assignment.status == "confirmed":
-        return f"{icon} {worker} {_weekly_confirm_status_icon()}"
+        return f"{icon} {_weekly_confirm_status_icon()}{worker}"
     return f"{icon} {worker}"
 
 
