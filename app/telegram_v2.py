@@ -952,14 +952,14 @@ def _assignment_line(assignment, index=0):
         worker = "TBD"
     icon = _role_icon(assignment, index)
     if assignment.status == "swap_needed":
-        return f"{icon} {_weekly_decline_status_icon()}{worker}"
+        return f"{icon}{_weekly_decline_status_icon()}{worker}"
     if assignment.cover:
         cover = assignment.cover
         if assignment.status == "confirmed":
             cover = f"{_weekly_confirm_status_icon()}{cover}"
         return f"{icon} <s>{assignment.person}</s> → {cover}"
     if assignment.status == "confirmed":
-        return f"{icon} {_weekly_confirm_status_icon()}{worker}"
+        return f"{icon}{_weekly_confirm_status_icon()}{worker}"
     return f"{icon} {worker}"
 
 
@@ -2273,7 +2273,7 @@ def _resolve_person(telegram_user_id, fallback_name, use_override=True):
 def _refresh_event_message(event, chat_id, message_id):
     """Re-render the event message with current statuses and buttons."""
     text = format_today_group_post(event)
-    buttons = _make_inline_keyboard([[_schedule_button()]])
+    buttons = _event_reminder_buttons(event)
     edit_message(chat_id, message_id, text, reply_markup=buttons)
 
 
