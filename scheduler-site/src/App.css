@@ -3358,7 +3358,11 @@ body {
 }
 
 .year-overview-table .overview-divider-before {
-  border-left: 2px solid rgba(15, 23, 42, 0.22);
+  border-left: 1px solid rgba(37, 99, 235, 0.46);
+}
+
+.year-overview-table .overview-divider-after {
+  border-right: 1px solid rgba(37, 99, 235, 0.46);
 }
 
 .overview-grand-total-label {

@@ -2215,6 +2215,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
       const last = groups[groups.length - 1]
       if (last && last.label === row.groupLabel && !last.standalone) {
         last.span += 1
+        last.dividerAfter = last.dividerAfter || Boolean(row.dividerAfter)
       } else {
         groups.push({
           key: row.groupLabel,
@@ -2223,6 +2224,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
           standalone: false,
           grandTotal: false,
           dividerBefore: Boolean(row.dividerBefore),
+          dividerAfter: Boolean(row.dividerAfter),
         })
       }
     })
@@ -2241,7 +2243,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
                   key={group.key}
                   colSpan={group.span}
                   rowSpan={group.standalone ? 2 : 1}
-                  className={`overview-group-heading ${group.grandTotal ? 'grand-total' : ''} ${group.dividerBefore ? 'overview-divider-before' : ''}`}
+                  className={`overview-group-heading ${group.grandTotal ? 'grand-total' : ''} ${group.dividerBefore ? 'overview-divider-before' : ''} ${group.dividerAfter ? 'overview-divider-after' : ''}`}
                 >
                   {group.grandTotal ? (
                     <span className="overview-grand-total-label">
@@ -2254,7 +2256,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
             </tr>
             <tr className="overview-column-row">
               {rows.filter(row => row.groupLabel).map(row => (
-                <th key={row.key} className={row.dividerBefore ? 'overview-divider-before' : undefined}>
+                <th key={row.key} className={`${row.dividerBefore ? 'overview-divider-before' : ''} ${row.dividerAfter ? 'overview-divider-after' : ''}`}>
                   <span className="overview-header-label">
                     {row.labelBottom && <span>{row.labelBottom}</span>}
                   </span>
@@ -2267,7 +2269,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
               <tr key={name} className={inactiveNameSet?.has(name) ? 'overview-inactive-row' : undefined}>
                 <td>{name}</td>
                 {rows.map(row => (
-                  <td key={row.key} className={row.dividerBefore ? 'overview-divider-before' : undefined}>
+                  <td key={row.key} className={`${row.dividerBefore ? 'overview-divider-before' : ''} ${row.dividerAfter ? 'overview-divider-after' : ''}`}>
                     {counts[name]?.[row.key] || 0}
                   </td>
                 ))}
@@ -2276,7 +2278,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
             <tr className="overview-total-row">
               <td>Total</td>
               {rows.map(row => (
-                <td key={row.key} className={row.dividerBefore ? 'overview-divider-before' : undefined}>
+                <td key={row.key} className={`${row.dividerBefore ? 'overview-divider-before' : ''} ${row.dividerAfter ? 'overview-divider-after' : ''}`}>
                   {names.reduce((sum, name) => sum + (counts[name]?.[row.key] || 0), 0)}
                 </td>
               ))}

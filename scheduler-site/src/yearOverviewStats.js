@@ -1,5 +1,5 @@
 export const OVERVIEW_ROWS = [
-  { key: 'F\uD83D\uDDA5', groupLabel: 'Weekday Service', labelBottom: '\uD83D\uDDA5\uFE0F' },
+  { key: 'F\uD83D\uDDA5', groupLabel: 'Weekday Service', labelBottom: '\uD83D\uDDA5\uFE0F', dividerBefore: true },
   { key: 'F\uD83C\uDFA5', groupLabel: 'Weekday Service', labelBottom: '\uD83C\uDFA5' },
   { key: 'F?', groupLabel: 'Weekday Service', labelBottom: 'Other', optional: true },
   { key: 'F\u03A3', groupLabel: 'Weekday Service', labelBottom: 'Total' },
@@ -7,7 +7,7 @@ export const OVERVIEW_ROWS = [
   { key: 'S\uD83C\uDFA51', groupLabel: 'Sunday Service', labelBottom: '\uD83C\uDFA51\uFE0F\u20E3' },
   { key: 'S\uD83C\uDFA52', groupLabel: 'Sunday Service', labelBottom: '\uD83C\uDFA52\uFE0F\u20E3' },
   { key: 'S?', groupLabel: 'Sunday Service', labelBottom: 'Other', optional: true },
-  { key: 'S\u03A3', groupLabel: 'Sunday Service', labelBottom: 'Total' },
+  { key: 'S\u03A3', groupLabel: 'Sunday Service', labelBottom: 'Total', dividerAfter: true },
   { key: '\u03A3', labelTop: 'Grand Total', labelBottom: '' },
 ]
 
