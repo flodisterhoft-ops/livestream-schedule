@@ -872,6 +872,146 @@ def _is_admin_or_manager():
     return session.get("manager") or session.get("user_name") == "Florian"
 
 
+ROLE_SETTING_KEYS = [
+    "Sunday:Computer",
+    "Sunday:Camera 1",
+    "Sunday:Camera 2",
+    "Friday:Computer",
+    "Friday:Camera",
+]
+
+ROLE_ORDER = {
+    "Sunday": ["Computer", "Camera 1", "Camera 2"],
+    "Friday": ["Computer", "Camera", "Leader", "Helper"],
+}
+
+
+def _normalize_member_roles(roles, day_type):
+    if not isinstance(roles, list):
+        roles = []
+    seen = set()
+    cleaned = []
+    for role in roles:
+        role_name = str(role or "").strip()
+        if role_name and role_name not in seen:
+            cleaned.append(role_name)
+            seen.add(role_name)
+
+    order = ROLE_ORDER.get(day_type, [])
+    order_index = {role: index for index, role in enumerate(order)}
+    return sorted(cleaned, key=lambda role: (order_index.get(role, len(order)), role))
+
+
+def _default_member_caps(name):
+    is_florian = name == "Florian"
+    return {
+        "sunday_per_month": 1 if is_florian else 2,
+        "friday_per_month": 2,
+        "total_per_month": 3 if is_florian else 4,
+    }
+
+
+def _normalize_cap_value(value, fallback):
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError):
+        normalized = fallback
+    return max(0, normalized)
+
+
+def _normalize_caps(name, caps, fallback_caps=None):
+    defaults = fallback_caps or _default_member_caps(name)
+    source = caps if isinstance(caps, dict) else {}
+    return {
+        "sunday_per_month": _normalize_cap_value(source.get("sunday_per_month"), defaults["sunday_per_month"]),
+        "friday_per_month": _normalize_cap_value(source.get("friday_per_month"), defaults["friday_per_month"]),
+        "total_per_month": _normalize_cap_value(source.get("total_per_month"), defaults["total_per_month"]),
+    }
+
+
+def _role_preferences_without_caps(preferences):
+    if not isinstance(preferences, dict):
+        return {}
+    return {
+        key: value
+        for key, value in preferences.items()
+        if key != "_caps"
+    }
+
+
+def _effective_role_preferences(name, preferences):
+    from .scheduler_v2 import _default_role_preferences
+    merged = _default_role_preferences(name, _role_preferences_without_caps(preferences))
+    return {
+        key: merged.get(key, "normal")
+        for key in ROLE_SETTING_KEYS
+    }
+
+
+def _effective_caps(name, preferences):
+    caps = preferences.get("_caps") if isinstance(preferences, dict) else None
+    return _normalize_caps(name, caps)
+
+
+def _normalize_submitted_preferences(name, preferences, caps=None, fallback_role_preferences=None, fallback_caps=None):
+    normalized = _role_preferences_without_caps(preferences)
+    if fallback_role_preferences:
+        for key, value in fallback_role_preferences.items():
+            normalized.setdefault(key, value)
+
+    caps_source = caps
+    if not isinstance(caps_source, dict) and isinstance(preferences, dict):
+        caps_source = preferences.get("_caps")
+
+    if isinstance(caps_source, dict):
+        normalized_caps = _normalize_caps(name, caps_source, fallback_caps=fallback_caps)
+    elif fallback_caps is not None:
+        normalized_caps = fallback_caps
+    else:
+        normalized_caps = None
+
+    if normalized_caps and normalized_caps != _default_member_caps(name):
+        normalized["_caps"] = normalized_caps
+    return normalized
+
+
+def _rename_worker_references(old_name, new_name):
+    if not old_name or not new_name or old_name == new_name:
+        return 0
+
+    total = 0
+    for model, field_name in (
+        (Assignment, "person"),
+        (Assignment, "cover"),
+        (Assignment, "swapped_with"),
+        (Availability, "person"),
+        (SwapRequest, "requestor"),
+        (SwapRequest, "accepted_by"),
+        (InteractionLog, "person_name"),
+        (TempChat, "person"),
+        (TempChat, "recipient"),
+        (EventSuggestion, "suggester_name"),
+    ):
+        field = getattr(model, field_name)
+        total += (
+            model.query
+            .filter(field == old_name)
+            .update({field_name: new_name}, synchronize_session=False)
+        )
+    return total
+
+
+def _empty_repair_result():
+    return {
+        "future_assignments_replaced": 0,
+        "future_events_touched": 0,
+        "tbd_assignments": 0,
+        "kept_assignments": 0,
+        "refill_pending": False,
+        "snapshot": [],
+    }
+
+
 @api_v2.route("/orphan-shifts")
 def list_orphan_shifts():
     """List unredeemed orphan shifts. Admin or manager only."""
@@ -1071,13 +1211,34 @@ def update_team_member(member_id):
 
     data = request.json or {}
     if "name" in data:
-        member.name = data["name"]
+        old_name = member.name
+        new_name = (data["name"] or "").strip()
+        if not new_name:
+            return jsonify({"error": "name is required"}), 400
+        name_owner = TeamMember.query.filter(db.func.lower(TeamMember.name) == new_name.lower()).first()
+        if name_owner and name_owner.id != member.id:
+            return jsonify({"error": f"{new_name} already exists"}), 409
+        if new_name != old_name:
+            old_preferences = member.role_preferences
+            _rename_worker_references(old_name, new_name)
+            member.role_preferences = _normalize_submitted_preferences(
+                new_name,
+                old_preferences,
+                fallback_role_preferences=_effective_role_preferences(old_name, old_preferences),
+                fallback_caps=_effective_caps(old_name, old_preferences),
+            )
+            member.name = new_name
     if "sunday_roles" in data:
-        member.sunday_roles = data["sunday_roles"]
+        member.sunday_roles = _normalize_member_roles(data["sunday_roles"], "Sunday")
     if "friday_roles" in data:
-        member.friday_roles = data["friday_roles"]
+        member.friday_roles = _normalize_member_roles(data["friday_roles"], "Friday")
     if "role_preferences" in data:
-        member.role_preferences = data["role_preferences"]
+        member.role_preferences = _normalize_submitted_preferences(
+            member.name,
+            data["role_preferences"],
+            caps=data.get("caps"),
+            fallback_caps=_effective_caps(member.name, member.role_preferences),
+        )
     if "telegram_user_id" in data:
         member.telegram_user_id = data["telegram_user_id"]
     if "active" in data:
@@ -1096,16 +1257,25 @@ def apply_team_role_settings():
 
     data = request.json or {}
     members = data.get("members", [])
-    removed_ids = set(data.get("removed_ids", []))
     if not isinstance(members, list):
         return jsonify({"error": "members must be a list"}), 400
 
     created = []
     updated = 0
     removed = []
+    renamed = []
+    rename_updates = 0
     preference_or_cap_changed = False
+    roster_or_rules_changed = False
 
     try:
+        removed_ids = set()
+        for raw_id in data.get("removed_ids", []):
+            try:
+                removed_ids.add(int(raw_id))
+            except (TypeError, ValueError):
+                raise ValueError("removed_ids must contain team member IDs")
+
         existing = {
             member.id: member
             for member in TeamMember.query.all()
@@ -1116,45 +1286,108 @@ def apply_team_role_settings():
         }
 
         for member_id in removed_ids:
-            member = existing.get(int(member_id))
+            member = existing.get(member_id)
             if member:
                 removed.append(member.name)
                 db.session.delete(member)
+                roster_or_rules_changed = True
 
+        seen_names = set()
         for item in members:
             name = (item.get("name") or "").strip()
             if not name:
                 continue
+            name_key = name.lower()
+            if name_key in seen_names:
+                raise ValueError(f"Duplicate team member name: {name}")
+            seen_names.add(name_key)
+
             item_id = item.get("id")
-            sunday_roles = item.get("sunday_roles", [])
-            friday_roles = item.get("friday_roles", [])
-            role_preferences = item.get("role_preferences", {})
+            sunday_roles = _normalize_member_roles(item.get("sunday_roles", []), "Sunday")
+            friday_roles = _normalize_member_roles(item.get("friday_roles", []), "Friday")
+            submitted_preferences = item.get("role_preferences", {})
             caps = item.get("caps")
-            if isinstance(caps, dict):
-                role_preferences = {**role_preferences, "_caps": caps}
 
             member = None
             if item_id and not str(item_id).startswith("new-"):
-                member = existing.get(int(item_id))
+                try:
+                    member = existing.get(int(item_id))
+                except (TypeError, ValueError):
+                    raise ValueError("member id must be an integer")
             if not member:
                 member = existing_by_name.get(name.lower())
             if member and member.id in removed_ids:
                 continue
 
             if member:
-                if member.role_preferences != role_preferences:
+                old_name = member.name
+                old_sunday_roles = _normalize_member_roles(member.sunday_roles, "Sunday")
+                old_friday_roles = _normalize_member_roles(member.friday_roles, "Friday")
+                old_preferences = member.role_preferences
+                old_effective_preferences = _effective_role_preferences(old_name, old_preferences)
+                old_effective_caps = _effective_caps(old_name, old_preferences)
+                name_changed = old_name != name
+
+                name_owner = existing_by_name.get(name_key)
+                if name_owner and name_owner.id != member.id and name_owner.id not in removed_ids:
+                    raise ValueError(f"{name} already exists")
+
+                fallback_preferences = old_effective_preferences if name_changed else None
+                role_preferences = _normalize_submitted_preferences(
+                    name,
+                    submitted_preferences,
+                    caps=caps,
+                    fallback_role_preferences=fallback_preferences,
+                    fallback_caps=old_effective_caps,
+                )
+                new_effective_preferences = _effective_role_preferences(name, role_preferences)
+                new_effective_caps = _effective_caps(name, role_preferences)
+
+                roles_changed = (
+                    old_sunday_roles != sunday_roles
+                    or old_friday_roles != friday_roles
+                )
+                preferences_changed = old_effective_preferences != new_effective_preferences
+                caps_changed = old_effective_caps != new_effective_caps
+                if preferences_changed or caps_changed:
                     preference_or_cap_changed = True
+
+                active = item.get("active", member.active)
+                active_from = member.active_from
+                if "active_from" in item:
+                    active_from = datetime.date.fromisoformat(item["active_from"]) if item.get("active_from") else None
+                active_changed = bool(member.active) != bool(active)
+                active_from_changed = member.active_from != active_from
+
+                if name_changed:
+                    rename_updates += _rename_worker_references(old_name, name)
+                    renamed.append({"from": old_name, "to": name})
+
+                if roles_changed or preferences_changed or caps_changed or active_changed or active_from_changed:
+                    roster_or_rules_changed = True
+
+                raw_changed = (
+                    name_changed
+                    or member.sunday_roles != sunday_roles
+                    or member.friday_roles != friday_roles
+                    or member.role_preferences != role_preferences
+                    or bool(member.active) != bool(active)
+                    or member.active_from != active_from
+                    or ("telegram_user_id" in item and member.telegram_user_id != item.get("telegram_user_id"))
+                )
+
                 member.name = name
                 member.sunday_roles = sunday_roles
                 member.friday_roles = friday_roles
                 member.role_preferences = role_preferences
-                member.active = item.get("active", True)
+                member.active = active
                 if "telegram_user_id" in item:
                     member.telegram_user_id = item.get("telegram_user_id")
-                if "active_from" in item:
-                    member.active_from = datetime.date.fromisoformat(item["active_from"]) if item.get("active_from") else None
-                updated += 1
+                member.active_from = active_from
+                if raw_changed:
+                    updated += 1
             else:
+                role_preferences = _normalize_submitted_preferences(name, submitted_preferences, caps=caps)
                 member = TeamMember(name=name)
                 member.sunday_roles = sunday_roles
                 member.friday_roles = friday_roles
@@ -1165,14 +1398,18 @@ def apply_team_role_settings():
                 member.active_from = datetime.date.fromisoformat(active_from) if active_from else vancouver_today()
                 db.session.add(member)
                 created.append(name)
+                roster_or_rules_changed = True
 
         db.session.flush()
 
-        from .scheduler_v2 import repair_future_assignments_for_roster
-        repair_result = repair_future_assignments_for_roster(
-            start_date=vancouver_today(),
-            refill_pending=bool(created or preference_or_cap_changed),
-        )
+        if roster_or_rules_changed:
+            from .scheduler_v2 import repair_future_assignments_for_roster
+            repair_result = repair_future_assignments_for_roster(
+                start_date=vancouver_today(),
+                refill_pending=bool(created or preference_or_cap_changed),
+            )
+        else:
+            repair_result = _empty_repair_result()
         snapshot = repair_result.pop("snapshot", [])
         snapshot_record = None
         if snapshot:
@@ -1197,6 +1434,8 @@ def apply_team_role_settings():
         "created": created,
         "updated": updated,
         "removed": removed,
+        "renamed": renamed,
+        "rename_updates": rename_updates,
         "snapshot": snapshot_record,
         **repair_result,
     })
