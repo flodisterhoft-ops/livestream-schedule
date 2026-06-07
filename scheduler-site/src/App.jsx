@@ -2296,10 +2296,13 @@ function OverviewMatrix({ title, events, names, inactiveNameSet, summary = false
 
 function YearOverviewModal({ schedule, team, onClose }) {
   const overlayRef = useRef(null)
+  const overviewNavRef = useRef(null)
   const years = useMemo(() => [...new Set(schedule.map(event => event.date.slice(0, 4)))].sort(), [schedule])
   const currentYear = String(new Date().getFullYear())
   const preferredYear = years.includes(currentYear) ? currentYear : (years[years.length - 1] || currentYear)
   const [year, setYear] = useState(preferredYear)
+  const [selectedOverviewMonth, setSelectedOverviewMonth] = useState('all')
+  const [overviewIndicator, setOverviewIndicator] = useState(null)
   const activeMembers = useMemo(() => team.filter(member => member.name && member.active !== false), [team])
   const activeNames = useMemo(() => activeMembers.map(member => member.name), [activeMembers])
   const newcomerNameSet = useMemo(() => (
@@ -2308,9 +2311,17 @@ function YearOverviewModal({ schedule, team, onClose }) {
   useEffect(() => {
     if (!years.includes(year)) setYear(preferredYear)
   }, [preferredYear, year, years])
+  useEffect(() => {
+    setSelectedOverviewMonth('all')
+  }, [year])
   const yearEvents = useMemo(() => schedule.filter(event => event.date.startsWith(year) && getOverviewServiceType(event)), [schedule, year])
   const yearNames = useMemo(() => overviewTotalNames(yearEvents, activeNames, newcomerNameSet), [activeNames, newcomerNameSet, yearEvents])
-  const months = useMemo(() => [...new Set(yearEvents.map(event => event.date.slice(0, 7)))].sort(), [yearEvents])
+  const months = useMemo(() => (
+    Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, '0')}`)
+  ), [year])
+  const visibleMonths = useMemo(() => (
+    selectedOverviewMonth === 'all' ? months : [selectedOverviewMonth]
+  ), [months, selectedOverviewMonth])
   const monthNamesByKey = useMemo(() => {
     const grouped = {}
     months.forEach(month => {
@@ -2319,6 +2330,29 @@ function YearOverviewModal({ schedule, team, onClose }) {
     })
     return grouped
   }, [activeNames, newcomerNameSet, months, yearEvents])
+  useEffect(() => {
+    const measure = () => {
+      const nav = overviewNavRef.current
+      if (!nav) return
+      const active = nav.querySelector('.month-pill.active')
+      if (!active) { setOverviewIndicator(null); return }
+      const navRect = nav.getBoundingClientRect()
+      const rect = active.getBoundingClientRect()
+      setOverviewIndicator({
+        x: rect.left - navRect.left,
+        y: rect.top - navRect.top,
+        w: rect.width,
+        h: rect.height,
+      })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [months.length, selectedOverviewMonth, year, years.length])
+  const handleOverviewYearSelect = (selectedYear) => {
+    setYear(selectedYear)
+    setSelectedOverviewMonth('all')
+  }
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -2344,13 +2378,41 @@ function YearOverviewModal({ schedule, team, onClose }) {
           <button className="icon-btn-sm" onClick={onClose} aria-label="Close">{'\u2715'}</button>
         </div>
         <div className="modal-body year-overview-body">
-          <div className="role-focus-bar" role="tablist" aria-label="Year">
+          <div className="month-nav year-overview-month-nav" ref={overviewNavRef} role="tablist" aria-label="Overview period">
+            {overviewIndicator && (
+              <span
+                className="month-indicator"
+                style={{
+                  transform: `translate(${overviewIndicator.x}px, ${overviewIndicator.y}px)`,
+                  width: overviewIndicator.w,
+                  height: overviewIndicator.h,
+                }}
+                aria-hidden="true"
+              />
+            )}
             {years.map(y => (
-              <button key={y} type="button" className={`role-focus-tab ${year === y ? 'active' : ''}`} onClick={() => setYear(y)}>{y}</button>
+              <button
+                key={y}
+                type="button"
+                className={`month-pill ${year === y && selectedOverviewMonth === 'all' ? 'active' : ''}`}
+                onClick={() => handleOverviewYearSelect(y)}
+              >
+                {y}
+              </button>
+            ))}
+            {months.map(month => (
+              <button
+                key={month}
+                type="button"
+                className={`month-pill ${selectedOverviewMonth === month ? 'active' : ''}`}
+                onClick={() => setSelectedOverviewMonth(month)}
+              >
+                {new Date(`${month}-15`).toLocaleString('en', { month: 'short' })}
+              </button>
             ))}
           </div>
           <OverviewMatrix title={year} events={yearEvents} names={yearNames} summary />
-          {months.map(month => (
+          {visibleMonths.map(month => (
             <OverviewMatrix
               key={month}
               title={new Date(`${month}-15`).toLocaleString('en', { month: 'long' })}
