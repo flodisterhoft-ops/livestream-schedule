@@ -3393,6 +3393,12 @@ body {
   padding-top: 3px;
   padding-bottom: 4px;
   background: var(--bg-card);
+  border-bottom: 1px solid rgba(29, 78, 216, 0.44);
+}
+
+.year-overview-table .overview-name-header,
+.year-overview-table .overview-group-heading.grand-total {
+  border-bottom: 1px solid rgba(29, 78, 216, 0.44);
 }
 
 .overview-header-label {
@@ -3412,6 +3418,9 @@ body {
 .overview-total-row td {
   background: var(--bg);
   font-weight: 800;
+  border-top: 1px solid rgba(29, 78, 216, 0.44);
+  border-bottom: 1px solid rgba(29, 78, 216, 0.22);
+  border-right-color: rgba(29, 78, 216, 0.28);
 }
 
 .overview-inactive-row td {
