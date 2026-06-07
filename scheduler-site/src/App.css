@@ -3295,15 +3295,9 @@ body {
   background: var(--bg-card);
 }
 
-.year-overview-summary {
-  border: 2px solid rgba(29, 78, 216, 0.52);
-  border-radius: calc(var(--radius) + 3px);
-  padding: 6px;
-  box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.28);
-}
-
 .year-overview-summary .year-overview-table-wrap {
-  border-color: rgba(29, 78, 216, 0.24);
+  border-color: rgba(29, 78, 216, 0.52);
+  box-shadow: 0 0 0 1px rgba(29, 78, 216, 0.52);
 }
 
 .year-overview-table {
