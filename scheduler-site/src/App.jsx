@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  OVERVIEW_ROWS,
   buildOverviewCounts,
-  collectOverviewWorkerNames,
   getOverviewServiceType,
+  inactiveOverviewNames,
+  overviewPeriodNames,
+  overviewTotalNames,
   visibleOverviewRows,
 } from './yearOverviewStats.js'
 
@@ -2195,7 +2196,7 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
   )
 }
 
-function OverviewMatrix({ title, events, names }) {
+function OverviewMatrix({ title, events, names, inactiveNameSet }) {
   const counts = useMemo(() => buildOverviewCounts(events, names), [events, names])
   const rows = useMemo(() => visibleOverviewRows(counts, names), [counts, names])
   const headerGroups = useMemo(() => {
@@ -2257,7 +2258,7 @@ function OverviewMatrix({ title, events, names }) {
           </thead>
           <tbody>
             {names.map(name => (
-              <tr key={name}>
+              <tr key={name} className={inactiveNameSet?.has(name) ? 'overview-inactive-row' : undefined}>
                 <td>{name}</td>
                 {rows.map(row => <td key={row.key}>{counts[name]?.[row.key] || 0}</td>)}
               </tr>
@@ -2290,18 +2291,16 @@ function YearOverviewModal({ schedule, team, onClose }) {
     if (!years.includes(year)) setYear(preferredYear)
   }, [preferredYear, year, years])
   const yearEvents = useMemo(() => schedule.filter(event => event.date.startsWith(year) && getOverviewServiceType(event)), [schedule, year])
-  const names = useMemo(() => {
-    const scheduledNames = collectOverviewWorkerNames(yearEvents)
-    const displayNames = [...new Set([...activeNames, ...scheduledNames])]
-    const counts = buildOverviewCounts(yearEvents, displayNames)
-    return displayNames.sort((a, b) => {
-      if (a === 'Florian') return -1
-      if (b === 'Florian') return 1
-      const totalDiff = (counts[b]?.['\u03A3'] || 0) - (counts[a]?.['\u03A3'] || 0)
-      return totalDiff || a.localeCompare(b)
-    })
-  }, [activeNames, yearEvents])
+  const yearNames = useMemo(() => overviewTotalNames(yearEvents, activeNames), [activeNames, yearEvents])
   const months = useMemo(() => [...new Set(yearEvents.map(event => event.date.slice(0, 7)))].sort(), [yearEvents])
+  const monthNamesByKey = useMemo(() => {
+    const grouped = {}
+    months.forEach(month => {
+      const monthEvents = yearEvents.filter(event => event.date.startsWith(month))
+      grouped[month] = overviewPeriodNames(monthEvents, activeNames)
+    })
+    return grouped
+  }, [activeNames, months, yearEvents])
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -2332,13 +2331,14 @@ function YearOverviewModal({ schedule, team, onClose }) {
               <button key={y} type="button" className={`role-focus-tab ${year === y ? 'active' : ''}`} onClick={() => setYear(y)}>{y}</button>
             ))}
           </div>
-          <OverviewMatrix title={`${year} totals`} events={yearEvents} names={names} />
+          <OverviewMatrix title={`${year} totals`} events={yearEvents} names={yearNames} />
           {months.map(month => (
             <OverviewMatrix
               key={month}
               title={new Date(`${month}-15`).toLocaleString('en', { month: 'long', year: 'numeric' })}
               events={yearEvents.filter(event => event.date.startsWith(month))}
-              names={names}
+              names={monthNamesByKey[month] || []}
+              inactiveNameSet={inactiveOverviewNames(monthNamesByKey[month] || [], activeNames)}
             />
           ))}
         </div>

@@ -65,6 +65,36 @@ export const visibleOverviewRows = (counts, names) => OVERVIEW_ROWS.filter(row =
   !row.optional || names.some(name => (counts[name]?.[row.key] || 0) > 0)
 ))
 
+export const sortOverviewNames = (names, counts) => (
+  [...names].sort((a, b) => {
+    if (a === 'Florian') return -1
+    if (b === 'Florian') return 1
+    const totalDiff = (counts[b]?.['\u03A3'] || 0) - (counts[a]?.['\u03A3'] || 0)
+    return totalDiff || a.localeCompare(b)
+  })
+)
+
+export const overviewTotalNames = (events, activeNames) => {
+  const counts = buildOverviewCounts(events, activeNames)
+  return sortOverviewNames(activeNames, counts)
+}
+
+export const overviewPeriodNames = (events, activeNames) => {
+  const activeNameSet = new Set(activeNames)
+  const scheduledNames = collectOverviewWorkerNames(events)
+  const displayNames = [...new Set([...activeNames, ...scheduledNames])]
+  const counts = buildOverviewCounts(events, displayNames)
+  return sortOverviewNames(
+    displayNames.filter(name => activeNameSet.has(name) || (counts[name]?.['\u03A3'] || 0) > 0),
+    counts,
+  )
+}
+
+export const inactiveOverviewNames = (names, activeNames) => {
+  const activeNameSet = new Set(activeNames)
+  return new Set(names.filter(name => !activeNameSet.has(name)))
+}
+
 export const buildOverviewCounts = (events, names) => {
   const counts = emptyOverviewCounts(names)
   events.forEach(event => {

@@ -3382,6 +3382,20 @@ body {
   font-weight: 800;
 }
 
+.overview-inactive-row td {
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.overview-inactive-row td:first-child {
+  background: rgba(148, 163, 184, 0.12);
+  font-style: italic;
+}
+
+.overview-inactive-row td:not(:first-child) {
+  opacity: 0.68;
+}
+
 .segmented {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

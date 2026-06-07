@@ -4,6 +4,9 @@ import {
   buildOverviewCounts,
   collectOverviewWorkerNames,
   getOverviewServiceType,
+  inactiveOverviewNames,
+  overviewPeriodNames,
+  overviewTotalNames,
   visibleOverviewRows,
 } from './yearOverviewStats.js'
 
@@ -67,6 +70,23 @@ const namesForYear = (events, activeNames = []) => [...new Set([
   assert.deepEqual(names.sort(), ['Current Person', 'Removed Person'])
   assert.equal(counts['Removed Person']['S\u03A3'], 1)
   assert.equal(counts['Current Person']['S\u03A3'], 1)
+}
+
+{
+  const events = [
+    event({
+      date: '2026-03-08',
+      assignments: [
+        assignment('Computer', 'Current Person'),
+        assignment('Camera 2', 'Viktor'),
+      ],
+    }),
+  ]
+  const activeNames = ['Current Person']
+  assert.deepEqual(overviewTotalNames(events, activeNames), ['Current Person'])
+  assert.deepEqual(overviewPeriodNames(events, activeNames), ['Current Person', 'Viktor'])
+  assert.deepEqual([...inactiveOverviewNames(overviewPeriodNames(events, activeNames), activeNames)], ['Viktor'])
+  assert.deepEqual(overviewPeriodNames([], activeNames), ['Current Person'])
 }
 
 {
