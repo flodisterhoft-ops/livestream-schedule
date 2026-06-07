@@ -37,15 +37,16 @@ export const getOverviewServiceType = (event) => {
 }
 
 export const getOverviewRoleKey = (serviceType, role) => {
-  const normalized = (role || '').trim()
+  const normalized = (role || '').trim().replace(/\s+/g, ' ')
+  const compactCameraMatch = normalized.match(/^Camera\s*(\d+)?$/)
   if (serviceType === 'Sunday') {
     if (/^Computer(?:\s+\d+)?$/.test(normalized)) return 'S\uD83D\uDDA5'
-    if (normalized === 'Camera' || normalized === 'Camera 1') return 'S\uD83C\uDFA51'
-    if (normalized === 'Camera 2') return 'S\uD83C\uDFA52'
+    if (compactCameraMatch && (!compactCameraMatch[1] || compactCameraMatch[1] === '1')) return 'S\uD83C\uDFA51'
+    if (compactCameraMatch?.[1] === '2') return 'S\uD83C\uDFA52'
     return 'S?'
   }
   if (/^Computer(?:\s+\d+)?$/.test(normalized)) return 'F\uD83D\uDDA5'
-  if (/^Camera(?:\s+\d+)?$/.test(normalized)) return 'F\uD83C\uDFA5'
+  if (/^Camera(?:\b|\d)/.test(normalized)) return 'F\uD83C\uDFA5'
   return 'F?'
 }
 

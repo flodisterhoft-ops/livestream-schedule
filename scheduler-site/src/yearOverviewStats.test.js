@@ -150,6 +150,14 @@ const namesForYear = (events, activeNames = []) => [...new Set([
       ],
     }),
     event({
+      date: '2026-07-10',
+      day_type: 'Friday',
+      assignments: [
+        assignment('Camera1', 'Compact Weekday Camera'),
+        assignment('Camera A', 'Named Weekday Camera'),
+      ],
+    }),
+    event({
       date: '2026-09-26',
       day_type: 'Custom',
       custom_title: 'Saturday Conference',
@@ -166,6 +174,8 @@ const namesForYear = (events, activeNames = []) => [...new Set([
   assert.equal(counts['Extra Camera']['S?'], 1)
   assert.equal(counts['Custom Role']['S?'], 1)
   assert.equal(counts['Friday Camera']['F\uD83C\uDFA5'], 1)
+  assert.equal(counts['Compact Weekday Camera']['F\uD83C\uDFA5'], 1)
+  assert.equal(counts['Named Weekday Camera']['F\uD83C\uDFA5'], 1)
   assert.equal(counts['Friday Other']['F?'], 1)
   assert.equal(counts['Saturday Computer']['F\uD83D\uDDA5'], 1)
   assert.equal(counts['Saturday Camera']['F\uD83C\uDFA5'], 1)
