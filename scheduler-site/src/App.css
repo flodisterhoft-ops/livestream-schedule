@@ -3302,10 +3302,6 @@ body {
   box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.28);
 }
 
-.year-overview-summary .snapshot-panel-title {
-  color: rgb(29, 78, 216);
-}
-
 .year-overview-summary .year-overview-table-wrap {
   border-color: rgba(29, 78, 216, 0.24);
 }
@@ -3356,6 +3352,14 @@ body {
 .year-overview-table tbody td:first-child {
   width: 1%;
   border-right: 1px solid rgba(29, 78, 216, 0.44);
+}
+
+.year-overview-table .overview-name-header {
+  font-weight: 950;
+}
+
+.year-overview-summary .overview-name-header {
+  color: rgb(29, 78, 216);
 }
 
 .year-overview-table tbody td:last-child,

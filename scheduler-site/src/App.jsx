@@ -2232,12 +2232,11 @@ function OverviewMatrix({ title, events, names, inactiveNameSet, summary = false
   }, [rows])
   return (
     <div className={`overview-section ${summary ? 'year-overview-summary' : ''}`}>
-      <div className="snapshot-panel-title">{title}</div>
       <div className="year-overview-table-wrap">
-        <table className="year-overview-table">
+        <table className="year-overview-table" aria-label={`${title} overview`}>
           <thead>
             <tr className="overview-group-row">
-              <th className="overview-name-header" rowSpan="2">Name</th>
+              <th className="overview-name-header" rowSpan="2">{title}</th>
               {headerGroups.map(group => (
                 <th
                   key={group.key}
@@ -2345,11 +2344,11 @@ function YearOverviewModal({ schedule, team, onClose }) {
               <button key={y} type="button" className={`role-focus-tab ${year === y ? 'active' : ''}`} onClick={() => setYear(y)}>{y}</button>
             ))}
           </div>
-          <OverviewMatrix title={`${year} totals`} events={yearEvents} names={yearNames} summary />
+          <OverviewMatrix title={year} events={yearEvents} names={yearNames} summary />
           {months.map(month => (
             <OverviewMatrix
               key={month}
-              title={new Date(`${month}-15`).toLocaleString('en', { month: 'long', year: 'numeric' })}
+              title={new Date(`${month}-15`).toLocaleString('en', { month: 'long' })}
               events={yearEvents.filter(event => event.date.startsWith(month))}
               names={monthNamesByKey[month] || []}
               inactiveNameSet={inactiveOverviewNames(monthNamesByKey[month] || [], activeNames)}
