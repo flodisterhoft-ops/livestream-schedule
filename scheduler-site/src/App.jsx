@@ -2196,7 +2196,7 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
   )
 }
 
-function OverviewMatrix({ title, events, names, inactiveNameSet }) {
+function OverviewMatrix({ title, events, names, inactiveNameSet, summary = false }) {
   const counts = useMemo(() => buildOverviewCounts(events, names), [events, names])
   const rows = useMemo(() => visibleOverviewRows(counts, names), [counts, names])
   const headerGroups = useMemo(() => {
@@ -2231,7 +2231,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
     return groups
   }, [rows])
   return (
-    <div className="overview-section">
+    <div className={`overview-section ${summary ? 'year-overview-summary' : ''}`}>
       <div className="snapshot-panel-title">{title}</div>
       <div className="year-overview-table-wrap">
         <table className="year-overview-table">
@@ -2345,7 +2345,7 @@ function YearOverviewModal({ schedule, team, onClose }) {
               <button key={y} type="button" className={`role-focus-tab ${year === y ? 'active' : ''}`} onClick={() => setYear(y)}>{y}</button>
             ))}
           </div>
-          <OverviewMatrix title={`${year} totals`} events={yearEvents} names={yearNames} />
+          <OverviewMatrix title={`${year} totals`} events={yearEvents} names={yearNames} summary />
           {months.map(month => (
             <OverviewMatrix
               key={month}
