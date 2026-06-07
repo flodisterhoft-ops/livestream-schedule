@@ -3339,7 +3339,7 @@ body {
   left: 0;
   background: var(--bg);
   text-align: left;
-  font-weight: 800;
+  font-weight: 400;
   z-index: 1;
   width: 1%;
   max-width: max-content;
