@@ -2222,6 +2222,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
           span: 1,
           standalone: false,
           grandTotal: false,
+          dividerBefore: Boolean(row.dividerBefore),
         })
       }
     })
@@ -2240,15 +2241,20 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
                   key={group.key}
                   colSpan={group.span}
                   rowSpan={group.standalone ? 2 : 1}
-                  className={`overview-group-heading ${group.grandTotal ? 'grand-total' : ''}`}
+                  className={`overview-group-heading ${group.grandTotal ? 'grand-total' : ''} ${group.dividerBefore ? 'overview-divider-before' : ''}`}
                 >
-                  {group.label}
+                  {group.grandTotal ? (
+                    <span className="overview-grand-total-label">
+                      <span>Grand</span>
+                      <span>Total</span>
+                    </span>
+                  ) : group.label}
                 </th>
               ))}
             </tr>
             <tr className="overview-column-row">
               {rows.filter(row => row.groupLabel).map(row => (
-                <th key={row.key}>
+                <th key={row.key} className={row.dividerBefore ? 'overview-divider-before' : undefined}>
                   <span className="overview-header-label">
                     {row.labelBottom && <span>{row.labelBottom}</span>}
                   </span>
@@ -2260,13 +2266,19 @@ function OverviewMatrix({ title, events, names, inactiveNameSet }) {
             {names.map(name => (
               <tr key={name} className={inactiveNameSet?.has(name) ? 'overview-inactive-row' : undefined}>
                 <td>{name}</td>
-                {rows.map(row => <td key={row.key}>{counts[name]?.[row.key] || 0}</td>)}
+                {rows.map(row => (
+                  <td key={row.key} className={row.dividerBefore ? 'overview-divider-before' : undefined}>
+                    {counts[name]?.[row.key] || 0}
+                  </td>
+                ))}
               </tr>
             ))}
             <tr className="overview-total-row">
               <td>Total</td>
               {rows.map(row => (
-                <td key={row.key}>{names.reduce((sum, name) => sum + (counts[name]?.[row.key] || 0), 0)}</td>
+                <td key={row.key} className={row.dividerBefore ? 'overview-divider-before' : undefined}>
+                  {names.reduce((sum, name) => sum + (counts[name]?.[row.key] || 0), 0)}
+                </td>
               ))}
             </tr>
           </tbody>
