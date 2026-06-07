@@ -390,7 +390,7 @@ export default function App() {
 
   const openYearOverview = () => {
     setShowAdminAddMenu(false)
-    setShowYearOverview(true)
+    Promise.all([loadSchedule(), loadTeam()]).finally(() => setShowYearOverview(true))
   }
 
   // When opened from a Telegram suggestion link, fetch & prefill once auth resolved.
@@ -2192,35 +2192,87 @@ const OVERVIEW_ROWS = [
   { key: 'S\uD83D\uDDA5', labelTop: 'Sun', labelBottom: '\uD83D\uDDA5\uFE0F' },
   { key: 'S\uD83C\uDFA51', labelTop: 'Sun', labelBottom: '\uD83C\uDFA51\uFE0F\u20E3' },
   { key: 'S\uD83C\uDFA52', labelTop: 'Sun', labelBottom: '\uD83C\uDFA52\uFE0F\u20E3' },
+  { key: 'S?', labelTop: 'Sun', labelBottom: 'Other', optional: true },
   { key: 'S\u03A3', labelTop: 'Sun', labelBottom: 'Total' },
   { key: 'F\uD83D\uDDA5', labelTop: 'Bible', labelBottom: '\uD83D\uDDA5\uFE0F' },
   { key: 'F\uD83C\uDFA5', labelTop: 'Bible', labelBottom: '\uD83C\uDFA5' },
+  { key: 'F?', labelTop: 'Bible', labelBottom: 'Other', optional: true },
   { key: 'F\u03A3', labelTop: 'Bible', labelBottom: 'Total' },
+  { key: 'O\u03A3', labelTop: 'Other', labelBottom: 'Total', optional: true },
   { key: '\u03A3', labelTop: 'Total', labelBottom: '' },
 ]
 
+const emptyOverviewRow = () => OVERVIEW_ROWS.reduce((row, def) => {
+  row[def.key] = 0
+  return row
+}, {})
+
 const emptyOverviewCounts = (names) => names.reduce((acc, name) => {
-  acc[name] = { 'S\uD83D\uDDA5': 0, 'S\uD83C\uDFA51': 0, 'S\uD83C\uDFA52': 0, 'S\u03A3': 0, 'F\uD83D\uDDA5': 0, 'F\uD83C\uDFA5': 0, 'F\u03A3': 0, '\u03A3': 0 }
+  acc[name] = emptyOverviewRow()
   return acc
 }, {})
+
+const isOverviewWorker = (worker) => Boolean(worker && worker !== 'TBD' && worker !== 'Select Helper')
+
+const overviewWeekday = (dateKey) => {
+  const date = new Date(`${dateKey}T12:00:00`)
+  return Number.isNaN(date.getTime()) ? null : date.getDay()
+}
+
+const getOverviewServiceType = (event) => {
+  if (!event || event.cancelled) return null
+  const title = `${event.custom_title || ''} ${event.title || ''}`.toLowerCase()
+  const weekday = overviewWeekday(event.date)
+  if (event.day_type === 'Sunday' || title.includes('new year') || weekday === 0) return 'Sunday'
+  if (event.day_type === 'Friday' || weekday === 5) return 'Friday'
+  return 'Other'
+}
+
+const getOverviewRoleKey = (serviceType, role) => {
+  const normalized = (role || '').trim()
+  if (serviceType === 'Sunday') {
+    if (/^Computer(?:\s+\d+)?$/.test(normalized)) return 'S\uD83D\uDDA5'
+    if (normalized === 'Camera' || normalized === 'Camera 1') return 'S\uD83C\uDFA51'
+    if (normalized === 'Camera 2') return 'S\uD83C\uDFA52'
+    return 'S?'
+  }
+  if (serviceType === 'Friday') {
+    if (/^Computer(?:\s+\d+)?$/.test(normalized)) return 'F\uD83D\uDDA5'
+    if (/^Camera(?:\s+\d+)?$/.test(normalized)) return 'F\uD83C\uDFA5'
+    return 'F?'
+  }
+  return 'O\u03A3'
+}
+
+const collectOverviewWorkerNames = (events) => {
+  const names = new Set()
+  events.forEach(event => {
+    if (!getOverviewServiceType(event)) return
+    ;(event.assignments || []).forEach(assignment => {
+      const worker = assignment.cover || assignment.person
+      if (isOverviewWorker(worker)) names.add(worker)
+    })
+  })
+  return names
+}
+
+const visibleOverviewRows = (counts, names) => OVERVIEW_ROWS.filter(row => (
+  !row.optional || names.some(name => (counts[name]?.[row.key] || 0) > 0)
+))
 
 const buildOverviewCounts = (events, names) => {
   const counts = emptyOverviewCounts(names)
   events.forEach(event => {
+    const serviceType = getOverviewServiceType(event)
+    if (!serviceType) return
     ;(event.assignments || []).forEach(assignment => {
       const worker = assignment.cover || assignment.person
-      if (!worker || worker === 'TBD' || worker === 'Select Helper') return
-      if (!counts[worker]) counts[worker] = emptyOverviewCounts([worker])[worker]
-      let key = null
-      if (event.day_type === 'Sunday' && assignment.role === 'Computer') key = 'S\uD83D\uDDA5'
-      if (event.day_type === 'Sunday' && assignment.role === 'Camera 1') key = 'S\uD83C\uDFA51'
-      if (event.day_type === 'Sunday' && assignment.role === 'Camera 2') key = 'S\uD83C\uDFA52'
-      if (event.day_type === 'Friday' && assignment.role === 'Computer') key = 'F\uD83D\uDDA5'
-      if (event.day_type === 'Friday' && assignment.role === 'Camera') key = 'F\uD83C\uDFA5'
-      if (!key) return
+      if (!isOverviewWorker(worker)) return
+      if (!counts[worker]) counts[worker] = emptyOverviewRow()
+      const key = getOverviewRoleKey(serviceType, assignment.role)
       counts[worker][key] += 1
-      if (key.startsWith('S')) counts[worker]['S\u03A3'] += 1
-      if (key.startsWith('F')) counts[worker]['F\u03A3'] += 1
+      if (serviceType === 'Sunday') counts[worker]['S\u03A3'] += 1
+      if (serviceType === 'Friday') counts[worker]['F\u03A3'] += 1
       counts[worker]['\u03A3'] += 1
     })
   })
@@ -2229,6 +2281,7 @@ const buildOverviewCounts = (events, names) => {
 
 function OverviewMatrix({ title, events, names }) {
   const counts = useMemo(() => buildOverviewCounts(events, names), [events, names])
+  const rows = useMemo(() => visibleOverviewRows(counts, names), [counts, names])
   return (
     <div className="overview-section">
       <div className="snapshot-panel-title">{title}</div>
@@ -2237,7 +2290,7 @@ function OverviewMatrix({ title, events, names }) {
           <thead>
             <tr>
               <th>Name</th>
-              {OVERVIEW_ROWS.map(row => (
+              {rows.map(row => (
                 <th key={row.key}>
                   <span className={`overview-header-label ${row.key === '\u03A3' ? 'grand-total' : ''}`}>
                     <span>{row.labelTop}</span>
@@ -2251,12 +2304,12 @@ function OverviewMatrix({ title, events, names }) {
             {names.map(name => (
               <tr key={name}>
                 <td>{name}</td>
-                {OVERVIEW_ROWS.map(row => <td key={row.key}>{counts[name]?.[row.key] || 0}</td>)}
+                {rows.map(row => <td key={row.key}>{counts[name]?.[row.key] || 0}</td>)}
               </tr>
             ))}
             <tr className="overview-total-row">
               <td>Total</td>
-              {OVERVIEW_ROWS.map(row => (
+              {rows.map(row => (
                 <td key={row.key}>{names.reduce((sum, name) => sum + (counts[name]?.[row.key] || 0), 0)}</td>
               ))}
             </tr>
@@ -2269,18 +2322,24 @@ function OverviewMatrix({ title, events, names }) {
 
 function YearOverviewModal({ schedule, team, onClose }) {
   const overlayRef = useRef(null)
-  const years = [...new Set(schedule.map(event => event.date.slice(0, 4)))].sort()
+  const years = useMemo(() => [...new Set(schedule.map(event => event.date.slice(0, 4)))].sort(), [schedule])
   const currentYear = String(new Date().getFullYear())
-  const [year, setYear] = useState(years.includes(currentYear) ? currentYear : years[years.length - 1])
+  const preferredYear = years.includes(currentYear) ? currentYear : (years[years.length - 1] || currentYear)
+  const [year, setYear] = useState(preferredYear)
   const activeNames = useMemo(() => (
     team
       .filter(member => member.active !== false)
       .map(member => member.name)
   ), [team])
-  const yearEvents = useMemo(() => schedule.filter(event => event.date.startsWith(year) && ['Sunday', 'Friday'].includes(event.day_type)), [schedule, year])
+  useEffect(() => {
+    if (!years.includes(year)) setYear(preferredYear)
+  }, [preferredYear, year, years])
+  const yearEvents = useMemo(() => schedule.filter(event => event.date.startsWith(year) && getOverviewServiceType(event)), [schedule, year])
   const names = useMemo(() => {
-    const counts = buildOverviewCounts(yearEvents, activeNames)
-    return [...activeNames].sort((a, b) => {
+    const scheduledNames = collectOverviewWorkerNames(yearEvents)
+    const displayNames = [...new Set([...activeNames, ...scheduledNames])]
+    const counts = buildOverviewCounts(yearEvents, displayNames)
+    return displayNames.sort((a, b) => {
       if (a === 'Florian') return -1
       if (b === 'Florian') return 1
       const totalDiff = (counts[b]?.['\u03A3'] || 0) - (counts[a]?.['\u03A3'] || 0)
