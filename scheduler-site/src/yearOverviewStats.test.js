@@ -28,7 +28,7 @@ const namesForYear = (events, activeNames = []) => [...new Set([
   const sundayKeys = OVERVIEW_ROWS.filter(row => row.groupLabel === 'Sunday Service').map(row => row.key)
   const weekdayKeys = OVERVIEW_ROWS.filter(row => row.groupLabel === 'Weekday Service').map(row => row.key)
   assert.deepEqual(sundayKeys, ['S\uD83D\uDDA5', 'S\uD83C\uDFA51', 'S\uD83C\uDFA52', 'S?', 'S\u03A3'])
-  assert.deepEqual(weekdayKeys, ['F\uD83D\uDDA5', 'F\uD83C\uDFA5', 'F?', 'F\u03A3', 'O\u03A3'])
+  assert.deepEqual(weekdayKeys, ['F\uD83D\uDDA5', 'F\uD83C\uDFA5', 'F?', 'F\u03A3'])
 }
 
 {
@@ -84,6 +84,7 @@ const namesForYear = (events, activeNames = []) => [...new Set([
   ]
   const names = namesForYear(events)
   const counts = buildOverviewCounts(events, names)
+  assert.equal(getOverviewServiceType(events[0]), 'Weekday')
   assert.deepEqual(names, ['Added Person'])
   assert.equal(counts['Added Person']['F\uD83D\uDDA5'], 1)
   assert.equal(counts['Added Person']['\u03A3'], 1)
@@ -118,6 +119,16 @@ const namesForYear = (events, activeNames = []) => [...new Set([
         assignment('Slides', 'Friday Other'),
       ],
     }),
+    event({
+      date: '2026-09-26',
+      day_type: 'Custom',
+      custom_title: 'Saturday Conference',
+      assignments: [
+        assignment('Computer', 'Saturday Computer'),
+        assignment('Camera 3', 'Saturday Camera'),
+        assignment('Slides', 'Saturday Other'),
+      ],
+    }),
   ]
   const names = namesForYear(events)
   const counts = buildOverviewCounts(events, names)
@@ -126,10 +137,17 @@ const namesForYear = (events, activeNames = []) => [...new Set([
   assert.equal(counts['Custom Role']['S?'], 1)
   assert.equal(counts['Friday Camera']['F\uD83C\uDFA5'], 1)
   assert.equal(counts['Friday Other']['F?'], 1)
+  assert.equal(counts['Saturday Computer']['F\uD83D\uDDA5'], 1)
+  assert.equal(counts['Saturday Camera']['F\uD83C\uDFA5'], 1)
+  assert.equal(counts['Saturday Other']['F?'], 1)
   assert.equal(counts['Extra Camera']['S\u03A3'], 1)
   assert.equal(counts['Friday Other']['F\u03A3'], 1)
+  assert.equal(counts['Saturday Computer']['F\u03A3'], 1)
+  assert.equal(counts['Saturday Camera']['F\u03A3'], 1)
+  assert.equal(counts['Saturday Other']['F\u03A3'], 1)
   assert.ok(rows.includes('S?'))
   assert.ok(rows.includes('F?'))
+  assert.ok(!rows.includes('O\u03A3'))
 }
 
 console.log('yearOverviewStats tests passed')

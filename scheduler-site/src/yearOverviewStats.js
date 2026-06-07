@@ -8,7 +8,6 @@ export const OVERVIEW_ROWS = [
   { key: 'F\uD83C\uDFA5', groupLabel: 'Weekday Service', labelBottom: '\uD83C\uDFA5' },
   { key: 'F?', groupLabel: 'Weekday Service', labelBottom: 'Other', optional: true },
   { key: 'F\u03A3', groupLabel: 'Weekday Service', labelBottom: 'Total' },
-  { key: 'O\u03A3', groupLabel: 'Weekday Service', labelBottom: 'Other Service', optional: true },
   { key: '\u03A3', labelTop: 'Total', labelBottom: '' },
 ]
 
@@ -34,8 +33,7 @@ export const getOverviewServiceType = (event) => {
   const title = `${event.custom_title || ''} ${event.title || ''}`.toLowerCase()
   const weekday = overviewWeekday(event.date)
   if (event.day_type === 'Sunday' || title.includes('new year') || weekday === 0) return 'Sunday'
-  if (event.day_type === 'Friday' || weekday === 5) return 'Friday'
-  return 'Other'
+  return 'Weekday'
 }
 
 export const getOverviewRoleKey = (serviceType, role) => {
@@ -46,12 +44,9 @@ export const getOverviewRoleKey = (serviceType, role) => {
     if (normalized === 'Camera 2') return 'S\uD83C\uDFA52'
     return 'S?'
   }
-  if (serviceType === 'Friday') {
-    if (/^Computer(?:\s+\d+)?$/.test(normalized)) return 'F\uD83D\uDDA5'
-    if (/^Camera(?:\s+\d+)?$/.test(normalized)) return 'F\uD83C\uDFA5'
-    return 'F?'
-  }
-  return 'O\u03A3'
+  if (/^Computer(?:\s+\d+)?$/.test(normalized)) return 'F\uD83D\uDDA5'
+  if (/^Camera(?:\s+\d+)?$/.test(normalized)) return 'F\uD83C\uDFA5'
+  return 'F?'
 }
 
 export const collectOverviewWorkerNames = (events) => {
@@ -82,7 +77,7 @@ export const buildOverviewCounts = (events, names) => {
       const key = getOverviewRoleKey(serviceType, assignment.role)
       counts[worker][key] += 1
       if (serviceType === 'Sunday') counts[worker]['S\u03A3'] += 1
-      if (serviceType === 'Friday') counts[worker]['F\u03A3'] += 1
+      if (serviceType !== 'Sunday') counts[worker]['F\u03A3'] += 1
       counts[worker]['\u03A3'] += 1
     })
   })
