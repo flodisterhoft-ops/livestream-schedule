@@ -3315,13 +3315,13 @@ body {
   overflow: hidden;
 }
 
-.year-overview-table th:last-child,
-.year-overview-table td:last-child {
+.year-overview-table tbody td:last-child,
+.year-overview-table .overview-group-heading.grand-total {
   border-right: 0;
 }
 
-.year-overview-table th:first-child,
-.year-overview-table td:first-child {
+.year-overview-table .overview-name-header,
+.year-overview-table tbody td:first-child {
   position: sticky;
   left: 0;
   background: var(--bg);
@@ -3337,15 +3337,30 @@ body {
   text-overflow: ellipsis;
 }
 
-.year-overview-table th:first-child,
-.year-overview-table td:first-child {
+.year-overview-table .overview-name-header,
+.year-overview-table tbody td:first-child {
   width: 1%;
 }
 
-.year-overview-table th:last-child,
-.year-overview-table td:last-child {
+.year-overview-table tbody td:last-child,
+.year-overview-table .overview-group-heading.grand-total {
   background: rgba(15, 23, 42, 0.045);
   font-weight: 900;
+}
+
+.overview-group-heading {
+  padding: 5px 4px;
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--text);
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.overview-column-row th {
+  padding-top: 3px;
+  padding-bottom: 4px;
+  background: var(--bg-card);
 }
 
 .overview-header-label {

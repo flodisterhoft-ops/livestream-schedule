@@ -2198,18 +2198,57 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
 function OverviewMatrix({ title, events, names }) {
   const counts = useMemo(() => buildOverviewCounts(events, names), [events, names])
   const rows = useMemo(() => visibleOverviewRows(counts, names), [counts, names])
+  const headerGroups = useMemo(() => {
+    const groups = []
+    rows.forEach(row => {
+      if (!row.groupLabel) {
+        groups.push({
+          key: row.key,
+          label: row.labelTop,
+          span: 1,
+          standalone: true,
+          grandTotal: row.key === '\u03A3',
+        })
+        return
+      }
+      const last = groups[groups.length - 1]
+      if (last && last.label === row.groupLabel && !last.standalone) {
+        last.span += 1
+      } else {
+        groups.push({
+          key: row.groupLabel,
+          label: row.groupLabel,
+          span: 1,
+          standalone: false,
+          grandTotal: false,
+        })
+      }
+    })
+    return groups
+  }, [rows])
   return (
     <div className="overview-section">
       <div className="snapshot-panel-title">{title}</div>
       <div className="year-overview-table-wrap">
         <table className="year-overview-table">
           <thead>
-            <tr>
-              <th>Name</th>
-              {rows.map(row => (
+            <tr className="overview-group-row">
+              <th className="overview-name-header" rowSpan="2">Name</th>
+              {headerGroups.map(group => (
+                <th
+                  key={group.key}
+                  colSpan={group.span}
+                  rowSpan={group.standalone ? 2 : 1}
+                  className={`overview-group-heading ${group.grandTotal ? 'grand-total' : ''}`}
+                >
+                  {group.label}
+                </th>
+              ))}
+            </tr>
+            <tr className="overview-column-row">
+              {rows.filter(row => row.groupLabel).map(row => (
                 <th key={row.key}>
-                  <span className={`overview-header-label ${row.key === '\u03A3' ? 'grand-total' : ''}`}>
-                    <span>{row.labelTop}</span>
+                  <span className="overview-header-label">
                     {row.labelBottom && <span>{row.labelBottom}</span>}
                   </span>
                 </th>

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {
+  OVERVIEW_ROWS,
   buildOverviewCounts,
   collectOverviewWorkerNames,
   getOverviewServiceType,
@@ -22,6 +23,13 @@ const namesForYear = (events, activeNames = []) => [...new Set([
   ...activeNames,
   ...collectOverviewWorkerNames(events),
 ])]
+
+{
+  const sundayKeys = OVERVIEW_ROWS.filter(row => row.groupLabel === 'Sunday Service').map(row => row.key)
+  const weekdayKeys = OVERVIEW_ROWS.filter(row => row.groupLabel === 'Weekday Service').map(row => row.key)
+  assert.deepEqual(sundayKeys, ['S\uD83D\uDDA5', 'S\uD83C\uDFA51', 'S\uD83C\uDFA52', 'S?', 'S\u03A3'])
+  assert.deepEqual(weekdayKeys, ['F\uD83D\uDDA5', 'F\uD83C\uDFA5', 'F?', 'F\u03A3', 'O\u03A3'])
+}
 
 {
   const events = [
