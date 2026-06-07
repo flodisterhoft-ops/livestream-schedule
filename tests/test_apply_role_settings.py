@@ -129,7 +129,7 @@ def run_rename_preserves_schedule_and_updates_references(app):
                 accepted_by="Old Name",
                 event_date=event_date,
                 role="Computer",
-                expires_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None) + datetime.timedelta(days=1),
+                expires_at=datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(days=1),
             ),
             InteractionLog(person_name="Old Name", action="confirm", assignment_id=computer.id, event_date=event_date),
             TempChat(chat_id="1", kind="swap", person="Old Name", recipient="Old Name"),
