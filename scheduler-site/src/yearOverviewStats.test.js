@@ -82,15 +82,16 @@ const namesForYear = (events, activeNames = []) => [...new Set([
       date: '2026-03-08',
       assignments: [
         assignment('Computer', 'Current Person'),
+        assignment('Camera 1', 'Viktor'),
         assignment('Camera 2', 'Viktor'),
       ],
     }),
   ]
-  const activeNames = ['Current Person']
-  assert.deepEqual(overviewTotalNames(events, activeNames), ['Current Person'])
-  assert.deepEqual(overviewPeriodNames(events, activeNames), ['Current Person', 'Viktor'])
+  const activeNames = ['Current Person', 'Zero Active']
+  assert.deepEqual(overviewTotalNames(events, activeNames), ['Current Person', 'Zero Active'])
+  assert.deepEqual(overviewPeriodNames(events, activeNames), ['Current Person', 'Zero Active', 'Viktor'])
   assert.deepEqual([...inactiveOverviewNames(overviewPeriodNames(events, activeNames), activeNames)], ['Viktor'])
-  assert.deepEqual(overviewPeriodNames([], activeNames), ['Current Person'])
+  assert.deepEqual(overviewPeriodNames([], activeNames), ['Current Person', 'Zero Active'])
 }
 
 {

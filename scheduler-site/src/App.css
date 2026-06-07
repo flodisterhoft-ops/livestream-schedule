@@ -3401,7 +3401,6 @@ body {
 
 .overview-inactive-row td:first-child {
   background: rgba(148, 163, 184, 0.12);
-  font-style: italic;
 }
 
 .overview-inactive-row td:not(:first-child) {
