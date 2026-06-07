@@ -2296,25 +2296,25 @@ function YearOverviewModal({ schedule, team, onClose }) {
   const currentYear = String(new Date().getFullYear())
   const preferredYear = years.includes(currentYear) ? currentYear : (years[years.length - 1] || currentYear)
   const [year, setYear] = useState(preferredYear)
-  const activeNames = useMemo(() => (
-    team
-      .filter(member => member.active !== false)
-      .map(member => member.name)
-  ), [team])
+  const activeMembers = useMemo(() => team.filter(member => member.name && member.active !== false), [team])
+  const activeNames = useMemo(() => activeMembers.map(member => member.name), [activeMembers])
+  const newcomerNameSet = useMemo(() => (
+    new Set(activeMembers.filter(member => member.active_from).map(member => member.name))
+  ), [activeMembers])
   useEffect(() => {
     if (!years.includes(year)) setYear(preferredYear)
   }, [preferredYear, year, years])
   const yearEvents = useMemo(() => schedule.filter(event => event.date.startsWith(year) && getOverviewServiceType(event)), [schedule, year])
-  const yearNames = useMemo(() => overviewTotalNames(yearEvents, activeNames), [activeNames, yearEvents])
+  const yearNames = useMemo(() => overviewTotalNames(yearEvents, activeNames, newcomerNameSet), [activeNames, newcomerNameSet, yearEvents])
   const months = useMemo(() => [...new Set(yearEvents.map(event => event.date.slice(0, 7)))].sort(), [yearEvents])
   const monthNamesByKey = useMemo(() => {
     const grouped = {}
     months.forEach(month => {
       const monthEvents = yearEvents.filter(event => event.date.startsWith(month))
-      grouped[month] = overviewPeriodNames(monthEvents, activeNames)
+      grouped[month] = overviewPeriodNames(monthEvents, activeNames, newcomerNameSet)
     })
     return grouped
-  }, [activeNames, months, yearEvents])
+  }, [activeNames, newcomerNameSet, months, yearEvents])
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }

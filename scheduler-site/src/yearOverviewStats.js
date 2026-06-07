@@ -65,13 +65,16 @@ export const visibleOverviewRows = (counts, names) => OVERVIEW_ROWS.filter(row =
   !row.optional || names.some(name => (counts[name]?.[row.key] || 0) > 0)
 ))
 
-export const sortOverviewNames = (names, counts, activeNameSet = null) => (
+const overviewNameBucket = (name, activeNameSet, newcomerNameSet) => {
+  if (activeNameSet && !activeNameSet.has(name)) return 2
+  if (newcomerNameSet && newcomerNameSet.has(name)) return 1
+  return 0
+}
+
+export const sortOverviewNames = (names, counts, activeNameSet = null, newcomerNameSet = null) => (
   [...names].sort((a, b) => {
-    if (activeNameSet) {
-      const aInactive = !activeNameSet.has(a)
-      const bInactive = !activeNameSet.has(b)
-      if (aInactive !== bInactive) return aInactive ? 1 : -1
-    }
+    const bucketDiff = overviewNameBucket(a, activeNameSet, newcomerNameSet) - overviewNameBucket(b, activeNameSet, newcomerNameSet)
+    if (bucketDiff) return bucketDiff
     if (a === 'Florian') return -1
     if (b === 'Florian') return 1
     const totalDiff = (counts[b]?.['\u03A3'] || 0) - (counts[a]?.['\u03A3'] || 0)
@@ -79,12 +82,12 @@ export const sortOverviewNames = (names, counts, activeNameSet = null) => (
   })
 )
 
-export const overviewTotalNames = (events, activeNames) => {
+export const overviewTotalNames = (events, activeNames, newcomerNameSet = null) => {
   const counts = buildOverviewCounts(events, activeNames)
-  return sortOverviewNames(activeNames, counts)
+  return sortOverviewNames(activeNames, counts, null, newcomerNameSet)
 }
 
-export const overviewPeriodNames = (events, activeNames) => {
+export const overviewPeriodNames = (events, activeNames, newcomerNameSet = null) => {
   const activeNameSet = new Set(activeNames)
   const scheduledNames = collectOverviewWorkerNames(events)
   const displayNames = [...new Set([...activeNames, ...scheduledNames])]
@@ -93,6 +96,7 @@ export const overviewPeriodNames = (events, activeNames) => {
     displayNames.filter(name => activeNameSet.has(name) || (counts[name]?.['\u03A3'] || 0) > 0),
     counts,
     activeNameSet,
+    newcomerNameSet,
   )
 }
 
