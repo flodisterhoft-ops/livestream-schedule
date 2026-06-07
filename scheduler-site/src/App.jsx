@@ -2199,6 +2199,11 @@ function RoleSettingsModal({ team, onClose, onSaved, showFlash }) {
 function OverviewMatrix({ title, events, names, inactiveNameSet, summary = false }) {
   const counts = useMemo(() => buildOverviewCounts(events, names), [events, names])
   const rows = useMemo(() => visibleOverviewRows(counts, names), [counts, names])
+  const overviewCellClass = (row) => [
+    row.groupLabel ? 'overview-service-cell' : 'overview-grand-total-cell',
+    row.dividerBefore ? 'overview-divider-before' : '',
+    row.dividerAfter ? 'overview-divider-after' : '',
+  ].filter(Boolean).join(' ')
   const headerGroups = useMemo(() => {
     const groups = []
     rows.forEach(row => {
@@ -2255,7 +2260,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet, summary = false
             </tr>
             <tr className="overview-column-row">
               {rows.filter(row => row.groupLabel).map(row => (
-                <th key={row.key} className={`${row.dividerBefore ? 'overview-divider-before' : ''} ${row.dividerAfter ? 'overview-divider-after' : ''}`}>
+                <th key={row.key} className={overviewCellClass(row)}>
                   <span className="overview-header-label">
                     {row.labelBottom && <span>{row.labelBottom}</span>}
                   </span>
@@ -2268,7 +2273,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet, summary = false
               <tr key={name} className={inactiveNameSet?.has(name) ? 'overview-inactive-row' : undefined}>
                 <td>{name}</td>
                 {rows.map(row => (
-                  <td key={row.key} className={`${row.dividerBefore ? 'overview-divider-before' : ''} ${row.dividerAfter ? 'overview-divider-after' : ''}`}>
+                  <td key={row.key} className={overviewCellClass(row)}>
                     {counts[name]?.[row.key] || 0}
                   </td>
                 ))}
@@ -2277,7 +2282,7 @@ function OverviewMatrix({ title, events, names, inactiveNameSet, summary = false
             <tr className="overview-total-row">
               <td>Total</td>
               {rows.map(row => (
-                <td key={row.key} className={`${row.dividerBefore ? 'overview-divider-before' : ''} ${row.dividerAfter ? 'overview-divider-after' : ''}`}>
+                <td key={row.key} className={overviewCellClass(row)}>
                   {names.reduce((sum, name) => sum + (counts[name]?.[row.key] || 0), 0)}
                 </td>
               ))}

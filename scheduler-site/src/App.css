@@ -3326,6 +3326,11 @@ body {
   overflow: hidden;
 }
 
+.year-overview-table .overview-service-cell {
+  width: 2.65rem;
+  min-width: 2.65rem;
+}
+
 .year-overview-table tbody td:last-child,
 .year-overview-table .overview-group-heading.grand-total {
   border-right: 0;
