@@ -3423,6 +3423,10 @@ body {
   border-right-color: rgba(29, 78, 216, 0.28);
 }
 
+.year-overview-table .overview-total-row td:first-child {
+  font-weight: 950;
+}
+
 .overview-inactive-row td {
   color: var(--text-muted);
   background: rgba(148, 163, 184, 0.08);
