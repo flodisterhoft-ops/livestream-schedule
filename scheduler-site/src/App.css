@@ -3340,6 +3340,7 @@ body {
 .year-overview-table .overview-name-header,
 .year-overview-table tbody td:first-child {
   width: 1%;
+  border-right: 1px solid rgba(29, 78, 216, 0.44);
 }
 
 .year-overview-table tbody td:last-child,
@@ -3358,11 +3359,11 @@ body {
 }
 
 .year-overview-table .overview-divider-before {
-  border-left: 1px solid rgba(37, 99, 235, 0.46);
+  border-left: 1px solid rgba(29, 78, 216, 0.44);
 }
 
 .year-overview-table .overview-divider-after {
-  border-right: 1px solid rgba(37, 99, 235, 0.46);
+  border-right: 1px solid rgba(29, 78, 216, 0.44);
 }
 
 .overview-grand-total-label {

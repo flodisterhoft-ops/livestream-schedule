@@ -34,8 +34,8 @@ const namesForYear = (events, activeNames = []) => [...new Set([
   assert.deepEqual(sundayKeys, ['S\uD83D\uDDA5', 'S\uD83C\uDFA51', 'S\uD83C\uDFA52', 'S?', 'S\u03A3'])
   assert.deepEqual(weekdayKeys, ['F\uD83D\uDDA5', 'F\uD83C\uDFA5', 'F?', 'F\u03A3'])
   assert.equal(groupedOrder[0], 'Weekday Service')
-  assert.equal(OVERVIEW_ROWS.find(row => row.groupLabel === 'Weekday Service').dividerBefore, true)
-  assert.equal(OVERVIEW_ROWS.find(row => row.groupLabel === 'Sunday Service').dividerBefore, true)
+  assert.equal(OVERVIEW_ROWS.find(row => row.key === 'F\u03A3').dividerAfter, true)
+  assert.equal(OVERVIEW_ROWS.find(row => row.groupLabel === 'Sunday Service').dividerBefore, undefined)
   assert.equal(OVERVIEW_ROWS.find(row => row.key === 'S\u03A3').dividerAfter, true)
   assert.equal(OVERVIEW_ROWS.at(-1).labelTop, 'Grand Total')
 }
