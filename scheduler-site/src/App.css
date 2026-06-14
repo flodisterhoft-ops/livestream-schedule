@@ -2977,6 +2977,10 @@ body {
   gap: 10px;
 }
 
+.year-overview-month-nav {
+  margin-top: 14px;
+}
+
 .role-settings-body.compact {
   gap: 10px;
 }
