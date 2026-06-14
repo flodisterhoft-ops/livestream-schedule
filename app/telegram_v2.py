@@ -137,22 +137,70 @@ def _notify_admin(action, person_name, assignment=None, event=None):
 #  Low-level Telegram API
 # ═══════════════════════════════════════════════════════════════════
 
-def _api_call(method, payload, timeout=10):
-    """Make a Telegram Bot API call. Returns the result dict or None."""
+def _api_call_result(method, payload, timeout=10):
+    """Make a Telegram Bot API call. Returns (result, error_description)."""
     if not TELEGRAM_BOT_TOKEN:
         print("[Telegram v2] No bot token configured")
-        return None
+        return None, "No bot token configured"
     url = f"{BASE_API}{TELEGRAM_BOT_TOKEN}/{method}"
     try:
         resp = requests.post(url, json=payload, timeout=timeout)
         data = resp.json()
         if data.get("ok"):
-            return data.get("result")
-        print(f"[Telegram v2] API error: {data.get('description', 'Unknown')}")
-        return None
+            return data.get("result"), None
+        description = data.get("description", "Unknown")
+        print(f"[Telegram v2] API error: {description}")
+        return None, description
     except requests.RequestException as e:
         print(f"[Telegram v2] Request error: {e}")
-        return None
+        return None, str(e)
+
+
+def _api_call(method, payload, timeout=10):
+    """Make a Telegram Bot API call. Returns the result dict or None."""
+    result, _error = _api_call_result(method, payload, timeout=timeout)
+    return result
+
+
+def _is_not_modified_error(error):
+    return bool(error and "message is not modified" in error.lower())
+
+
+def _is_missing_message_error(error):
+    if not error:
+        return False
+    text = error.lower()
+    return (
+        "message to edit not found" in text
+        or "message to delete not found" in text
+        or "message can't be edited" in text
+        or "message identifier is not specified" in text
+    )
+
+
+def edit_message_with_error(chat_id, message_id, text, reply_markup=None):
+    """Edit an existing message. Returns (ok, error_description)."""
+    payload = {
+        "chat_id": chat_id or TELEGRAM_CHAT_ID,
+        "message_id": message_id,
+        "text": text,
+        "parse_mode": "HTML",
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    result, error = _api_call_result("editMessageText", payload)
+    if result is not None or _is_not_modified_error(error):
+        return True, None
+    return False, error
+
+
+def delete_message_with_error(chat_id, message_id):
+    """Delete a message. Returns (ok, error_description)."""
+    payload = {"chat_id": chat_id or TELEGRAM_CHAT_ID, "message_id": message_id}
+    result, error = _api_call_result("deleteMessage", payload)
+    if result is not None or _is_missing_message_error(error):
+        return True, None
+    return False, error
 
 
 def send_message(text, chat_id=None, reply_markup=None, parse_mode="HTML"):
@@ -173,15 +221,8 @@ def send_message(text, chat_id=None, reply_markup=None, parse_mode="HTML"):
 
 def edit_message(chat_id, message_id, text, reply_markup=None):
     """Edit an existing message. Returns True on success."""
-    payload = {
-        "chat_id": chat_id or TELEGRAM_CHAT_ID,
-        "message_id": message_id,
-        "text": text,
-        "parse_mode": "HTML",
-    }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
-    return _api_call("editMessageText", payload) is not None
+    ok, _error = edit_message_with_error(chat_id, message_id, text, reply_markup=reply_markup)
+    return ok
 
 
 def edit_message_markup(chat_id, message_id, reply_markup):
@@ -206,8 +247,8 @@ def answer_callback(callback_query_id, text="", show_alert=False):
 
 def delete_message(chat_id, message_id):
     """Delete a message."""
-    payload = {"chat_id": chat_id or TELEGRAM_CHAT_ID, "message_id": message_id}
-    return _api_call("deleteMessage", payload) is not None
+    ok, _error = delete_message_with_error(chat_id, message_id)
+    return ok
 
 
 def _site_url():
@@ -1340,12 +1381,21 @@ def _can_undo_event_decline(assignment, person_name):
 
 
 def _weekly_schedule_already_sent(monday):
+    return _weekly_schedule_log(monday) is not None
+
+
+def _weekly_schedule_log(monday):
     key = f"weekly_schedule:{monday.isoformat()}"
-    return InteractionLog.query.filter(
-        InteractionLog.action == "weekly_schedule_sent",
-        InteractionLog.event_date == monday,
-        InteractionLog.details.like(f"{key}%"),
-    ).first() is not None
+    return (
+        InteractionLog.query
+        .filter(
+            InteractionLog.action == "weekly_schedule_sent",
+            InteractionLog.event_date == monday,
+            InteractionLog.details.like(f"{key}%"),
+        )
+        .order_by(InteractionLog.id.desc())
+        .first()
+    )
 
 
 def send_weekly_schedule(chat_id=None, force=False, today=None):
@@ -1353,7 +1403,7 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
     monday, sunday, send_date = _weekly_schedule_anchor(today)
     if not force and today != send_date:
         return 0
-    if _weekly_schedule_already_sent(monday):
+    if not force and _weekly_schedule_already_sent(monday):
         return 0
     events_exist = Event.query.filter(Event.date >= monday, Event.date <= sunday).first() is not None
     if not events_exist:
@@ -1366,11 +1416,12 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
     if not msg_id:
         return 0
 
+    reason = "weekly_schedule_resent" if force else "weekly_schedule_sent"
     db.session.add(InteractionLog(
         action="weekly_schedule_sent",
         person_name="group",
         event_date=monday,
-        details=f"weekly_schedule:{monday.isoformat()}|chat_id={target_chat_id}|message_id={msg_id}",
+        details=f"weekly_schedule:{monday.isoformat()}|chat_id={target_chat_id}|message_id={msg_id}|reason={reason}",
     ))
     db.session.commit()
     return 1
@@ -1456,23 +1507,19 @@ def update_weekly_schedule_for_date(date_obj):
     if not date_obj:
         return False
     monday = date_obj - datetime.timedelta(days=date_obj.weekday())
-    key = f"weekly_schedule:{monday.isoformat()}"
-    log = (
-        InteractionLog.query
-        .filter(
-            InteractionLog.action == "weekly_schedule_sent",
-            InteractionLog.event_date == monday,
-            InteractionLog.details.like(f"{key}%"),
-        )
-        .order_by(InteractionLog.id.desc())
-        .first()
-    )
+    log = _weekly_schedule_log(monday)
     chat_id, msg_id = _parse_weekly_schedule_log(log)
     if not chat_id or not msg_id:
         return False
     text = format_weekly_schedule(today=monday)
     buttons = _weekly_schedule_buttons()
-    return bool(edit_message(chat_id, msg_id, text, reply_markup=buttons))
+    ok, error = edit_message_with_error(chat_id, msg_id, text, reply_markup=buttons)
+    if ok:
+        return True
+    if _is_missing_message_error(error):
+        print(f"[weekly] Stored schedule message {msg_id} is gone; sending replacement for {monday.isoformat()}")
+        return bool(send_weekly_schedule(chat_id=chat_id, force=True, today=monday))
+    return False
 
 
 def update_weekly_schedule_for_event(event):
@@ -1499,6 +1546,29 @@ def send_personal_question_temp_group(assignment):
 
 def send_weekday_ack_temp_group(assignment):
     return _send_or_refresh_group_event_reminder(assignment.event)
+
+
+def _delete_swap_needed_message(swap, assignment=None, chat_id=None):
+    """Delete the public coverage request tied to an expired/cancelled swap."""
+    target_chat_id = swap.telegram_chat_id or chat_id or TELEGRAM_CHAT_ID
+    message_id = swap.telegram_message_id
+    if not message_id and assignment:
+        message_id = assignment.telegram_message_id
+
+    deleted = False
+    if target_chat_id and message_id:
+        deleted, error = delete_message_with_error(target_chat_id, message_id)
+        if not deleted:
+            print(f"[sweep] Failed to delete swap message {message_id}: {error}")
+
+    if deleted:
+        if assignment and assignment.telegram_message_id == message_id:
+            assignment.telegram_message_id = None
+        if swap.telegram_message_id == message_id:
+            swap.telegram_message_id = None
+            swap.telegram_chat_id = None
+
+    return deleted
 
 
 def send_monthly_schedule(year=None, month=None, chat_id=None):
@@ -2351,11 +2421,14 @@ def sweep_expired_swaps(chat_id=None):
     ).all()
 
     processed = 0
+    deleted_messages = 0
     for swap in expired:
         swap.status = "expired"
         try:
             assignment = Assignment.query.get(swap.assignment_id)
             event = assignment.event if assignment else None
+            if _delete_swap_needed_message(swap, assignment=assignment, chat_id=chat_id):
+                deleted_messages += 1
             for temp_chat in TempChat.query.filter_by(swap_request_id=swap.id, status="active").all():
                 _delete_temp_chat(temp_chat)
             db.session.commit()
@@ -2367,7 +2440,7 @@ def sweep_expired_swaps(chat_id=None):
         processed += 1
 
     if processed:
-        print(f"[sweep] Processed {processed} expired swap(s)")
+        print(f"[sweep] Processed {processed} expired swap(s); deleted {deleted_messages} swap message(s)")
     return processed
 
 
