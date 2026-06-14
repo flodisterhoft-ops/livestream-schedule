@@ -1757,6 +1757,8 @@ def telegram_test():
 
     if test_type == "monthly":
         msg_id = tg.send_test_monthly()
+    elif test_type == "weekly-rich":
+        msg_id = tg.send_test_weekly_rich()
     else:
         msg_id = tg.send_test_reminder()
 

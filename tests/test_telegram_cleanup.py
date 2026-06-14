@@ -290,6 +290,30 @@ def run_past_confirmed_event_hides_green_telegram_icon(app):
         assert "Rene" in past_monthly
 
 
+def run_rich_weekly_schedule_uses_role_comparison_table(app):
+    with app.app_context():
+        _clear_db()
+        friday = Event(date=datetime.date(2026, 6, 12), day_type="Friday")
+        sunday = Event(date=datetime.date(2026, 6, 14), day_type="Sunday")
+        db.session.add_all([friday, sunday])
+        db.session.flush()
+        db.session.add_all([
+            Assignment(event_id=friday.id, role="Computer", person="Marvin", status="pending"),
+            Assignment(event_id=friday.id, role="Camera", person="David Fink", status="pending"),
+            Assignment(event_id=sunday.id, role="Computer", person="Rene", status="pending"),
+            Assignment(event_id=sunday.id, role="Camera 1", person="David Fink", status="pending"),
+            Assignment(event_id=sunday.id, role="Camera 2", person="Marvin", status="pending"),
+        ])
+        db.session.commit()
+
+        rich = tg.format_weekly_schedule_rich(today=datetime.date(2026, 6, 9))
+
+        assert "<pre>Role   Bible Study  Sunday Service" in rich
+        assert "PC     Marvin       Rene" in rich
+        assert "Cam    David Fink   David Fink" in rich
+        assert "Cam 2  -            Marvin" in rich
+
+
 def run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app):
     with app.app_context():
         _clear_db()
@@ -386,6 +410,7 @@ def main():
         run_swap_needed_does_not_duplicate_on_refresh_error(app)
         run_expired_uncovered_swap_renders_struck_through(app)
         run_past_confirmed_event_hides_green_telegram_icon(app)
+        run_rich_weekly_schedule_uses_role_comparison_table(app)
         run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app)
         run_weekly_force_bypasses_existing_log(app)
         run_weekly_update_resends_missing_message(app)

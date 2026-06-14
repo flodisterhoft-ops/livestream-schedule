@@ -1108,6 +1108,92 @@ def format_weekly_schedule(today=None):
     return "\n".join(lines).strip()
 
 
+RICH_WEEKLY_ROLE_ROWS = [
+    ("PC", ("Computer",), ("Computer",)),
+    ("Cam", ("Camera",), ("Camera", "Camera 1")),
+    ("Cam 2", (), ("Camera 2",)),
+]
+
+
+def _weekly_rich_assignment_display(assignment):
+    if not assignment:
+        return "-"
+
+    worker = _worker_name(assignment)
+    if not worker or worker in ("TBD", "Select Helper"):
+        return "TBD"
+
+    if assignment.status == "swap_needed":
+        if _is_expired_uncovered_swap(assignment):
+            return f"{worker} closed"
+        return f"Need {worker}"
+
+    if assignment.cover:
+        return f"{assignment.cover} for {assignment.person}"
+
+    if _show_telegram_confirm_icon(assignment):
+        return f"OK {worker}"
+
+    return worker
+
+
+def _weekly_rich_assignment_for_roles(event, roles):
+    if not event or getattr(event, "cancelled", False):
+        return None
+    role_set = set(roles)
+    if not role_set:
+        return None
+    return next((assignment for assignment in event.assignments if assignment.role in role_set), None)
+
+
+def _weekly_rich_event_cell(event, roles):
+    if event and getattr(event, "cancelled", False):
+        return "No live"
+    return _weekly_rich_assignment_display(_weekly_rich_assignment_for_roles(event, roles))
+
+
+def _weekly_rich_table(friday, sunday_event):
+    rows = [["Role", "Bible Study", "Sunday Service"]]
+    for role_label, friday_roles, sunday_roles in RICH_WEEKLY_ROLE_ROWS:
+        rows.append([
+            role_label,
+            _weekly_rich_event_cell(friday, friday_roles),
+            _weekly_rich_event_cell(sunday_event, sunday_roles),
+        ])
+
+    widths = [max(len(row[index]) for row in rows) for index in range(3)]
+    return "\n".join(
+        f"{row[0].ljust(widths[0])}  {row[1].ljust(widths[1])}  {row[2]}"
+        for row in rows
+    )
+
+
+def format_weekly_schedule_rich(today=None):
+    monday, sunday, friday, sunday_event, extras = _weekly_schedule_events(today)
+    lines = [
+        "\U0001F4C5 <b>Livestream schedule this week</b>",
+        f"<i>{html.escape(_short_date(monday))} - {html.escape(_short_date(sunday))}</i>",
+        "",
+        f"<pre>{html.escape(_weekly_rich_table(friday, sunday_event))}</pre>",
+    ]
+
+    details = []
+    if friday:
+        details.append(f"Bible Study: {_short_date(friday.date)} @ {_event_time(friday)}")
+    if sunday_event:
+        details.append(f"Sunday Service: {_short_date(sunday_event.date)} @ {_event_time(sunday_event)}")
+    if details:
+        lines.extend(["", "<i>" + html.escape("\n".join(details)) + "</i>"])
+
+    if extras:
+        lines.extend(["", "<b>Also this week</b>"])
+        for event in extras:
+            lines.extend(_weekly_event_block(event))
+            lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 def _weekly_assignments_for_person(person_name, today=None):
     if not person_name:
         return []
@@ -2628,6 +2714,13 @@ def send_test_monthly(chat_id=None):
     target = chat_id or PERSONAL_CHAT_ID
     today = vancouver_today()
     return send_monthly_schedule(today.year, today.month, chat_id=target)
+
+
+def send_test_weekly_rich(chat_id=None):
+    """Send a rich weekly schedule preview to the personal chat ID."""
+    target = chat_id or PERSONAL_CHAT_ID
+    text = format_weekly_schedule_rich(today=vancouver_today())
+    return send_message(text, chat_id=target)
 
 
 def test_connection():
