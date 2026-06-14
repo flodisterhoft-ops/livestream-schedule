@@ -3,7 +3,7 @@ from collections import defaultdict
 
 from flask import Blueprint, current_app, make_response, request
 from .models import Event, Assignment
-from .utils import VANCOUVER_TZ
+from .utils import VANCOUVER_TZ, vancouver_today
 
 bp = Blueprint('main', __name__)
 
@@ -275,17 +275,31 @@ def _calendar_response(body, filename):
     return response
 
 
+def _calendar_start_date():
+    if request.args.get("archive") in ("1", "true", "yes"):
+        return None
+    return vancouver_today() - datetime.timedelta(days=14)
+
+
 @bp.route("/calendar.ics")
 def calendar_full():
-    events = Event.query.order_by(Event.date).all()
+    query = Event.query
+    start_date = _calendar_start_date()
+    if start_date:
+        query = query.filter(Event.date >= start_date)
+    events = query.order_by(Event.date).all()
     return _calendar_response(generate_ical(events), "livestream_schedule.ics")
 
 
 @bp.route("/calendar/<person>.ics")
 def calendar_person(person):
-    assignments = Assignment.query.filter(
+    assignment_query = Assignment.query.filter(
         (Assignment.person == person) | (Assignment.cover == person)
-    ).all()
+    )
+    start_date = _calendar_start_date()
+    if start_date:
+        assignment_query = assignment_query.join(Event).filter(Event.date >= start_date)
+    assignments = assignment_query.all()
     event_ids = {assignment.event_id for assignment in assignments}
     events = Event.query.filter(Event.id.in_(event_ids)).order_by(Event.date).all() if event_ids else []
     filename = f"{_uid_token(person)}_schedule.ics"
