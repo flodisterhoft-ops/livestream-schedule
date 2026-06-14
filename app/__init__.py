@@ -352,6 +352,7 @@ def _start_daily_scheduler(app):
                 print(f"[Scheduler] Horizon top-up failed: {e}")
 
     scheduler = BackgroundScheduler(timezone="America/Vancouver", daemon=True)
+    weekly_schedule_hour = int(app.config.get("WEEKLY_SCHEDULE_HOUR", 8))
     scheduler.add_job(
         _fire_daily_reminders,
         trigger=CronTrigger(hour=8, minute=0, timezone="America/Vancouver"),
@@ -375,7 +376,7 @@ def _start_daily_scheduler(app):
     )
     scheduler.add_job(
         _fire_weekly_schedule,
-        trigger=CronTrigger(day_of_week="mon,tue", hour=8, minute=0, timezone="America/Vancouver"),
+        trigger=CronTrigger(day_of_week="mon,tue", hour=weekly_schedule_hour, minute=0, timezone="America/Vancouver"),
         id="weekly_schedule",
         replace_existing=True,
         misfire_grace_time=3600,

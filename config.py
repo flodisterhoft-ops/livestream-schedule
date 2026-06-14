@@ -32,6 +32,7 @@ class Config:
 
     # Notification settings
     REMINDER_HOUR = int(os.environ.get('REMINDER_HOUR', '9'))  # 9 AM Vancouver time
+    WEEKLY_SCHEDULE_HOUR = int(os.environ.get('WEEKLY_SCHEDULE_HOUR', '8'))  # 8 AM Vancouver time
 
     # External URL for generating Telegram and frontend links.
     # In live environments prefer the Oracle public domain via env var.
