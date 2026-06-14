@@ -219,6 +219,23 @@ def send_message(text, chat_id=None, reply_markup=None, parse_mode="HTML"):
     return result.get("message_id") if result else None
 
 
+def send_rich_message(html_text, chat_id=None, reply_markup=None):
+    """
+    Send a Bot API 10.1 rich message. Returns message_id on success.
+    """
+    payload = {
+        "chat_id": chat_id or TELEGRAM_CHAT_ID,
+        "rich_message": {
+            "html": html_text,
+            "skip_entity_detection": True,
+        },
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    result = _api_call("sendRichMessage", payload)
+    return result.get("message_id") if result else None
+
+
 def edit_message(chat_id, message_id, text, reply_markup=None):
     """Edit an existing message. Returns True on success."""
     ok, _error = edit_message_with_error(chat_id, message_id, text, reply_markup=reply_markup)
@@ -1121,18 +1138,21 @@ def _weekly_rich_assignment_display(assignment):
 
     worker = _worker_name(assignment)
     if not worker or worker in ("TBD", "Select Helper"):
-        return "TBD"
+        return "<i>TBD</i>"
+    worker = html.escape(worker)
 
     if assignment.status == "swap_needed":
         if _is_expired_uncovered_swap(assignment):
-            return f"{worker} closed"
-        return f"Need {worker}"
+            return f"<s>{worker}</s>"
+        return f"<mark>Needs cover</mark> {worker}"
 
     if assignment.cover:
-        return f"{assignment.cover} for {assignment.person}"
+        cover = html.escape(assignment.cover)
+        original = html.escape(assignment.person)
+        return f"<b>{cover}</b> <s>{original}</s>"
 
     if _show_telegram_confirm_icon(assignment):
-        return f"OK {worker}"
+        return f"✅ <b>{worker}</b>"
 
     return worker
 
@@ -1152,52 +1172,68 @@ def _weekly_rich_event_cell(event, roles):
     return _weekly_rich_assignment_display(_weekly_rich_assignment_for_roles(event, roles))
 
 
-def _weekly_rich_table(friday, sunday_event):
-    rows = [["Role", "Bible Study", "Sunday Service"]]
+def _weekly_rich_table_html(friday, sunday_event):
+    rows = []
     for role_label, friday_roles, sunday_roles in RICH_WEEKLY_ROLE_ROWS:
         rows.append([
-            role_label,
+            html.escape(role_label),
             _weekly_rich_event_cell(friday, friday_roles),
             _weekly_rich_event_cell(sunday_event, sunday_roles),
         ])
 
-    widths = [max(len(row[index]) for row in rows) for index in range(3)]
-    separator = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
-    formatted_rows = [
-        "|" + "|".join(f" {cell.ljust(widths[index])} " for index, cell in enumerate(row)) + "|"
-        for row in rows
+    table_rows = [
+        "<table bordered striped>",
+        "<caption>Weekly assignments</caption>",
+        "<tr><th align=\"left\">Role</th><th>Bible Study</th><th>Sunday Service</th></tr>",
     ]
+    for role, bible_study, sunday_service in rows:
+        table_rows.append(
+            f"<tr><td align=\"left\">{role}</td>"
+            f"<td align=\"center\">{bible_study}</td>"
+            f"<td align=\"center\">{sunday_service}</td></tr>"
+        )
+    table_rows.append("</table>")
+    return "\n".join(table_rows)
+
+
+def _weekly_rich_details_html(friday, sunday_event):
+    items = []
+    if friday:
+        items.append(
+            f"<li><b>Bible Study</b>: {html.escape(_short_date(friday.date))} @ {html.escape(_event_time(friday))}</li>"
+        )
+    if sunday_event:
+        items.append(
+            f"<li><b>Sunday Service</b>: {html.escape(_short_date(sunday_event.date))} @ {html.escape(_event_time(sunday_event))}</li>"
+        )
+    if not items:
+        return ""
     return "\n".join([
-        separator,
-        formatted_rows[0],
-        separator,
-        *formatted_rows[1:],
-        separator,
+        "<details open><summary>Service times</summary>",
+        "<ul>",
+        *items,
+        "</ul>",
+        "</details>",
     ])
 
 
 def format_weekly_schedule_rich(today=None):
     monday, sunday, friday, sunday_event, extras = _weekly_schedule_events(today)
     lines = [
-        "\U0001F4C5 <b>Livestream schedule this week</b>",
-        f"<i>{html.escape(_short_date(monday))} - {html.escape(_short_date(sunday))}</i>",
-        "",
-        f"<pre>{html.escape(_weekly_rich_table(friday, sunday_event))}</pre>",
+        "<h3>📅 Livestream schedule this week</h3>",
+        f"<p><i>{html.escape(_short_date(monday))} - {html.escape(_short_date(sunday))}</i></p>",
+        _weekly_rich_table_html(friday, sunday_event),
     ]
 
-    details = []
-    if friday:
-        details.append(f"Bible Study: {_short_date(friday.date)} @ {_event_time(friday)}")
-    if sunday_event:
-        details.append(f"Sunday Service: {_short_date(sunday_event.date)} @ {_event_time(sunday_event)}")
+    details = _weekly_rich_details_html(friday, sunday_event)
     if details:
-        lines.extend(["", "<i>" + html.escape("\n".join(details)) + "</i>"])
+        lines.append(details)
 
     if extras:
-        lines.extend(["", "<b>Also this week</b>"])
+        lines.extend(["<hr/>", "<h4>Also this week</h4>"])
         for event in extras:
-            lines.extend(_weekly_event_block(event))
-            lines.append("")
+            event_lines = html.escape("\n".join(_weekly_event_block(event)))
+            lines.append(f"<blockquote>{event_lines}</blockquote>")
 
     return "\n".join(lines).strip()
 
@@ -2728,7 +2764,7 @@ def send_test_weekly_rich(chat_id=None):
     """Send a rich weekly schedule preview to the personal chat ID."""
     target = chat_id or PERSONAL_CHAT_ID
     text = format_weekly_schedule_rich(today=vancouver_today())
-    return send_message(text, chat_id=target)
+    return send_rich_message(text, chat_id=target)
 
 
 def test_connection():
