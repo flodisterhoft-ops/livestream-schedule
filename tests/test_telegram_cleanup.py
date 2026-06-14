@@ -217,6 +217,43 @@ def run_swap_needed_does_not_duplicate_on_refresh_error(app):
         assert db.session.get(SwapRequest, swap.id).telegram_message_id == 700
 
 
+def run_expired_uncovered_swap_renders_struck_through(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 12),
+            person="David Fink",
+            status="swap_needed",
+        )
+        db.session.add(SwapRequest(
+            assignment_id=assignment.id,
+            requestor="David Fink",
+            event_date=event.date,
+            role=assignment.role,
+            expires_at=(
+                datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                - datetime.timedelta(minutes=5)
+            ),
+            status="expired",
+        ))
+        db.session.commit()
+
+        weekly = tg.format_weekly_schedule(today=event.date)
+        group_post = tg.format_today_group_post(event)
+        monthly = tg.format_monthly_schedule(2026, 6)
+        collapsed_buttons = tg._build_event_buttons(event)["inline_keyboard"]
+        expanded_buttons = tg._build_event_buttons(event, expanded_id=assignment.id)["inline_keyboard"]
+
+        assert "<s>David Fink</s>" in weekly
+        assert "<s>David Fink</s>" in group_post
+        assert "<s>David Fink</s>" in monthly
+        assert tg.DECLINE_CUSTOM_EMOJI_ID not in weekly
+        assert tg.DECLINE_CUSTOM_EMOJI_ID not in group_post
+        assert collapsed_buttons[0][0]["text"].endswith("David Fink - closed")
+        assert "🔴" not in collapsed_buttons[0][0]["text"]
+        assert "I can cover" not in str(expanded_buttons)
+
+
 def run_weekly_force_bypasses_existing_log(app):
     with app.app_context():
         _clear_db()
@@ -293,6 +330,7 @@ def main():
         run_swap_needed_reuses_existing_broadcast(app)
         run_swap_needed_replaces_missing_broadcast(app)
         run_swap_needed_does_not_duplicate_on_refresh_error(app)
+        run_expired_uncovered_swap_renders_struck_through(app)
         run_weekly_force_bypasses_existing_log(app)
         run_weekly_update_resends_missing_message(app)
     finally:

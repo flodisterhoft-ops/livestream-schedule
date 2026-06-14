@@ -697,9 +697,10 @@ def _build_event_buttons(
                     {"text": "⬅️ Back",  "callback_data": callback("collapse", a.id)},
                 ])
             elif a.status == "swap_needed":
-                rows.append([
-                    {"text": "🙋 I can cover", "callback_data": callback("pickup", a.id)},
-                ])
+                if not _is_expired_uncovered_swap(a):
+                    rows.append([
+                        {"text": "🙋 I can cover", "callback_data": callback("pickup", a.id)},
+                    ])
                 rows.append([
                     {"text": "↩️ Undo",  "callback_data": callback("undo", a.id)},
                     {"text": "⬅️ Back",  "callback_data": callback("collapse", a.id)},
@@ -718,7 +719,10 @@ def _build_event_buttons(
         if a.status == "confirmed":
             label = f"✅ {worker} - Confirmed"
         elif a.status == "swap_needed":
-            label = f"🔴 {worker} NEEDS COVERAGE"
+            if _is_expired_uncovered_swap(a):
+                label = f"{role_icon} {worker} - closed"
+            else:
+                label = f"🔴 {worker} NEEDS COVERAGE"
         else:
             label = f"{role_icon} {worker}"
 
@@ -929,7 +933,10 @@ def format_monthly_schedule(year, month):
             if is_friday:
                 icon = FRIDAY_ICONS[i] if i < len(FRIDAY_ICONS) else "🙌"
                 if a.status == "swap_needed":
-                    lines.append(f"  {icon} <b>NEEDED</b>")
+                    if _is_expired_uncovered_swap(a):
+                        lines.append(f"  {icon} <s>{worker}</s>")
+                    else:
+                        lines.append(f"  {icon} <b>NEEDED</b>")
                 elif worker in ("TBD", "Select Helper"):
                     lines.append(f"  {icon} <i>TBD</i>")
                 else:
@@ -938,7 +945,10 @@ def format_monthly_schedule(year, month):
             else:
                 role_icon = ROLE_EMOJI.get(a.role, "👤")
                 if a.status == "swap_needed":
-                    lines.append(f"  {role_icon} <b>NEEDED</b>")
+                    if _is_expired_uncovered_swap(a):
+                        lines.append(f"  {role_icon} <s>{worker}</s>")
+                    else:
+                        lines.append(f"  {role_icon} <b>NEEDED</b>")
                 elif worker in ("TBD", "Select Helper"):
                     lines.append(f"  {role_icon} <i>TBD</i>")
                 else:
@@ -989,12 +999,32 @@ def _reminder_icon():
     return _custom_emoji_html(REMINDER_CUSTOM_EMOJI_ID, "🔔")
 
 
+def _is_expired_uncovered_swap(assignment):
+    if not assignment or assignment.status != "swap_needed" or assignment.cover:
+        return False
+    swap = (
+        SwapRequest.query
+        .filter_by(assignment_id=assignment.id)
+        .order_by(SwapRequest.id.desc())
+        .first()
+    )
+    if not swap or swap.accepted_by:
+        return False
+    if swap.status == "expired":
+        return True
+    if swap.status == "active" and swap.expires_at:
+        return swap.expires_at <= datetime.datetime.utcnow()
+    return False
+
+
 def _assignment_line(assignment, index=0):
     worker = _worker_name(assignment)
     if not worker or worker in ("TBD", "Select Helper"):
         worker = "TBD"
     icon = _role_icon(assignment, index)
     if assignment.status == "swap_needed":
+        if _is_expired_uncovered_swap(assignment):
+            return f"{icon} <s>{worker}</s>"
         return f"{icon}{_weekly_decline_status_icon()}{worker}"
     if assignment.cover:
         cover = assignment.cover
