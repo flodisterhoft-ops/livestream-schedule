@@ -1583,12 +1583,7 @@ def send_monthly_schedule(year=None, month=None, chat_id=None):
     return send_message(text, chat_id=chat_id)
 
 
-def send_swap_needed(event, assignment, chat_id=None, pickup_url=None, source_message_id=None):
-    """
-    Send alert when someone marks they can't make it.
-    Includes inline buttons for other team members to pick up the shift.
-    Returns message_id on success.
-    """
+def _swap_needed_text_and_buttons(event, assignment, pickup_url=None, source_message_id=None):
     role_icon = ROLE_EMOJI.get(assignment.role, "👤")
     title = _event_title_without_emoji(event)
 
@@ -1607,16 +1602,76 @@ def send_swap_needed(event, assignment, chat_id=None, pickup_url=None, source_me
     buttons = _make_inline_keyboard([[
         {"text": "👋 I can", "callback_data": callback_data},
     ]])
-    msg_id = send_message(text, chat_id=chat_id, reply_markup=buttons)
+    return text, buttons
 
+
+def send_swap_needed(event, assignment, chat_id=None, pickup_url=None, source_message_id=None):
+    """
+    Send alert when someone marks they can't make it.
+    Includes inline buttons for other team members to pick up the shift.
+    Returns message_id on success.
+    """
+    text, buttons = _swap_needed_text_and_buttons(
+        event,
+        assignment,
+        pickup_url=pickup_url,
+        source_message_id=source_message_id,
+    )
+
+    active_swaps = (
+        SwapRequest.query
+        .filter_by(assignment_id=assignment.id, status="active")
+        .order_by(SwapRequest.id)
+        .with_for_update()
+        .all()
+    )
+    active_swap = next((swap for swap in active_swaps if swap.telegram_message_id), None)
+    if not active_swap and active_swaps:
+        active_swap = active_swaps[0]
+    for extra_swap in active_swaps:
+        if active_swap and extra_swap.id == active_swap.id:
+            continue
+        if extra_swap.telegram_message_id:
+            _delete_swap_needed_message(extra_swap, assignment=assignment, chat_id=chat_id)
+        extra_swap.status = "cancelled"
+
+    existing_chat_id = None
+    existing_msg_id = None
+    if active_swap:
+        existing_chat_id = active_swap.telegram_chat_id
+        existing_msg_id = active_swap.telegram_message_id
+    if not existing_msg_id:
+        existing_msg_id = assignment.telegram_message_id
+    target_chat_id = str(existing_chat_id or chat_id or TELEGRAM_CHAT_ID)
+
+    if existing_msg_id and target_chat_id:
+        edited, error = edit_message_with_error(target_chat_id, existing_msg_id, text, reply_markup=buttons)
+        if edited:
+            assignment.telegram_message_id = existing_msg_id
+            if active_swap:
+                active_swap.telegram_message_id = existing_msg_id
+                active_swap.telegram_chat_id = target_chat_id
+            db.session.commit()
+            return existing_msg_id
+        if not _is_missing_message_error(error):
+            print(f"[Telegram] Existing swap-needed message {existing_msg_id} could not be refreshed: {error}")
+            db.session.rollback()
+            return existing_msg_id
+
+        print(f"[Telegram] Stored swap-needed message {existing_msg_id} is gone; sending replacement")
+        assignment.telegram_message_id = None
+        if active_swap and active_swap.telegram_message_id == existing_msg_id:
+            active_swap.telegram_message_id = None
+            active_swap.telegram_chat_id = None
+
+    msg_id = send_message(text, chat_id=target_chat_id, reply_markup=buttons)
     if msg_id:
         assignment.telegram_message_id = msg_id
-        active_swap = SwapRequest.query.filter_by(
-            assignment_id=assignment.id, status="active"
-        ).first()
         if active_swap:
             active_swap.telegram_message_id = msg_id
-            active_swap.telegram_chat_id = str(chat_id or TELEGRAM_CHAT_ID)
+            active_swap.telegram_chat_id = target_chat_id
+        db.session.commit()
+    else:
         db.session.commit()
 
     return msg_id

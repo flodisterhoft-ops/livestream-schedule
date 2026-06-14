@@ -95,6 +95,128 @@ def run_expired_swap_sweep_deletes_broadcast(app):
         assert assignment.telegram_message_id is None
 
 
+def _active_swap_for_assignment(assignment, message_id=None, chat_id="chat"):
+    swap = SwapRequest(
+        assignment_id=assignment.id,
+        requestor=assignment.person,
+        event_date=assignment.event.date,
+        role=assignment.role,
+        expires_at=(
+            datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            + datetime.timedelta(days=1)
+        ),
+        status="active",
+        telegram_message_id=message_id,
+        telegram_chat_id=chat_id if message_id else None,
+    )
+    db.session.add(swap)
+    db.session.commit()
+    return swap
+
+
+def run_swap_needed_reuses_existing_broadcast(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 14),
+            person="Marvin",
+            status="swap_needed",
+        )
+        assignment.telegram_message_id = 700
+        swap = _active_swap_for_assignment(assignment, message_id=700)
+
+        edited = []
+        sent = []
+        old_edit = tg.edit_message_with_error
+        old_send = tg.send_message
+        try:
+            tg.edit_message_with_error = lambda chat_id, message_id, text, reply_markup=None: (
+                edited.append((chat_id, message_id, text)) or (True, None)
+            )
+            tg.send_message = lambda *args, **kwargs: sent.append((args, kwargs)) or 701
+
+            assert tg.send_swap_needed(event, assignment, chat_id="chat") == 700
+        finally:
+            tg.edit_message_with_error = old_edit
+            tg.send_message = old_send
+
+        db.session.expire_all()
+        swap = db.session.get(SwapRequest, swap.id)
+        assignment = db.session.get(Assignment, assignment.id)
+        assert [(chat_id, message_id) for chat_id, message_id, _text in edited] == [("chat", 700)]
+        assert not sent
+        assert swap.telegram_message_id == 700
+        assert assignment.telegram_message_id == 700
+
+
+def run_swap_needed_replaces_missing_broadcast(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 14),
+            person="Marvin",
+            status="swap_needed",
+        )
+        assignment.telegram_message_id = 700
+        swap = _active_swap_for_assignment(assignment, message_id=700)
+
+        edited = []
+        sent = []
+        old_edit = tg.edit_message_with_error
+        old_send = tg.send_message
+        try:
+            tg.edit_message_with_error = lambda chat_id, message_id, text, reply_markup=None: (
+                edited.append((chat_id, message_id)) or (False, "Bad Request: message to edit not found")
+            )
+            tg.send_message = lambda text, chat_id=None, reply_markup=None, parse_mode="HTML": (
+                sent.append((chat_id, text)) or 701
+            )
+
+            assert tg.send_swap_needed(event, assignment, chat_id="chat") == 701
+        finally:
+            tg.edit_message_with_error = old_edit
+            tg.send_message = old_send
+
+        db.session.expire_all()
+        swap = db.session.get(SwapRequest, swap.id)
+        assignment = db.session.get(Assignment, assignment.id)
+        assert edited == [("chat", 700)]
+        assert sent and sent[-1][0] == "chat"
+        assert swap.telegram_message_id == 701
+        assert swap.telegram_chat_id == "chat"
+        assert assignment.telegram_message_id == 701
+
+
+def run_swap_needed_does_not_duplicate_on_refresh_error(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 14),
+            person="Marvin",
+            status="swap_needed",
+        )
+        assignment.telegram_message_id = 700
+        swap = _active_swap_for_assignment(assignment, message_id=700)
+
+        sent = []
+        old_edit = tg.edit_message_with_error
+        old_send = tg.send_message
+        try:
+            tg.edit_message_with_error = lambda chat_id, message_id, text, reply_markup=None: (
+                False, "Too Many Requests: retry later"
+            )
+            tg.send_message = lambda *args, **kwargs: sent.append((args, kwargs)) or 701
+
+            assert tg.send_swap_needed(event, assignment, chat_id="chat") == 700
+        finally:
+            tg.edit_message_with_error = old_edit
+            tg.send_message = old_send
+
+        db.session.expire_all()
+        assert not sent
+        assert db.session.get(SwapRequest, swap.id).telegram_message_id == 700
+
+
 def run_weekly_force_bypasses_existing_log(app):
     with app.app_context():
         _clear_db()
@@ -168,6 +290,9 @@ def main():
     app, temp_dir = _make_app()
     try:
         run_expired_swap_sweep_deletes_broadcast(app)
+        run_swap_needed_reuses_existing_broadcast(app)
+        run_swap_needed_replaces_missing_broadcast(app)
+        run_swap_needed_does_not_duplicate_on_refresh_error(app)
         run_weekly_force_bypasses_existing_log(app)
         run_weekly_update_resends_missing_message(app)
     finally:
