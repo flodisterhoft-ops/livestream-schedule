@@ -1147,7 +1147,7 @@ def _weekly_select_shift(callback_id, chat_id, message_id, person_name, mode,
                          telegram_user_id=None, first_name=None, today=None):
     rows = _weekly_assignments_for_person(person_name, today=today)
     if not rows:
-        answer_callback(callback_id, "I don't see you scheduled this week.", show_alert=True)
+        answer_callback(callback_id, "You're not scheduled this week.", show_alert=True)
         return True
     if len(rows) == 1:
         event, assignment, _index = rows[0]
