@@ -254,6 +254,60 @@ def run_expired_uncovered_swap_renders_struck_through(app):
         assert "I can cover" not in str(expanded_buttons)
 
 
+def run_past_confirmed_event_hides_green_telegram_icon(app):
+    with app.app_context():
+        _clear_db()
+        event_date = datetime.date(2026, 6, 16)
+        event, assignment = _event_with_assignment(
+            event_date,
+            person="Rene",
+            status="confirmed",
+        )
+
+        old_today = tg.vancouver_today
+        try:
+            tg.vancouver_today = lambda: event_date
+            same_day_weekly = tg.format_weekly_schedule(today=event_date)
+            same_day_group_post = tg.format_today_group_post(event)
+            same_day_monthly = tg.format_monthly_schedule(2026, 6)
+
+            tg.vancouver_today = lambda: event_date + datetime.timedelta(days=1)
+            past_weekly = tg.format_weekly_schedule(today=event_date)
+            past_group_post = tg.format_today_group_post(event)
+            past_monthly = tg.format_monthly_schedule(2026, 6)
+        finally:
+            tg.vancouver_today = old_today
+
+        assert tg.CONFIRM_CUSTOM_EMOJI_ID in same_day_weekly
+        assert tg.CONFIRM_CUSTOM_EMOJI_ID in same_day_group_post
+        assert "✅ Rene" in same_day_monthly
+
+        assert tg.CONFIRM_CUSTOM_EMOJI_ID not in past_weekly
+        assert tg.CONFIRM_CUSTOM_EMOJI_ID not in past_group_post
+        assert "✅ Rene" not in past_monthly
+        assert "Rene" in past_weekly
+        assert "Rene" in past_group_post
+        assert "Rene" in past_monthly
+
+
+def run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app):
+    with app.app_context():
+        _clear_db()
+        event_date = datetime.date(2026, 6, 16)
+        _event_with_assignment(event_date, person="Rene", status="confirmed")
+
+        refreshed = []
+        old_update = tg.update_weekly_schedule_for_date
+        try:
+            tg.update_weekly_schedule_for_date = lambda date_obj: refreshed.append(date_obj) or True
+
+            assert tg.delete_past_event_reminders(today=event_date + datetime.timedelta(days=1)) == 0
+        finally:
+            tg.update_weekly_schedule_for_date = old_update
+
+        assert refreshed == [event_date]
+
+
 def run_weekly_force_bypasses_existing_log(app):
     with app.app_context():
         _clear_db()
@@ -331,6 +385,8 @@ def main():
         run_swap_needed_replaces_missing_broadcast(app)
         run_swap_needed_does_not_duplicate_on_refresh_error(app)
         run_expired_uncovered_swap_renders_struck_through(app)
+        run_past_confirmed_event_hides_green_telegram_icon(app)
+        run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app)
         run_weekly_force_bypasses_existing_log(app)
         run_weekly_update_resends_missing_message(app)
     finally:

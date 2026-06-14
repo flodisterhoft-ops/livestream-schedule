@@ -940,7 +940,7 @@ def format_monthly_schedule(year, month):
                 elif worker in ("TBD", "Select Helper"):
                     lines.append(f"  {icon} <i>TBD</i>")
                 else:
-                    confirmed = "✅ " if a.status == "confirmed" else ""
+                    confirmed = "✅ " if _show_telegram_confirm_icon(a) else ""
                     lines.append(f"  {icon} {confirmed}{worker}")
             else:
                 role_icon = ROLE_EMOJI.get(a.role, "👤")
@@ -952,7 +952,7 @@ def format_monthly_schedule(year, month):
                 elif worker in ("TBD", "Select Helper"):
                     lines.append(f"  {role_icon} <i>TBD</i>")
                 else:
-                    confirmed = "✅ " if a.status == "confirmed" else ""
+                    confirmed = "✅ " if _show_telegram_confirm_icon(a) else ""
                     lines.append(f"  {role_icon} {confirmed}{worker}")
         lines.append("")
 
@@ -999,6 +999,15 @@ def _reminder_icon():
     return _custom_emoji_html(REMINDER_CUSTOM_EMOJI_ID, "🔔")
 
 
+def _show_telegram_confirm_icon(assignment):
+    if not assignment or assignment.status != "confirmed":
+        return False
+    event = assignment.event
+    if not event or not event.date:
+        return True
+    return event.date >= vancouver_today()
+
+
 def _is_expired_uncovered_swap(assignment):
     if not assignment or assignment.status != "swap_needed" or assignment.cover:
         return False
@@ -1028,10 +1037,10 @@ def _assignment_line(assignment, index=0):
         return f"{icon}{_weekly_decline_status_icon()}{worker}"
     if assignment.cover:
         cover = assignment.cover
-        if assignment.status == "confirmed":
+        if _show_telegram_confirm_icon(assignment):
             cover = f"{_weekly_confirm_status_icon()}{cover}"
         return f"{icon} <s>{assignment.person}</s> → {cover}"
-    if assignment.status == "confirmed":
+    if _show_telegram_confirm_icon(assignment):
         return f"{icon}{_weekly_confirm_status_icon()}{worker}"
     return f"{icon} {worker}"
 
@@ -1493,6 +1502,7 @@ def update_event_reminder(event):
 def delete_past_event_reminders(today=None):
     """Delete stored event reminder messages for events before today."""
     today = today or vancouver_today()
+    yesterday = today - datetime.timedelta(days=1)
     events = Event.query.filter(
         Event.date < today,
         Event.telegram_message_id.isnot(None),
@@ -1508,6 +1518,11 @@ def delete_past_event_reminders(today=None):
     if events:
         db.session.commit()
         print(f"[cleanup] Cleared {len(events)} past event reminder(s); deleted {deleted} Telegram message(s)")
+    if Event.query.filter_by(date=yesterday).first():
+        try:
+            update_weekly_schedule_for_date(yesterday)
+        except Exception as e:
+            print(f"[cleanup] Weekly schedule refresh for {yesterday.isoformat()} failed: {e}")
     return deleted
 
 
