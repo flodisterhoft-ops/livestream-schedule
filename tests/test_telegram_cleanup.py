@@ -308,10 +308,11 @@ def run_rich_weekly_schedule_uses_role_comparison_table(app):
 
         rich = tg.format_weekly_schedule_rich(today=datetime.date(2026, 6, 9))
 
-        assert "<pre>Role   Bible Study  Sunday Service" in rich
-        assert "PC     Marvin       Rene" in rich
-        assert "Cam    David Fink   David Fink" in rich
-        assert "Cam 2  -            Marvin" in rich
+        assert "+----------+-------------+----------------+" in rich
+        assert "| Role     | Bible Study | Sunday Service |" in rich
+        assert "| Computer | Marvin      | Rene           |" in rich
+        assert "| Camera   | David Fink  | David Fink     |" in rich
+        assert "| Camera 2 | -           | Marvin         |" in rich
 
 
 def run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app):

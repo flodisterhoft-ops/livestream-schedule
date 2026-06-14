@@ -1109,9 +1109,9 @@ def format_weekly_schedule(today=None):
 
 
 RICH_WEEKLY_ROLE_ROWS = [
-    ("PC", ("Computer",), ("Computer",)),
-    ("Cam", ("Camera",), ("Camera", "Camera 1")),
-    ("Cam 2", (), ("Camera 2",)),
+    ("Computer", ("Computer",), ("Computer",)),
+    ("Camera", ("Camera",), ("Camera", "Camera 1")),
+    ("Camera 2", (), ("Camera 2",)),
 ]
 
 
@@ -1162,10 +1162,18 @@ def _weekly_rich_table(friday, sunday_event):
         ])
 
     widths = [max(len(row[index]) for row in rows) for index in range(3)]
-    return "\n".join(
-        f"{row[0].ljust(widths[0])}  {row[1].ljust(widths[1])}  {row[2]}"
+    separator = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
+    formatted_rows = [
+        "|" + "|".join(f" {cell.ljust(widths[index])} " for index, cell in enumerate(row)) + "|"
         for row in rows
-    )
+    ]
+    return "\n".join([
+        separator,
+        formatted_rows[0],
+        separator,
+        *formatted_rows[1:],
+        separator,
+    ])
 
 
 def format_weekly_schedule_rich(today=None):
