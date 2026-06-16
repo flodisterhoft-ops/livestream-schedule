@@ -41,8 +41,8 @@ def _clear_db():
     db.session.commit()
 
 
-def _add_event(date_obj, day_type, assignments):
-    event = Event(date=date_obj, day_type=day_type)
+def _add_event(date_obj, day_type, assignments, location=None, cancelled=False):
+    event = Event(date=date_obj, day_type=day_type, location=location, cancelled=cancelled)
     db.session.add(event)
     db.session.flush()
     for role, person, status in assignments:
@@ -63,6 +63,7 @@ def run_person_calendar_has_weekly_and_event_day_alarms(app):
             datetime.date(2026, 6, 12),
             "Friday",
             [("Computer", "Florian", "confirmed"), ("Camera", "David Fink", "pending")],
+            location="Pleasant Valley Church",
         )
         _add_event(
             datetime.date(2026, 6, 14),
@@ -75,16 +76,23 @@ def run_person_calendar_has_weekly_and_event_day_alarms(app):
 
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith("text/calendar")
+    assert response.headers["Cache-Control"] == "no-cache, max-age=0, must-revalidate"
+    assert response.headers["ETag"]
     assert 'inline; filename="florian_schedule.ics"' in response.headers["Content-Disposition"]
     assert "BEGIN:VTIMEZONE" in body
     assert "X-WR-TIMEZONE:America/Vancouver" in body
     assert body.count("SUMMARY:Livestream schedule this week") == 1
+    assert body.count("LAST-MODIFIED:") == 3
+    assert body.count("SEQUENCE:") == 3
     assert "DTSTART;TZID=America/Vancouver:20260609T080000" in body
-    assert body.count("TRIGGER;VALUE=DATE-TIME:20260609T150000Z") == 1
+    assert body.count("TRIGGER:PT0S") == 1
     assert "DTSTART;TZID=America/Vancouver:20260612T190000" in body
-    assert "TRIGGER;VALUE=DATE-TIME:20260612T150000Z" in body
+    assert "TRIGGER:-PT11H" in body
+    assert "LOCATION:Pleasant Valley Church" in body
+    assert "Location: Pleasant Valley Church" in body
     assert "DTSTART;TZID=America/Vancouver:20260614T143000" in body
-    assert "TRIGGER;VALUE=DATE-TIME:20260614T150000Z" in body
+    assert "TRIGGER:-PT6H30M" in body
+    assert "TRIGGER;VALUE=DATE-TIME" not in body
     assert "David Fink" not in body
 
 

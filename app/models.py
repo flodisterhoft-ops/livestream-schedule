@@ -1,6 +1,7 @@
 from .extensions import db
 from datetime import datetime
 import json
+from sqlalchemy import event as sa_event
 
 DEFAULT_EVENT_LOCATION = "The Landing Church"
 
@@ -73,6 +74,7 @@ class Event(db.Model):
     cancelled = db.Column(db.Boolean, default=False, nullable=False)  # No livestream needed (e.g., communion)
     telegram_message_id = db.Column(db.Integer)  # v2 reminder message ID
     telegram_chat_id = db.Column(db.String(30))  # Chat where reminder was sent
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     assignments = db.relationship('Assignment', backref='event', lazy=True, cascade="all, delete-orphan", order_by="Assignment.id")
 
     def to_dict(self):
@@ -123,6 +125,22 @@ class Assignment(db.Model):
             "swapped_with": self.swapped_with,
             "_hist": self.history
         }
+
+
+def _touch_event_for_assignment(mapper, connection, target):
+    if not getattr(target, "event_id", None):
+        return
+    connection.execute(
+        Event.__table__
+        .update()
+        .where(Event.id == target.event_id)
+        .values(updated_at=datetime.utcnow())
+    )
+
+
+for _assignment_change in ("after_insert", "after_update", "after_delete"):
+    sa_event.listen(Assignment, _assignment_change, _touch_event_for_assignment)
+
 
 class Availability(db.Model):
     """Tracks when team members are unavailable."""

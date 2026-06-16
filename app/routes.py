@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 from collections import defaultdict
 
 from flask import Blueprint, current_app, make_response, request
@@ -64,6 +65,27 @@ def _format_utc_dt(dt):
     return dt.astimezone(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _coerce_utc_dt(dt):
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.astimezone(datetime.timezone.utc)
+
+
+def _event_modified_dt(event):
+    updated_at = _coerce_utc_dt(getattr(event, "updated_at", None))
+    if updated_at:
+        return updated_at
+    return _event_start_dt(event).astimezone(datetime.timezone.utc)
+
+
+def _sequence_from_dt(dt):
+    if not dt:
+        return 0
+    return max(0, int(dt.timestamp()))
+
+
 def _format_time_label(dt):
     return dt.strftime("%a, %b %d at %I:%M %p").replace(" 0", " ").replace(" at 0", " at ")
 
@@ -124,6 +146,8 @@ def _event_description(event, person=None):
     lines = []
     if getattr(event, "cancelled", False):
         lines.append("No livestream needed.")
+    if event.location:
+        lines.append(f"Location: {event.location}")
     for assignment in _visible_assignments(event, person):
         lines.append(_assignment_description(assignment))
     if not lines:
@@ -162,12 +186,37 @@ def _weekly_overview_dt(monday):
     )
 
 
-def _alarm_lines(description, trigger_dt):
+def _duration_trigger(delta):
+    total_seconds = int(delta.total_seconds())
+    if total_seconds == 0:
+        return "PT0S"
+
+    sign = "-" if total_seconds < 0 else ""
+    total_seconds = abs(total_seconds)
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    parts = [sign, "P"]
+    if days:
+        parts.append(f"{days}D")
+    if hours or minutes or seconds or not days:
+        parts.append("T")
+        if hours:
+            parts.append(f"{hours}H")
+        if minutes:
+            parts.append(f"{minutes}M")
+        if seconds:
+            parts.append(f"{seconds}S")
+    return "".join(parts)
+
+
+def _alarm_lines(description, trigger_value):
     return [
         "BEGIN:VALARM",
         "ACTION:DISPLAY",
         f"DESCRIPTION:{_escape_ical(description)}",
-        f"TRIGGER;VALUE=DATE-TIME:{_format_utc_dt(trigger_dt)}",
+        f"TRIGGER:{trigger_value}",
         "END:VALARM",
     ]
 
@@ -175,22 +224,31 @@ def _alarm_lines(description, trigger_dt):
 def _event_lines(event, person=None, dtstamp=None):
     start_dt = _event_start_dt(event)
     end_dt = _event_end_dt(event)
+    modified_dt = _event_modified_dt(event)
+    stamp = dtstamp or _format_utc_dt(modified_dt)
     lines = [
         "BEGIN:VEVENT",
         f"UID:event-{event.id}-{_uid_token(person)}@livestream-schedule",
-        f"DTSTAMP:{dtstamp}",
+        f"DTSTAMP:{stamp}",
+        f"LAST-MODIFIED:{_format_utc_dt(modified_dt)}",
+        f"SEQUENCE:{_sequence_from_dt(modified_dt)}",
         f"DTSTART;TZID={CALENDAR_TZID}:{_format_local_dt(start_dt)}",
         f"DTEND;TZID={CALENDAR_TZID}:{_format_local_dt(end_dt)}",
         f"SUMMARY:{_escape_ical(_event_summary(event, person))}",
         f"DESCRIPTION:{_escape_ical(_event_description(event, person))}",
         f"URL:{_escape_ical(_site_url().rstrip('/'))}",
     ]
+    if event.location:
+        lines.append(f"LOCATION:{_escape_ical(event.location)}")
     if getattr(event, "cancelled", False):
         lines.append("STATUS:CANCELLED")
     else:
         reminder_dt = _event_day_reminder_dt(event)
         if reminder_dt < start_dt:
-            lines.extend(_alarm_lines(f"Livestream today: {_event_title(event)}", reminder_dt))
+            lines.extend(_alarm_lines(
+                f"Livestream today: {_event_title(event)}",
+                _duration_trigger(reminder_dt - start_dt),
+            ))
     lines.append("END:VEVENT")
     return lines
 
@@ -200,13 +258,14 @@ def _weekly_overview_description(events, person=None):
     for event in events:
         start_dt = _event_start_dt(event)
         status = " - no livestream needed" if getattr(event, "cancelled", False) else ""
+        location = f" @ {event.location}" if event.location else ""
         assignments = _visible_assignments(event, person)
         if person:
             role_text = ", ".join(a.role for a in assignments)
             suffix = f" ({role_text})" if role_text else ""
         else:
             suffix = ""
-        lines.append(f"{_format_time_label(start_dt)} - {_event_title(event)}{suffix}{status}")
+        lines.append(f"{_format_time_label(start_dt)} - {_event_title(event)}{suffix}{location}{status}")
     lines.append("")
     lines.append(_site_url().rstrip("/"))
     return "\n".join(lines)
@@ -216,10 +275,14 @@ def _weekly_overview_lines(monday, events, person=None, dtstamp=None):
     start_dt = _weekly_overview_dt(monday)
     end_dt = start_dt + datetime.timedelta(minutes=WEEKLY_OVERVIEW_MINUTES)
     suffix = _uid_token(person)
+    modified_dt = max((_event_modified_dt(event) for event in events), default=start_dt.astimezone(datetime.timezone.utc))
+    stamp = dtstamp or _format_utc_dt(modified_dt)
     lines = [
         "BEGIN:VEVENT",
         f"UID:week-{monday.strftime('%Y%m%d')}-{suffix}@livestream-schedule",
-        f"DTSTAMP:{dtstamp}",
+        f"DTSTAMP:{stamp}",
+        f"LAST-MODIFIED:{_format_utc_dt(modified_dt)}",
+        f"SEQUENCE:{_sequence_from_dt(modified_dt)}",
         f"DTSTART;TZID={CALENDAR_TZID}:{_format_local_dt(start_dt)}",
         f"DTEND;TZID={CALENDAR_TZID}:{_format_local_dt(end_dt)}",
         "TRANSP:TRANSPARENT",
@@ -227,7 +290,7 @@ def _weekly_overview_lines(monday, events, person=None, dtstamp=None):
         f"DESCRIPTION:{_escape_ical(_weekly_overview_description(events, person))}",
         f"URL:{_escape_ical(_site_url().rstrip('/'))}",
     ]
-    lines.extend(_alarm_lines("Livestream schedule this week", start_dt))
+    lines.extend(_alarm_lines("Livestream schedule this week", "PT0S"))
     lines.append("END:VEVENT")
     return lines
 
@@ -242,7 +305,6 @@ def _events_by_week(events):
 
 def generate_ical(events, person=None):
     events = sorted(events, key=lambda event: event.date)
-    dtstamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -257,10 +319,10 @@ def generate_ical(events, person=None):
     lines.extend(_vtimezone_lines())
 
     for monday, week_events in _events_by_week(events).items():
-        lines.extend(_weekly_overview_lines(monday, week_events, person, dtstamp=dtstamp))
+        lines.extend(_weekly_overview_lines(monday, week_events, person))
 
     for event in events:
-        lines.extend(_event_lines(event, person, dtstamp=dtstamp))
+        lines.extend(_event_lines(event, person))
 
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines)
@@ -269,7 +331,10 @@ def generate_ical(events, person=None):
 def _calendar_response(body, filename):
     response = make_response(body)
     response.headers["Content-Type"] = "text/calendar; charset=utf-8"
-    response.headers["Cache-Control"] = "no-cache, max-age=300"
+    response.set_etag(hashlib.sha256(body.encode("utf-8")).hexdigest())
+    response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     disposition = "attachment" if request.args.get("download") in ("1", "true", "yes") else "inline"
     response.headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
     return response

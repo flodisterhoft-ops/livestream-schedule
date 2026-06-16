@@ -213,6 +213,13 @@ def create_app(config_class='config.Config'):
         if 'location' not in event_cols:
             db.session.execute(text('ALTER TABLE event ADD COLUMN location VARCHAR(120)'))
             db.session.commit()
+        if 'updated_at' not in event_cols:
+            db.session.execute(text('ALTER TABLE event ADD COLUMN updated_at TIMESTAMP'))
+            db.session.execute(text('UPDATE event SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL'))
+            db.session.commit()
+        else:
+            db.session.execute(text('UPDATE event SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL'))
+            db.session.commit()
 
         # Seed database with schedule data if empty
         from .seed_data import seed_database
