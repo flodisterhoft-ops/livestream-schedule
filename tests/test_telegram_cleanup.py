@@ -37,8 +37,16 @@ def _clear_db():
     db.session.commit()
 
 
-def _event_with_assignment(date_obj, role="Camera", person="David Fink", status="pending"):
-    event = Event(date=date_obj, day_type="Friday")
+def _event_with_assignment(
+    date_obj,
+    role="Camera",
+    person="David Fink",
+    status="pending",
+    day_type="Friday",
+    location=None,
+    cancelled=False,
+):
+    event = Event(date=date_obj, day_type=day_type, location=location, cancelled=cancelled)
     db.session.add(event)
     db.session.flush()
     assignment = Assignment(event_id=event.id, role=role, person=person, status=status)
@@ -315,6 +323,43 @@ def run_rich_weekly_schedule_uses_role_comparison_table(app):
         assert "<td align=\"left\">Camera 2</td><td align=\"center\">-</td><td align=\"center\">Marvin</td>" in rich
 
 
+def run_weekly_moved_bible_study_uses_actual_weekday_without_missing_slot(app):
+    with app.app_context():
+        _clear_db()
+        wednesday = datetime.date(2026, 6, 17)
+        _event_with_assignment(wednesday, cancelled=True)
+
+        weekly = tg.format_weekly_schedule(today=datetime.date(2026, 6, 16))
+
+        assert "<b>Wednesday Bible Study 📖</b>" in weekly
+        assert "June 17 @ 7:00 PM" in weekly
+        assert "✅ <i>No livestream needed</i>" in weekly
+        assert "No Bible Study scheduled." not in weekly
+
+
+def run_weekly_non_default_bible_study_location_shows_when_active(app):
+    with app.app_context():
+        _clear_db()
+        friday = datetime.date(2026, 6, 19)
+        event, first = _event_with_assignment(
+            friday,
+            role="Computer",
+            person="Stefan",
+            location="Pleasant Valley Church",
+        )
+        db.session.add(Assignment(event_id=event.id, role="Camera", person="Patric", status="pending"))
+        db.session.commit()
+
+        weekly = tg.format_weekly_schedule(today=datetime.date(2026, 6, 16))
+
+        assert "<b>Friday Bible Study 📖</b>" in weekly
+        assert "📍 Pleasant Valley Church" in weekly
+        assert "June 19 @ 7:00 PM" in weekly
+        assert "🖥️ Stefan" in weekly
+        assert "📹 Patric" in weekly
+        assert first.person == "Stefan"
+
+
 def run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app):
     with app.app_context():
         _clear_db()
@@ -412,6 +457,8 @@ def main():
         run_expired_uncovered_swap_renders_struck_through(app)
         run_past_confirmed_event_hides_green_telegram_icon(app)
         run_rich_weekly_schedule_uses_role_comparison_table(app)
+        run_weekly_moved_bible_study_uses_actual_weekday_without_missing_slot(app)
+        run_weekly_non_default_bible_study_location_shows_when_active(app)
         run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app)
         run_weekly_force_bypasses_existing_log(app)
         run_weekly_update_resends_missing_message(app)

@@ -60,6 +60,42 @@ const timeAgo = (input) => {
 }
 
 const defaultStartTime = (type) => type === 'Sunday' ? '14:30' : '19:00'
+const DEFAULT_EVENT_LOCATION = 'The Landing Church'
+const LOCATION_STORAGE_KEY = 'livestreamV2LocationPresets'
+const BASE_LOCATION_PRESETS = [DEFAULT_EVENT_LOCATION, 'Pleasant Valley Church']
+
+const normalizeLocationName = (value) => (value || '').trim().replace(/\s+/g, ' ')
+
+const mergeLocationOptions = (...groups) => {
+  const seen = new Set()
+  const options = []
+  groups.flat().forEach(value => {
+    const name = normalizeLocationName(value)
+    if (!name) return
+    const key = name.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    options.push(name)
+  })
+  return options
+}
+
+const loadStoredLocations = () => {
+  try {
+    const raw = window.localStorage.getItem(LOCATION_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+const saveStoredLocations = (locations) => {
+  try {
+    window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(locations))
+  } catch {
+    // Ignore private browsing or storage failures; the event still saves normally.
+  }
+}
 
 const formatDisplayTime = (value) => {
   if (!value) return ''
@@ -177,6 +213,58 @@ function EventTypePicker({ value, onChange, ariaLabel }) {
   )
 }
 
+function LocationPicker({ value, options = [], onChange, onAdd }) {
+  const [draft, setDraft] = useState('')
+  const selected = normalizeLocationName(value) || DEFAULT_EVENT_LOCATION
+  const choices = mergeLocationOptions(BASE_LOCATION_PRESETS, options, [selected])
+
+  const addDraft = () => {
+    const name = normalizeLocationName(draft)
+    if (!name) return
+    onAdd?.(name)
+    onChange(name)
+    setDraft('')
+  }
+
+  return (
+    <div className="location-picker">
+      <select
+        className="event-edit-input location-select"
+        value={selected}
+        onChange={e => onChange(e.target.value)}
+        aria-label="Event location"
+      >
+        {choices.map(name => (
+          <option key={name} value={name}>{name}</option>
+        ))}
+      </select>
+      <div className="location-add-row">
+        <input
+          type="text"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              addDraft()
+            }
+          }}
+          className="event-edit-input"
+          placeholder="Add location"
+        />
+        <button
+          type="button"
+          className="location-add-btn"
+          onClick={addDraft}
+          disabled={!normalizeLocationName(draft)}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  )
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 //  API Helpers
@@ -241,6 +329,10 @@ export default function App() {
   const [recentlyChanged, setRecentlyChanged] = useState(() => new Set())
   const [orphanShifts, setOrphanShifts] = useState([])
   const [showOrphans, setShowOrphans] = useState(false)
+  const scheduleLocations = useMemo(
+    () => mergeLocationOptions(schedule.map(event => event.default_location), schedule.map(event => event.location)),
+    [schedule]
+  )
 
 
   // ── Init ──────────────────────────────────────────────────
@@ -619,6 +711,7 @@ export default function App() {
         showFlash={showFlash}
         loadSchedule={loadSchedule}
         team={team}
+        locationOptions={scheduleLocations}
         recentlyChanged={recentlyChanged}
         onAddEvent={openAdminCreateEvent}
       />
@@ -626,6 +719,7 @@ export default function App() {
       {showCreate && (
         <CreateEventModal
           team={team}
+          locationOptions={scheduleLocations}
           prefill={createPrefill}
           onClose={() => { setShowCreate(false); setCreatePrefill(null) }}
           onCreated={() => {
@@ -688,7 +782,7 @@ export default function App() {
 //  Schedule Tab
 // ═══════════════════════════════════════════════════════════════
 
-function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, recentlyChanged, onAddEvent }) {
+function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, locationOptions, recentlyChanged, onAddEvent }) {
   const navRef = useRef(null)
   const filterRef = useRef(null)
   const eventsListRef = useRef(null)
@@ -1000,6 +1094,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
               onEventUpdate={handleEventUpdate}
               onToggleLock={handleToggleLock}
               teamNames={teamNames}
+              locationOptions={locationOptions}
               recentlyChanged={recentlyChanged}
               selectedPerson={selectedPerson}
             />
@@ -1127,12 +1222,15 @@ function detectInitialEditType(event) {
   return findEventType(event).id
 }
 
-function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, onToggleLock, teamNames, recentlyChanged, selectedPerson }) {
+function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssign, onEventUpdate, onToggleLock, teamNames, locationOptions = [], recentlyChanged, selectedPerson }) {
   const [editingEvent, setEditingEvent] = useState(false)
   const [editType, setEditType] = useState(() => detectInitialEditType(event))
   const [editTitle, setEditTitle] = useState(event.custom_title || event.title || '')
   const [editDate, setEditDate] = useState(event.date)
   const [editTime, setEditTime] = useState(event.start_time || defaultStartTime(event.day_type))
+  const eventDefaultLocation = event.default_location || DEFAULT_EVENT_LOCATION
+  const [editLocation, setEditLocation] = useState(event.location || eventDefaultLocation)
+  const [extraLocations, setExtraLocations] = useState(() => loadStoredLocations())
   const [editCancelled, setEditCancelled] = useState(Boolean(event.cancelled))
   const [editRoles, setEditRoles] = useState(() => event.assignments.map(a => ({ id: a.id, role: a.role, person: a.person })))
   const [applySundayTimeToFuture, setApplySundayTimeToFuture] = useState(false)
@@ -1143,11 +1241,16 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
   const monthName = d.toLocaleString('en', { month: 'short' })
   const originalStartTime = event.start_time || defaultStartTime(event.day_type)
   const showSundayFutureTimeOption = event.day_type === 'Sunday' && editType === 'sunday' && editTime !== originalStartTime
+  const eventLocationOptions = useMemo(
+    () => mergeLocationOptions(locationOptions, extraLocations, [eventDefaultLocation, editLocation]),
+    [locationOptions, extraLocations, eventDefaultLocation, editLocation]
+  )
 
   useEffect(() => {
     if (editingEvent) return
     setEditCancelled(Boolean(event.cancelled))
     setEditType(detectInitialEditType(event))
+    setEditLocation(event.location || event.default_location || DEFAULT_EVENT_LOCATION)
     setEditRoles(event.assignments.map(a => ({ id: a.id, role: a.role, person: a.person })))
     setApplySundayTimeToFuture(false)
   }, [event, editingEvent])
@@ -1172,6 +1275,14 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
     })
   }
 
+  const addLocationOption = (name) => {
+    setExtraLocations(prev => {
+      const next = mergeLocationOptions(prev, [name])
+      saveStoredLocations(next)
+      return next
+    })
+  }
+
   const saveEvent = () => {
     const keptIds = new Set(editRoles.filter(r => r.id).map(r => r.id))
     const remove_assignment_ids = event.assignments.filter(a => !keptIds.has(a.id)).map(a => a.id)
@@ -1183,6 +1294,7 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
       new_date: editDate,
       day_type,
       custom_title,
+      location: editLocation,
       start_time: editTime,
       cancelled: editCancelled,
     }
@@ -1311,6 +1423,15 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
                     className="event-edit-input event-edit-title-input"
                   />
                 )}
+                <div className="event-location-edit">
+                  <div className="event-helpers-label">Location</div>
+                  <LocationPicker
+                    value={editLocation}
+                    options={eventLocationOptions}
+                    onChange={setEditLocation}
+                    onAdd={addLocationOption}
+                  />
+                </div>
               </div>
             </div>
             <label className="event-cancel-toggle">
@@ -3318,7 +3439,7 @@ const PRESET_TYPES = [
   { value: 'Custom', label: 'Custom', defaultRoles: ['Computer', 'Camera'] },
 ]
 
-function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
+function CreateEventModal({ team, locationOptions = [], prefill, onClose, onCreated, showFlash }) {
   const today = new Date()
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   const initialDate = prefill?.date || todayKey
@@ -3335,6 +3456,8 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
   const [customTitle, setCustomTitle] = useState(prefill ? suggestionTitle : '')
   const initialPreset = EVENT_TYPES.find(t => t.id === initialTypeId) || EVENT_TYPES[0]
   const [startTime, setStartTime] = useState(normalizeSuggestedTime(prefill?.time) || initialPreset.defaultTime)
+  const [location, setLocation] = useState(DEFAULT_EVENT_LOCATION)
+  const [extraLocations, setExtraLocations] = useState(() => loadStoredLocations())
   const [computerCount, setComputerCount] = useState(initialPreset.defaultRoles.filter(r => r === 'Computer').length || 1)
   const [cameraCount, setCameraCount] = useState(initialPreset.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
   const [people, setPeople] = useState({})
@@ -3348,6 +3471,10 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
   }, [onClose])
 
   const teamNames = team.length > 0 ? team.map(m => m.name).sort() : []
+  const eventLocationOptions = useMemo(
+    () => mergeLocationOptions(locationOptions, extraLocations, [location]),
+    [locationOptions, extraLocations, location]
+  )
 
   // Build the role list from counts
   const roles = []
@@ -3361,6 +3488,14 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
     setStartTime(t.defaultTime)
     setComputerCount(t.defaultRoles.filter(r => r === 'Computer').length || 1)
     setCameraCount(t.defaultRoles.filter(r => r.startsWith('Camera')).length || 1)
+  }
+
+  const addLocationOption = (name) => {
+    setExtraLocations(prev => {
+      const next = mergeLocationOptions(prev, [name])
+      saveStoredLocations(next)
+      return next
+    })
   }
 
   const submit = async () => {
@@ -3377,6 +3512,7 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
           date,
           day_type: preset.day_type,
           custom_title: preset.isOther ? customTitle.trim() : preset.custom_title,
+          location,
           start_time: startTime,
           roles,
           suggestion_id: prefill?.id,
@@ -3468,6 +3604,16 @@ function CreateEventModal({ team, prefill, onClose, onCreated, showFlash }) {
               className="modal-input"
             />
           </label>
+
+          <div className="modal-field">
+            <span className="modal-label">Location</span>
+            <LocationPicker
+              value={location}
+              options={eventLocationOptions}
+              onChange={setLocation}
+              onAdd={addLocationOption}
+            />
+          </div>
 
           <div className="modal-field">
             <span className="modal-label">Roles</span>

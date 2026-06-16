@@ -13,7 +13,7 @@ import time
 import html
 from itsdangerous import BadSignature, URLSafeSerializer
 from flask import Blueprint, request, jsonify, session, current_app
-from .models import Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion, SchedulingSnapshot, SchedulingPreset, InteractionLog
+from .models import DEFAULT_EVENT_LOCATION, Event, Assignment, TeamMember, Availability, SwapRequest, TempChat, EventSuggestion, SchedulingSnapshot, SchedulingPreset, InteractionLog
 from .extensions import db
 from .utils import (
     ALL_NAMES, ROLES_CONFIG, is_available, get_history_stats,
@@ -62,6 +62,15 @@ def _parse_start_time(value):
         return datetime.time.fromisoformat(str(value)[:5])
     except (TypeError, ValueError):
         raise ValueError("start_time must be HH:MM")
+
+
+def _normalize_event_location(value):
+    if value is None:
+        return None
+    normalized = " ".join(str(value).strip().split())
+    if not normalized or normalized.lower() == DEFAULT_EVENT_LOCATION.lower():
+        return None
+    return normalized
 
 
 def _refresh_telegram_for_events(events, dates=None):
@@ -282,6 +291,8 @@ def get_schedule():
             "day_type": event.day_type,
             "title": title,
             "custom_title": event.custom_title,
+            "location": event.location,
+            "default_location": DEFAULT_EVENT_LOCATION,
             "start_time": (event.start_time or _default_start_time(event.day_type)).strftime("%H:%M"),
             "notes": event.notes,
             "cancelled": bool(getattr(event, "cancelled", False)),
@@ -599,6 +610,7 @@ def add_event():
     date_str = data.get("date")
     day_type = data.get("day_type", "Sunday")
     custom_title = data.get("custom_title")
+    location = _normalize_event_location(data.get("location"))
     roles = data.get("roles")  # Optional: list of roles to create
     suggestion_id = data.get("suggestion_id")
     try:
@@ -613,7 +625,7 @@ def add_event():
     if Event.query.filter_by(date=d).first():
         return jsonify({"error": "Event already exists on this date"}), 409
 
-    event = Event(date=d, day_type=day_type, custom_title=custom_title, start_time=start_time)
+    event = Event(date=d, day_type=day_type, custom_title=custom_title, location=location, start_time=start_time)
     db.session.add(event)
     db.session.flush()
 
@@ -675,6 +687,8 @@ def update_event(date_str):
     original_date = event.date
     if "custom_title" in data:
         event.custom_title = data["custom_title"] or None
+    if "location" in data:
+        event.location = _normalize_event_location(data.get("location"))
     if "day_type" in data:
         event.day_type = data["day_type"]
         if "start_time" not in data and event.start_time is None:
@@ -1935,6 +1949,8 @@ def _event_to_dict(event):
         "day_type": event.day_type,
         "title": title,
         "custom_title": event.custom_title,
+        "location": event.location,
+        "default_location": DEFAULT_EVENT_LOCATION,
         "start_time": (event.start_time or _default_start_time(event.day_type)).strftime("%H:%M"),
         "notes": event.notes,
         "cancelled": bool(getattr(event, "cancelled", False)),

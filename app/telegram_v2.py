@@ -22,7 +22,7 @@ from urllib.parse import urlencode
 import requests
 from itsdangerous import URLSafeSerializer
 from flask import current_app
-from .models import Event, Assignment, TeamMember, InteractionLog, SwapRequest, TempChat
+from .models import DEFAULT_EVENT_LOCATION, Event, Assignment, TeamMember, InteractionLog, SwapRequest, TempChat
 from .extensions import db
 from .utils import is_available, vancouver_today, vancouver_now, VANCOUVER_TZ
 from . import telegram_temp_groups
@@ -387,6 +387,24 @@ def _date_line(date_obj):
 
 def _short_date(date_obj):
     return date_obj.strftime("%B %d").replace(" 0", " ")
+
+
+def _event_weekday(date_obj):
+    return date_obj.strftime("%A") if date_obj else ""
+
+
+def _event_location(event):
+    return (getattr(event, "location", None) or DEFAULT_EVENT_LOCATION).strip()
+
+
+def _show_weekly_location(event):
+    location = _event_location(event)
+    return bool(
+        event
+        and not getattr(event, "cancelled", False)
+        and location
+        and location.lower() != DEFAULT_EVENT_LOCATION.lower()
+    )
 
 
 def _is_sunday_event(event):
@@ -992,10 +1010,15 @@ def _weekly_schedule_events(today=None):
         Event.date >= monday,
         Event.date <= sunday,
     ).order_by(Event.date).all()
-    # Slot by weekday so a custom-typed event (e.g. Communion on Friday) still
-    # lands in the Friday slot instead of falling through to "extras".
-    friday = next((e for e in events if e.date.weekday() == 4), None)
-    sunday_event = next((e for e in events if e.date.weekday() == 6), None)
+    # Slot regular services by event type first, so a moved Bible Study still
+    # renders as this week's Bible Study instead of an extra plus a missing slot.
+    # Fall back to weekday for custom services that land on Friday/Sunday.
+    friday = next((e for e in events if e.day_type == "Friday"), None)
+    if friday is None:
+        friday = next((e for e in events if e.date.weekday() == 4), None)
+    sunday_event = next((e for e in events if e.day_type == "Sunday"), None)
+    if sunday_event is None:
+        sunday_event = next((e for e in events if e.date.weekday() == 6), None)
     extras = [e for e in events if e is not friday and e is not sunday_event]
     return monday, sunday, friday, sunday_event, extras
 
@@ -1085,10 +1108,10 @@ def _weekly_event_block(event, default_header=None, default_time=None, missing_l
     else:
         header = f"<b>{title}</b>"
 
-    lines = [
-        header,
-        f"{_short_date(event.date)} @ {_event_time(event)}",
-    ]
+    lines = [header]
+    if _show_weekly_location(event):
+        lines.append(f"\U0001F4CD {html.escape(_event_location(event))}")
+    lines.append(f"{_short_date(event.date)} @ {_event_time(event)}")
     if getattr(event, "cancelled", False):
         lines.append("✅ <i>No livestream needed</i>")
     else:
@@ -1107,7 +1130,7 @@ def format_weekly_schedule(today=None):
 
     lines.extend(_weekly_event_block(
         friday,
-        default_header="Bible Study",
+        default_header=f"{_event_weekday(friday.date)} Bible Study" if friday else "Bible Study",
         default_time="7:00 PM",
         missing_label="No Bible Study scheduled.",
         default_day_type="Friday",
@@ -1199,8 +1222,12 @@ def _weekly_rich_table_html(friday, sunday_event):
 def _weekly_rich_details_html(friday, sunday_event):
     items = []
     if friday:
+        label = f"{_event_weekday(friday.date)} Bible Study"
+        location = ""
+        if _show_weekly_location(friday):
+            location = f" - \U0001F4CD {html.escape(_event_location(friday))}"
         items.append(
-            f"<li><b>Bible Study</b>: {html.escape(_short_date(friday.date))} @ {html.escape(_event_time(friday))}</li>"
+            f"<li><b>{html.escape(label)}</b>: {html.escape(_short_date(friday.date))} @ {html.escape(_event_time(friday))}{location}</li>"
         )
     if sunday_event:
         items.append(

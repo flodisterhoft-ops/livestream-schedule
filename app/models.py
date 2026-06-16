@@ -2,6 +2,8 @@ from .extensions import db
 from datetime import datetime
 import json
 
+DEFAULT_EVENT_LOCATION = "The Landing Church"
+
 
 class TeamMember(db.Model):
     """Tracks team members and their eligible roles."""
@@ -65,6 +67,7 @@ class Event(db.Model):
     date = db.Column(db.Date, unique=True, nullable=False)
     day_type = db.Column(db.String(20), nullable=False)  # Sunday, Friday, Custom
     custom_title = db.Column(db.String(100))
+    location = db.Column(db.String(120))
     start_time = db.Column(db.Time)
     notes = db.Column(db.Text)  # Event notes/comments
     cancelled = db.Column(db.Boolean, default=False, nullable=False)  # No livestream needed (e.g., communion)
@@ -76,6 +79,7 @@ class Event(db.Model):
         return {
             "day_type": self.day_type,
             "custom_title": self.custom_title,
+            "location": self.location,
             "start_time": self.start_time.strftime("%H:%M") if self.start_time else None,
             "notes": self.notes,
             "cancelled": bool(self.cancelled),
