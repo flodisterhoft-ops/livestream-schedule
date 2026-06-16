@@ -401,7 +401,6 @@ def _show_weekly_location(event):
     location = _event_location(event)
     return bool(
         event
-        and not getattr(event, "cancelled", False)
         and location
         and location.lower() != DEFAULT_EVENT_LOCATION.lower()
     )

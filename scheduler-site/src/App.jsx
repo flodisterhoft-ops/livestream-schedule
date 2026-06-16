@@ -140,7 +140,7 @@ const EVENT_TYPES = [
   { id: 'baby-dedication', label: 'Baby Dedication',        emoji: '\uD83D\uDC76',             day_type: 'Custom', custom_title: 'Baby Dedication',           defaultTime: '14:30', defaultRoles: ['Computer', 'Camera'] },
   { id: 'christmas-eve',   label: 'Christmas Eve Service',  emoji: '\uD83D\uDD6F\uFE0F',       day_type: 'Custom', custom_title: 'Christmas Eve Service',     defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'] },
   { id: 'christmas',       label: 'Christmas Service',      emoji: '\uD83C\uDF84',             day_type: 'Custom', custom_title: 'Christmas Service',         defaultTime: '14:30', defaultRoles: ['Computer', 'Camera'] },
-  { id: 'other',           label: 'Other',                  emoji: '\u270F\uFE0F',             day_type: 'Custom', custom_title: null,                       defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'], isOther: true },
+  { id: 'other',           label: 'Add new',                emoji: '\u270F\uFE0F',             day_type: 'Custom', custom_title: null,                       defaultTime: '19:00', defaultRoles: ['Computer', 'Camera'], isOther: true },
 ]
 
 function findEventType(event) {
@@ -156,18 +156,28 @@ function findEventType(event) {
   return EVENT_TYPES.find(t => t.id === 'other')
 }
 
-function EventTypePicker({ value, onChange, ariaLabel }) {
+function EventTypePicker({ value, onChange, ariaLabel, customValue = '', onCustomCommit }) {
   const [open, setOpen] = useState(false)
+  const [addMode, setAddMode] = useState(false)
+  const [draft, setDraft] = useState('')
   const wrapRef = useRef(null)
+  const inputRef = useRef(null)
   const current = EVENT_TYPES.find(t => t.id === value) || EVENT_TYPES[0]
+  const displayLabel = current.isOther && customValue ? customValue : current.label
 
   useEffect(() => {
-    if (!open) return
+    if (!open && !addMode) return
     const handlePointer = (e) => {
       if (wrapRef.current?.contains(e.target)) return
       setOpen(false)
+      setAddMode(false)
     }
-    const handleKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        setAddMode(false)
+      }
+    }
     document.addEventListener('mousedown', handlePointer)
     document.addEventListener('touchstart', handlePointer)
     document.addEventListener('keydown', handleKey)
@@ -176,22 +186,70 @@ function EventTypePicker({ value, onChange, ariaLabel }) {
       document.removeEventListener('touchstart', handlePointer)
       document.removeEventListener('keydown', handleKey)
     }
-  }, [open])
+  }, [open, addMode])
+
+  useEffect(() => {
+    if (!addMode) return
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [addMode])
+
+  const startAdd = () => {
+    onChange('other')
+    setDraft(customValue || '')
+    setOpen(false)
+    setAddMode(true)
+  }
+
+  const commitAdd = () => {
+    const name = normalizeLocationName(draft)
+    if (!name) return
+    onCustomCommit?.(name)
+    setDraft('')
+    setAddMode(false)
+  }
 
   return (
     <div className="event-type-picker" ref={wrapRef}>
-      <button
-        type="button"
-        className={`event-type-trigger ${open ? 'open' : ''}`}
-        onClick={() => setOpen(v => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={ariaLabel || 'Select event type'}
-      >
-        <span className="event-type-trigger-label">{current.label}</span>
-        <span className="event-type-trigger-emoji" aria-hidden="true">{current.emoji}</span>
-        <span className={`event-type-trigger-chev ${open ? 'open' : ''}`} aria-hidden="true">{'\u203A'}</span>
-      </button>
+      {addMode ? (
+        <div className="event-type-trigger event-type-add-trigger open">
+          <input
+            ref={inputRef}
+            type="text"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitAdd()
+              }
+            }}
+            className="event-type-add-input"
+            placeholder="Event title"
+            aria-label="Event title"
+          />
+          <button
+            type="button"
+            className="event-type-add-btn"
+            onClick={commitAdd}
+            disabled={!normalizeLocationName(draft)}
+          >
+            Add
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={`event-type-trigger ${open ? 'open' : ''}`}
+          onClick={() => setOpen(v => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={ariaLabel || 'Select event type'}
+        >
+          <span className="event-type-trigger-label">{displayLabel}</span>
+          <span className="event-type-trigger-emoji" aria-hidden="true">{current.emoji}</span>
+          <span className={`event-type-trigger-chev ${open ? 'open' : ''}`} aria-hidden="true">{'\u203A'}</span>
+        </button>
+      )}
       {open && (
         <div className="event-type-menu" role="listbox" aria-label="Event type">
           {EVENT_TYPES.map(t => (
@@ -201,7 +259,14 @@ function EventTypePicker({ value, onChange, ariaLabel }) {
               role="option"
               aria-selected={t.id === value}
               className={`event-type-option ${t.id === value ? 'active' : ''}`}
-              onClick={() => { onChange(t.id); setOpen(false) }}
+              onClick={() => {
+                if (t.isOther) {
+                  startAdd()
+                  return
+                }
+                onChange(t.id)
+                setOpen(false)
+              }}
             >
               <span className="event-type-option-label">{t.label}</span>
               <span className="event-type-option-emoji" aria-hidden="true">{t.emoji}</span>
@@ -214,9 +279,41 @@ function EventTypePicker({ value, onChange, ariaLabel }) {
 }
 
 function LocationPicker({ value, options = [], onChange, onAdd }) {
+  const [open, setOpen] = useState(false)
+  const [addMode, setAddMode] = useState(false)
   const [draft, setDraft] = useState('')
+  const wrapRef = useRef(null)
+  const inputRef = useRef(null)
   const selected = normalizeLocationName(value) || DEFAULT_EVENT_LOCATION
   const choices = mergeLocationOptions(BASE_LOCATION_PRESETS, options, [selected])
+
+  useEffect(() => {
+    if (!open && !addMode) return
+    const handlePointer = (e) => {
+      if (wrapRef.current?.contains(e.target)) return
+      setOpen(false)
+      setAddMode(false)
+    }
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        setAddMode(false)
+      }
+    }
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('touchstart', handlePointer)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('touchstart', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [open, addMode])
+
+  useEffect(() => {
+    if (!addMode) return
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [addMode])
 
   const addDraft = () => {
     const name = normalizeLocationName(draft)
@@ -224,43 +321,81 @@ function LocationPicker({ value, options = [], onChange, onAdd }) {
     onAdd?.(name)
     onChange(name)
     setDraft('')
+    setAddMode(false)
   }
 
   return (
-    <div className="location-picker">
-      <select
-        className="event-edit-input location-select"
-        value={selected}
-        onChange={e => onChange(e.target.value)}
-        aria-label="Event location"
-      >
-        {choices.map(name => (
-          <option key={name} value={name}>{name}</option>
-        ))}
-      </select>
-      <div className="location-add-row">
-        <input
-          type="text"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              addDraft()
-            }
-          }}
-          className="event-edit-input"
-          placeholder="Add location"
-        />
+    <div className="event-type-picker location-picker" ref={wrapRef}>
+      {addMode ? (
+        <div className="event-type-trigger event-type-add-trigger open">
+          <input
+            ref={inputRef}
+            type="text"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addDraft()
+              }
+            }}
+            className="event-type-add-input"
+            placeholder="Location name"
+            aria-label="Location name"
+          />
+          <button
+            type="button"
+            className="event-type-add-btn"
+            onClick={addDraft}
+            disabled={!normalizeLocationName(draft)}
+          >
+            Add
+          </button>
+        </div>
+      ) : (
         <button
           type="button"
-          className="location-add-btn"
-          onClick={addDraft}
-          disabled={!normalizeLocationName(draft)}
+          className={`event-type-trigger ${open ? 'open' : ''}`}
+          onClick={() => setOpen(v => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label="Event location"
         >
-          Add
+          <span className="event-type-trigger-label">{selected}</span>
+          <span className="event-type-trigger-emoji" aria-hidden="true">{'\uD83D\uDCCD'}</span>
+          <span className={`event-type-trigger-chev ${open ? 'open' : ''}`} aria-hidden="true">{'\u203A'}</span>
         </button>
-      </div>
+      )}
+      {open && (
+        <div className="event-type-menu" role="listbox" aria-label="Event location">
+          {choices.map(name => (
+            <button
+              key={name}
+              type="button"
+              role="option"
+              aria-selected={name === selected}
+              className={`event-type-option ${name === selected ? 'active' : ''}`}
+              onClick={() => { onChange(name); setOpen(false) }}
+            >
+              <span className="event-type-option-label">{name}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            role="option"
+            aria-selected={false}
+            className="event-type-option"
+            onClick={() => {
+              setOpen(false)
+              setDraft('')
+              setAddMode(true)
+            }}
+          >
+            <span className="event-type-option-label">Add new</span>
+            <span className="event-type-option-emoji" aria-hidden="true">{'\u270F\uFE0F'}</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1413,26 +1548,22 @@ function EventCard({ event, user, isAdmin, isManager, doAction, onNotify, onAssi
             </div>
             <div className={`event-collapse ${editCancelled ? 'hidden' : ''}`} aria-hidden={editCancelled}>
               <div>
-                <EventTypePicker value={editType} onChange={handleTypeChange} />
-                {EVENT_TYPES.find(t => t.id === editType)?.isOther && (
-                  <input
-                    type="text"
-                    value={editTitle}
-                    onChange={e => setEditTitle(e.target.value)}
-                    placeholder="Event title"
-                    className="event-edit-input event-edit-title-input"
-                  />
-                )}
-                <div className="event-location-edit">
-                  <div className="event-helpers-label">Location</div>
-                  <LocationPicker
-                    value={editLocation}
-                    options={eventLocationOptions}
-                    onChange={setEditLocation}
-                    onAdd={addLocationOption}
-                  />
-                </div>
+                <EventTypePicker
+                  value={editType}
+                  onChange={handleTypeChange}
+                  customValue={editTitle}
+                  onCustomCommit={setEditTitle}
+                />
               </div>
+            </div>
+            <div className="event-location-edit">
+              <div className="event-helpers-label">Location</div>
+              <LocationPicker
+                value={editLocation}
+                options={eventLocationOptions}
+                onChange={setEditLocation}
+                onAdd={addLocationOption}
+              />
             </div>
             <label className="event-cancel-toggle">
               <input
@@ -3578,22 +3709,13 @@ function CreateEventModal({ team, locationOptions = [], prefill, onClose, onCrea
 
           <div className="modal-field">
             <span className="modal-label">Type</span>
-            <EventTypePicker value={type} onChange={applyTypeDefaults} />
+            <EventTypePicker
+              value={type}
+              onChange={applyTypeDefaults}
+              customValue={customTitle}
+              onCustomCommit={setCustomTitle}
+            />
           </div>
-
-          {EVENT_TYPES.find(t => t.id === type)?.isOther && (
-            <label className="modal-field">
-              <span className="modal-label">Title</span>
-              <input
-                type="text"
-                value={customTitle}
-                onChange={e => setCustomTitle(e.target.value)}
-                placeholder="Event title"
-                className="modal-input"
-                autoFocus
-              />
-            </label>
-          )}
 
           <label className="modal-field">
             <span className="modal-label">Time</span>

@@ -327,11 +327,12 @@ def run_weekly_moved_bible_study_uses_actual_weekday_without_missing_slot(app):
     with app.app_context():
         _clear_db()
         wednesday = datetime.date(2026, 6, 17)
-        _event_with_assignment(wednesday, cancelled=True)
+        _event_with_assignment(wednesday, location="Pleasant Valley Church", cancelled=True)
 
         weekly = tg.format_weekly_schedule(today=datetime.date(2026, 6, 16))
 
         assert "<b>Wednesday Bible Study 📖</b>" in weekly
+        assert "📍 Pleasant Valley Church" in weekly
         assert "June 17 @ 7:00 PM" in weekly
         assert "✅ <i>No livestream needed</i>" in weekly
         assert "No Bible Study scheduled." not in weekly
