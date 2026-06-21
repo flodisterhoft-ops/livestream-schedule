@@ -1321,7 +1321,10 @@ def _weekly_select_shift(callback_id, chat_id, message_id, person_name, mode,
                 callback_id, chat_id, message_id, assignment, person_name,
                 telegram_user_id=telegram_user_id, first_name=first_name,
             )
-        return _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignment)
+        return _weekly_decline_assignment(
+            callback_id, chat_id, message_id, assignment, person_name,
+            telegram_user_id=telegram_user_id, first_name=first_name,
+        )
 
     button_rows = []
     for event, assignment, index in rows:
@@ -2071,7 +2074,10 @@ def handle_callback_query(data):
             return
 
         if action == "weekly_decline_shift":
-            _weekly_show_decline_confirmation(callback_id, chat_id, message_id, assignment)
+            _weekly_decline_assignment(
+                callback_id, chat_id, message_id, assignment, person_name,
+                telegram_user_id=telegram_user_id, first_name=first_name,
+            )
             return
 
         if action == "weekly_decline_yes":

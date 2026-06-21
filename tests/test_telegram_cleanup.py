@@ -179,6 +179,181 @@ def run_swap_needed_message_uses_open_shift_layout(app):
         assert "<b>" not in text
 
 
+def run_weekly_single_shift_decline_skips_confirmation(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 21),
+            role="Computer",
+            person="Andy",
+            status="pending",
+            day_type="Sunday",
+        )
+
+        markups = []
+        edits = []
+        sent = []
+        answers = []
+        refreshed = []
+        old_edit_markup = tg.edit_message_markup
+        old_edit_message = tg.edit_message
+        old_send_message = tg.send_message
+        old_answer_callback = tg.answer_callback
+        old_notify_admin = tg._notify_admin
+        old_refresh_event = tg.refresh_event_telegram
+        try:
+            tg.edit_message_markup = lambda chat_id, message_id, reply_markup: (
+                markups.append((chat_id, message_id, reply_markup)) or True
+            )
+            tg.edit_message = lambda chat_id, message_id, text, reply_markup=None: (
+                edits.append((chat_id, message_id, text, reply_markup)) or True
+            )
+            tg.send_message = lambda text, chat_id=None, reply_markup=None, parse_mode="HTML": (
+                sent.append((chat_id, text, reply_markup)) or 900
+            )
+            tg.answer_callback = lambda callback_id, text="", show_alert=False: (
+                answers.append((callback_id, text, show_alert)) or True
+            )
+            tg._notify_admin = lambda *args, **kwargs: None
+            tg.refresh_event_telegram = lambda refreshed_event: (
+                refreshed.append(refreshed_event.id) or True
+            )
+
+            assert tg._weekly_select_shift(
+                "cb", "chat", 321, "Andy", "decline",
+                telegram_user_id="tg-andy", first_name="Andy", today=event.date,
+            ) is True
+        finally:
+            tg.edit_message_markup = old_edit_markup
+            tg.edit_message = old_edit_message
+            tg.send_message = old_send_message
+            tg.answer_callback = old_answer_callback
+            tg._notify_admin = old_notify_admin
+            tg.refresh_event_telegram = old_refresh_event
+
+        db.session.expire_all()
+        assignment = db.session.get(Assignment, assignment.id)
+        swap = SwapRequest.query.filter_by(assignment_id=assignment.id, status="active").one()
+        assert assignment.status == "swap_needed"
+        assert assignment.telegram_message_id == 900
+        assert swap.requestor == "Andy"
+        assert swap.telegram_message_id == 900
+        assert not markups
+        assert edits and edits[-1][0:2] == ("chat", 321)
+        assert sent and "Andy can't make it to his shift" in sent[-1][1]
+        assert answers == [("cb", "", False)]
+        assert refreshed == [event.id]
+
+
+def run_weekly_multi_shift_decline_choice_is_final(app):
+    with app.app_context():
+        _clear_db()
+        friday_event, friday_assignment = _event_with_assignment(
+            datetime.date(2026, 6, 19),
+            role="Camera",
+            person="Andy",
+            status="pending",
+            day_type="Friday",
+        )
+        sunday_event, sunday_assignment = _event_with_assignment(
+            datetime.date(2026, 6, 21),
+            role="Computer",
+            person="Andy",
+            status="pending",
+            day_type="Sunday",
+        )
+
+        markups = []
+        answers = []
+        old_edit_markup = tg.edit_message_markup
+        old_answer_callback = tg.answer_callback
+        try:
+            tg.edit_message_markup = lambda chat_id, message_id, reply_markup: (
+                markups.append((chat_id, message_id, reply_markup)) or True
+            )
+            tg.answer_callback = lambda callback_id, text="", show_alert=False: (
+                answers.append((callback_id, text, show_alert)) or True
+            )
+
+            assert tg._weekly_select_shift(
+                "cb", "chat", 321, "Andy", "decline",
+                telegram_user_id="tg-andy", first_name="Andy", today=friday_event.date,
+            ) is True
+        finally:
+            tg.edit_message_markup = old_edit_markup
+            tg.answer_callback = old_answer_callback
+
+        keyboard = markups[-1][2]["inline_keyboard"]
+        callbacks = [row[0]["callback_data"] for row in keyboard]
+        assert f"weekly_decline_shift:{friday_assignment.id}" in callbacks
+        assert f"weekly_decline_shift:{sunday_assignment.id}" in callbacks
+        assert not any("weekly_decline_yes" in callback for callback in callbacks)
+        assert answers == [("cb", "", False)]
+        assert SwapRequest.query.count() == 0
+
+        markups = []
+        edits = []
+        sent = []
+        answers = []
+        refreshed = []
+        old_override = dict(tg.TELEGRAM_PERSON_OVERRIDE)
+        old_edit_markup = tg.edit_message_markup
+        old_edit_message = tg.edit_message
+        old_send_message = tg.send_message
+        old_answer_callback = tg.answer_callback
+        old_notify_admin = tg._notify_admin
+        old_refresh_event = tg.refresh_event_telegram
+        try:
+            tg.TELEGRAM_PERSON_OVERRIDE["1"] = "Andy"
+            tg.edit_message_markup = lambda chat_id, message_id, reply_markup: (
+                markups.append((chat_id, message_id, reply_markup)) or True
+            )
+            tg.edit_message = lambda chat_id, message_id, text, reply_markup=None: (
+                edits.append((chat_id, message_id, text, reply_markup)) or True
+            )
+            tg.send_message = lambda text, chat_id=None, reply_markup=None, parse_mode="HTML": (
+                sent.append((chat_id, text, reply_markup)) or 901
+            )
+            tg.answer_callback = lambda callback_id, text="", show_alert=False: (
+                answers.append((callback_id, text, show_alert)) or True
+            )
+            tg._notify_admin = lambda *args, **kwargs: None
+            tg.refresh_event_telegram = lambda refreshed_event: (
+                refreshed.append(refreshed_event.id) or True
+            )
+
+            tg.handle_callback_query({
+                "id": "cb2",
+                "from": {"id": 1, "first_name": "Andy"},
+                "message": {"chat": {"id": "chat"}, "message_id": 321},
+                "data": f"weekly_decline_shift:{friday_assignment.id}",
+            })
+        finally:
+            tg.TELEGRAM_PERSON_OVERRIDE.clear()
+            tg.TELEGRAM_PERSON_OVERRIDE.update(old_override)
+            tg.edit_message_markup = old_edit_markup
+            tg.edit_message = old_edit_message
+            tg.send_message = old_send_message
+            tg.answer_callback = old_answer_callback
+            tg._notify_admin = old_notify_admin
+            tg.refresh_event_telegram = old_refresh_event
+
+        db.session.expire_all()
+        friday_assignment = db.session.get(Assignment, friday_assignment.id)
+        sunday_assignment = db.session.get(Assignment, sunday_assignment.id)
+        swap = SwapRequest.query.filter_by(
+            assignment_id=friday_assignment.id, status="active",
+        ).one()
+        assert friday_assignment.status == "swap_needed"
+        assert sunday_assignment.status == "pending"
+        assert swap.telegram_message_id == 901
+        assert not markups
+        assert edits and edits[-1][0:2] == ("chat", 321)
+        assert sent and "Bible Study - June 19" in sent[-1][1]
+        assert answers == [("cb2", "", False)]
+        assert refreshed == [friday_event.id]
+
+
 def run_swap_needed_replaces_missing_broadcast(app):
     with app.app_context():
         _clear_db()
@@ -476,6 +651,8 @@ def main():
         run_expired_swap_sweep_deletes_broadcast(app)
         run_swap_needed_reuses_existing_broadcast(app)
         run_swap_needed_message_uses_open_shift_layout(app)
+        run_weekly_single_shift_decline_skips_confirmation(app)
+        run_weekly_multi_shift_decline_choice_is_final(app)
         run_swap_needed_replaces_missing_broadcast(app)
         run_swap_needed_does_not_duplicate_on_refresh_error(app)
         run_expired_uncovered_swap_renders_struck_through(app)
