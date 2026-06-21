@@ -1787,15 +1787,20 @@ def send_monthly_schedule(year=None, month=None, chat_id=None):
 def _swap_needed_text_and_buttons(event, assignment, pickup_url=None, source_message_id=None):
     role_icon = ROLE_EMOJI.get(assignment.role, "👤")
     title = _event_title_without_emoji(event)
+    person = html.escape(assignment.person or "Someone")
+    role = html.escape(assignment.role or "shift")
+    date_text = html.escape(_short_date(event.date))
+    title = html.escape(title)
 
     text = (
-        f"{_weekly_decline_status_icon()} {assignment.person} can't make it to his shift:\n"
-        f"<b>{title} - {_short_date(event.date)} ({role_icon} {assignment.role})</b>\n\n"
+        f"{_weekly_decline_status_icon()} {person} can't make it to his shift:\n"
+        f"{title} - {date_text}\n"
+        f" {role_icon} {role}\n\n"
         "Could someone please jump in for him?"
     )
 
     if pickup_url:
-        text += f'\n🔗 <a href="{pickup_url}">Pick up via web</a>'
+        text += f'\n\n🔗 <a href="{html.escape(pickup_url, quote=True)}">Pick up via web</a>'
 
     callback_data = f"pickup:{assignment.id}"
     if source_message_id:

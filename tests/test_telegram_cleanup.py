@@ -157,6 +157,28 @@ def run_swap_needed_reuses_existing_broadcast(app):
         assert assignment.telegram_message_id == 700
 
 
+def run_swap_needed_message_uses_open_shift_layout(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 21),
+            role="Computer",
+            person="Andy",
+            status="swap_needed",
+            day_type="Sunday",
+        )
+
+        text, _buttons = tg._swap_needed_text_and_buttons(event, assignment)
+
+        assert text == (
+            f"{tg._weekly_decline_status_icon()} Andy can't make it to his shift:\n"
+            "Sunday Service - June 21\n"
+            " 🖥️ Computer\n\n"
+            "Could someone please jump in for him?"
+        )
+        assert "<b>" not in text
+
+
 def run_swap_needed_replaces_missing_broadcast(app):
     with app.app_context():
         _clear_db()
@@ -453,6 +475,7 @@ def main():
     try:
         run_expired_swap_sweep_deletes_broadcast(app)
         run_swap_needed_reuses_existing_broadcast(app)
+        run_swap_needed_message_uses_open_shift_layout(app)
         run_swap_needed_replaces_missing_broadcast(app)
         run_swap_needed_does_not_duplicate_on_refresh_error(app)
         run_expired_uncovered_swap_renders_struck_through(app)
