@@ -1040,10 +1040,11 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
     didInitialScheduleScrollRef.current = true
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     let timeoutId
+    let animateFrameId
     const settleTimeoutIds = []
     let isActive = true
-    const setWindowScroll = (top, behavior = 'auto') => {
-      window.scrollTo({ top, left: window.scrollX, behavior })
+    const setWindowScroll = (top) => {
+      window.scrollTo(window.scrollX, top)
     }
     const getAlignedDestination = () => {
       const stickyBottom = stickyControlsRef.current?.getBoundingClientRect().bottom || updateStickyMeasurements()
@@ -1057,7 +1058,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
       if (Math.abs(destination - window.scrollY) > 1) setWindowScroll(destination)
     }
     const queueSettleChecks = () => {
-      ;[700, 1200, 1800].forEach(delay => {
+      ;[120, 360, 720].forEach(delay => {
         settleTimeoutIds.push(window.setTimeout(settleAlignment, delay))
       })
     }
@@ -1066,13 +1067,30 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
         if (!isActive) return
         updateStickyMeasurements()
         const destination = getAlignedDestination()
-        setWindowScroll(destination, prefersReducedMotion ? 'auto' : 'smooth')
-        queueSettleChecks()
+        if (prefersReducedMotion) {
+          setWindowScroll(destination)
+          queueSettleChecks()
+          return
+        }
+        const start = window.scrollY
+        const distance = destination - start
+        const duration = Math.min(2200, Math.max(1500, Math.abs(distance) * 2.4))
+        const startedAt = performance.now()
+        const animate = (now) => {
+          if (!isActive) return
+          const progress = Math.min(1, (now - startedAt) / duration)
+          const eased = 1 - Math.pow(1 - progress, 3)
+          setWindowScroll(start + distance * eased)
+          if (progress < 1) animateFrameId = window.requestAnimationFrame(animate)
+          else queueSettleChecks()
+        }
+        animateFrameId = window.requestAnimationFrame(animate)
       }, 240)
     })
     return () => {
       isActive = false
       window.cancelAnimationFrame(frameId)
+      if (animateFrameId) window.cancelAnimationFrame(animateFrameId)
       if (timeoutId) window.clearTimeout(timeoutId)
       settleTimeoutIds.forEach(id => window.clearTimeout(id))
     }
