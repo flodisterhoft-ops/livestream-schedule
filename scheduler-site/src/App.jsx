@@ -1074,7 +1074,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
         }
         const start = window.scrollY
         const distance = destination - start
-        const duration = Math.min(1400, Math.max(900, Math.abs(distance) * 1.7))
+        const duration = Math.min(1600, Math.max(1050, Math.abs(distance) * 1.9))
         const startedAt = performance.now()
         const animate = (now) => {
           if (!isActive) return
