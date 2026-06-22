@@ -1873,6 +1873,7 @@ body {
   isolation: isolate;
   min-height: 280px;
   padding-right: 3px;
+  padding-bottom: calc(var(--locked-header-h, 100px) + var(--locked-year-h, 33px));
   scroll-behavior: auto;
 }
 
