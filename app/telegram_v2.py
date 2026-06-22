@@ -1752,6 +1752,23 @@ def send_weekday_ack_temp_group(assignment):
     return _send_or_refresh_group_event_reminder(assignment.event)
 
 
+def _closed_swap_needed_text(swap, assignment=None):
+    event = assignment.event if assignment else None
+    person = (assignment.person if assignment else None) or swap.requestor or "Someone"
+    role = (assignment.role if assignment else None) or swap.role or "shift"
+    role_icon = ROLE_EMOJI.get(role, "👤")
+    date_obj = (event.date if event else None) or swap.event_date
+    date_text = _short_date(date_obj) if date_obj else "the scheduled date"
+    title = _event_title_without_emoji(event) if event else "Livestream"
+
+    return (
+        f"⚠️ {html.escape(person)}'s coverage request is closed:\n"
+        f"{html.escape(title)} - {html.escape(date_text)}\n"
+        f" {role_icon} {html.escape(role)}\n\n"
+        "This service has passed."
+    )
+
+
 def _delete_swap_needed_message(swap, assignment=None, chat_id=None):
     """Delete the public coverage request tied to an expired/cancelled swap."""
     target_chat_id = swap.telegram_chat_id or chat_id or TELEGRAM_CHAT_ID
@@ -1759,20 +1776,30 @@ def _delete_swap_needed_message(swap, assignment=None, chat_id=None):
     if not message_id and assignment:
         message_id = assignment.telegram_message_id
 
-    deleted = False
+    cleaned = False
     if target_chat_id and message_id:
-        deleted, error = delete_message_with_error(target_chat_id, message_id)
-        if not deleted:
+        cleaned, error = delete_message_with_error(target_chat_id, message_id)
+        if not cleaned:
             print(f"[sweep] Failed to delete swap message {message_id}: {error}")
+            cleaned, edit_error = edit_message_with_error(
+                target_chat_id,
+                message_id,
+                _closed_swap_needed_text(swap, assignment=assignment),
+                reply_markup=_make_inline_keyboard([]),
+            )
+            if cleaned:
+                print(f"[sweep] Closed old swap message {message_id} after delete failed")
+            else:
+                print(f"[sweep] Failed to close swap message {message_id}: {edit_error}")
 
-    if deleted:
+    if cleaned:
         if assignment and assignment.telegram_message_id == message_id:
             assignment.telegram_message_id = None
         if swap.telegram_message_id == message_id:
             swap.telegram_message_id = None
             swap.telegram_chat_id = None
 
-    return deleted
+    return cleaned
 
 
 def send_monthly_schedule(year=None, month=None, chat_id=None):
@@ -2688,14 +2715,14 @@ def sweep_expired_swaps(chat_id=None):
     ).all()
 
     processed = 0
-    deleted_messages = 0
+    cleaned_messages = 0
     for swap in expired:
         swap.status = "expired"
         try:
             assignment = Assignment.query.get(swap.assignment_id)
             event = assignment.event if assignment else None
             if _delete_swap_needed_message(swap, assignment=assignment, chat_id=chat_id):
-                deleted_messages += 1
+                cleaned_messages += 1
             for temp_chat in TempChat.query.filter_by(swap_request_id=swap.id, status="active").all():
                 _delete_temp_chat(temp_chat)
             db.session.commit()
@@ -2707,7 +2734,7 @@ def sweep_expired_swaps(chat_id=None):
         processed += 1
 
     if processed:
-        print(f"[sweep] Processed {processed} expired swap(s); deleted {deleted_messages} swap message(s)")
+        print(f"[sweep] Processed {processed} expired swap(s); cleaned {cleaned_messages} swap message(s)")
     return processed
 
 

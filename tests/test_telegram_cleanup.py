@@ -103,6 +103,69 @@ def run_expired_swap_sweep_deletes_broadcast(app):
         assert assignment.telegram_message_id is None
 
 
+def run_expired_swap_sweep_closes_undeletable_broadcast(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 21),
+            role="Camera 2",
+            person="Stefan",
+            status="swap_needed",
+            day_type="Sunday",
+        )
+        assignment.telegram_message_id = 332
+        swap = SwapRequest(
+            assignment_id=assignment.id,
+            requestor="Stefan",
+            event_date=event.date,
+            role=assignment.role,
+            expires_at=(
+                datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                - datetime.timedelta(minutes=5)
+            ),
+            status="active",
+            telegram_message_id=332,
+            telegram_chat_id="chat",
+        )
+        db.session.add(swap)
+        db.session.commit()
+
+        deleted = []
+        edited = []
+        old_delete = tg.delete_message_with_error
+        old_edit = tg.edit_message_with_error
+        old_notify = tg._notify_admin_text
+        try:
+            tg.delete_message_with_error = lambda chat_id, message_id: (
+                deleted.append((chat_id, message_id)) or (False, "Bad Request: message can't be deleted")
+            )
+            tg.edit_message_with_error = lambda chat_id, message_id, text, reply_markup=None: (
+                edited.append((chat_id, message_id, text, reply_markup)) or (True, None)
+            )
+            tg._notify_admin_text = lambda _text: None
+
+            assert tg.sweep_expired_swaps() == 1
+        finally:
+            tg.delete_message_with_error = old_delete
+            tg.edit_message_with_error = old_edit
+            tg._notify_admin_text = old_notify
+
+        db.session.expire_all()
+        swap = db.session.get(SwapRequest, swap.id)
+        assignment = db.session.get(Assignment, assignment.id)
+        assert deleted == [("chat", 332)]
+        assert len(edited) == 1
+        assert edited[0][0:2] == ("chat", 332)
+        assert "Stefan's coverage request is closed" in edited[0][2]
+        assert "Sunday Service - June 21" in edited[0][2]
+        assert "This service has passed." in edited[0][2]
+        assert edited[0][3] == {"inline_keyboard": []}
+        assert swap.status == "expired"
+        assert swap.telegram_message_id is None
+        assert swap.telegram_chat_id is None
+        assert assignment.telegram_message_id is None
+
+
 def _active_swap_for_assignment(assignment, message_id=None, chat_id="chat"):
     swap = SwapRequest(
         assignment_id=assignment.id,
@@ -649,6 +712,7 @@ def main():
     app, temp_dir = _make_app()
     try:
         run_expired_swap_sweep_deletes_broadcast(app)
+        run_expired_swap_sweep_closes_undeletable_broadcast(app)
         run_swap_needed_reuses_existing_broadcast(app)
         run_swap_needed_message_uses_open_shift_layout(app)
         run_weekly_single_shift_decline_skips_confirmation(app)
