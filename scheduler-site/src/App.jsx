@@ -1050,7 +1050,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
       const stickyBottom = stickyControlsRef.current?.getBoundingClientRect().bottom || updateStickyMeasurements()
       const targetTop = target.getBoundingClientRect().top
       const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
-      return Math.min(maxScroll, Math.max(0, window.scrollY + targetTop - stickyBottom - 8))
+      return Math.min(maxScroll, Math.max(0, window.scrollY + targetTop - stickyBottom - 6))
     }
     const settleAlignment = () => {
       if (!isActive) return
@@ -1074,20 +1074,18 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
         }
         const start = window.scrollY
         const distance = destination - start
-        const duration = Math.min(1100, Math.max(520, Math.abs(distance) * 1.15))
+        const duration = Math.min(1400, Math.max(900, Math.abs(distance) * 1.7))
         const startedAt = performance.now()
         const animate = (now) => {
           if (!isActive) return
           const progress = Math.min(1, (now - startedAt) / duration)
-          const eased = progress < 0.5
-            ? 4 * progress * progress * progress
-            : 1 - Math.pow(-2 * progress + 2, 3) / 2
+          const eased = 0.5 - Math.cos(progress * Math.PI) / 2
           setWindowScroll(start + distance * eased)
           if (progress < 1) animateFrameId = window.requestAnimationFrame(animate)
           else queueSettleChecks()
         }
         animateFrameId = window.requestAnimationFrame(animate)
-      }, 500)
+      }, 240)
     })
     return () => {
       isActive = false
