@@ -918,7 +918,9 @@ export default function App() {
 // ═══════════════════════════════════════════════════════════════
 
 function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, onMonthChange, user, isAdmin, isManager, doAction, showFlash, loadSchedule, team, locationOptions, recentlyChanged, onAddEvent }) {
+  const yearNavRef = useRef(null)
   const navRef = useRef(null)
+  const stickyControlsRef = useRef(null)
   const filterRef = useRef(null)
   const eventsListRef = useRef(null)
   const didInitialScheduleScrollRef = useRef(false)
@@ -926,6 +928,17 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
   const [selectedPerson, setSelectedPerson] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
   const [viewMode, setViewMode] = useState('cards')
+  const updateStickyMeasurements = useCallback(() => {
+    const header = document.querySelector('.app-header')
+    const headerHeight = header?.getBoundingClientRect().height || 0
+    const yearHeight = yearNavRef.current?.getBoundingClientRect().height || 0
+    const controlsHeight = stickyControlsRef.current?.getBoundingClientRect().height || 0
+    const root = document.documentElement
+    if (headerHeight > 0) root.style.setProperty('--locked-header-h', `${Math.ceil(headerHeight)}px`)
+    if (yearHeight > 0) root.style.setProperty('--locked-year-h', `${Math.ceil(yearHeight)}px`)
+    return Math.ceil(headerHeight || 100) + Math.ceil(yearHeight || 33) + Math.ceil(controlsHeight)
+  }, [])
+
   useEffect(() => {
     const measure = () => {
       const nav = navRef.current
@@ -1026,33 +1039,43 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
     didInitialScheduleScrollRef.current = true
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     let timeoutId
+    let animateFrameId
+    let isActive = true
+    const setWindowScroll = (top) => {
+      window.scrollTo({ top, left: window.scrollX })
+    }
     const frameId = window.requestAnimationFrame(() => {
-      list.scrollTop = 0
+      setWindowScroll(0)
       timeoutId = window.setTimeout(() => {
-        const targetTop = target.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop
-        const destination = Math.max(0, targetTop - 8)
+        if (!isActive) return
+        const stickyOffset = updateStickyMeasurements()
+        const targetTop = target.getBoundingClientRect().top + window.scrollY
+        const destination = Math.max(0, targetTop - stickyOffset - 8)
         if (prefersReducedMotion) {
-          list.scrollTop = destination
+          setWindowScroll(destination)
           return
         }
-        const start = list.scrollTop
+        const start = window.scrollY
         const distance = destination - start
         const duration = 1800
         const startedAt = performance.now()
         const animate = (now) => {
+          if (!isActive) return
           const progress = Math.min(1, (now - startedAt) / duration)
           const eased = 1 - Math.pow(1 - progress, 3)
-          list.scrollTop = start + distance * eased
-          if (progress < 1) window.requestAnimationFrame(animate)
+          setWindowScroll(start + distance * eased)
+          if (progress < 1) animateFrameId = window.requestAnimationFrame(animate)
         }
-        window.requestAnimationFrame(animate)
+        animateFrameId = window.requestAnimationFrame(animate)
       }, 500)
     })
     return () => {
+      isActive = false
       window.cancelAnimationFrame(frameId)
+      if (animateFrameId) window.cancelAnimationFrame(animateFrameId)
       if (timeoutId) window.clearTimeout(timeoutId)
     }
-  }, [autoScrollTargetDate, viewMode])
+  }, [autoScrollTargetDate, updateStickyMeasurements, viewMode])
 
   useEffect(() => {
     if (!filterOpen) return
@@ -1087,6 +1110,23 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
     onMonthChange(firstFuture || yearMonths[0])
   }
   const monthsForActiveYear = months.filter(m => m.slice(0, 4) === activeYear)
+  useEffect(() => {
+    if (viewMode !== 'cards') return
+    updateStickyMeasurements()
+    const header = document.querySelector('.app-header')
+    const observed = [header, yearNavRef.current, stickyControlsRef.current].filter(Boolean)
+    let observer
+    if (window.ResizeObserver) {
+      observer = new ResizeObserver(updateStickyMeasurements)
+      observed.forEach(element => observer.observe(element))
+    }
+    window.addEventListener('resize', updateStickyMeasurements)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', updateStickyMeasurements)
+    }
+  }, [activeYear, monthsForActiveYear.length, updateStickyMeasurements, viewMode])
+
   const renderMonthPill = (month) => {
     const label = new Date(month + '-15').toLocaleString('en', { month: 'short' })
     const isPast = pastMonths ? pastMonths.has(month) : month < new Date().toISOString().slice(0, 7)
@@ -1104,7 +1144,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
   return (
     <div className={`schedule-tab ${viewMode === 'cards' ? 'cards-view' : 'calendar-view-mode'}`}>
       {/* Year navigation */}
-      <div className="year-nav">
+      <div className="year-nav" ref={yearNavRef}>
         {yearList.map(year => (
           <button
             key={year}
@@ -1117,7 +1157,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
       </div>
 
       {/* Month navigation — only this stays sticky at the top while scrolling */}
-      <div className="schedule-sticky-controls">
+      <div className="schedule-sticky-controls" ref={stickyControlsRef}>
         <div className="month-nav" ref={navRef}>
           {indicator && (
             <span
