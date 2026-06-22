@@ -1039,12 +1039,16 @@ body {
   top: calc(var(--locked-header-h, 100px) + var(--locked-year-h, 33px));
   z-index: 40;
   margin: 0 -16px 0;
-  padding: 4px 16px 2px;
+  padding: 6px 16px;
   background: var(--bg);
   border-bottom: 1px solid rgba(226, 232, 240, 0.85);
   box-shadow: 0 -2px 0 var(--bg);
   backdrop-filter: saturate(140%) blur(12px);
   -webkit-backdrop-filter: saturate(140%) blur(12px);
+}
+
+.schedule-tab.cards-view .schedule-sticky-controls .month-nav {
+  margin-bottom: 0;
 }
 
 /* Lock header + year row + month pills as a single sticky block. */
@@ -1063,7 +1067,7 @@ body {
   z-index: 45;
   background: var(--bg);
   margin: 0 -16px;
-  padding: 4px 16px 0;
+  padding: 6px 16px 4px;
   box-shadow: 0 -2px 0 var(--bg), 0 2px 0 var(--bg);
 }
 
@@ -1073,7 +1077,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 2px 0 10px;
+  margin: 6px 0 12px;
 }
 
 .person-filter-pill-wrap {
