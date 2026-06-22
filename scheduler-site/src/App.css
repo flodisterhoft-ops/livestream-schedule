@@ -1067,7 +1067,7 @@ body {
   z-index: 45;
   background: var(--bg);
   margin: 0 -16px;
-  padding: 6px 16px 4px;
+  padding: 6px 16px 0;
   box-shadow: 0 -2px 0 var(--bg), 0 2px 0 var(--bg);
 }
 
