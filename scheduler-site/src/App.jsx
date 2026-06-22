@@ -936,6 +936,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
     const root = document.documentElement
     if (headerHeight > 0) root.style.setProperty('--locked-header-h', `${Math.ceil(headerHeight)}px`)
     if (yearHeight > 0) root.style.setProperty('--locked-year-h', `${Math.ceil(yearHeight)}px`)
+    if (controlsHeight > 0) root.style.setProperty('--locked-controls-h', `${Math.ceil(controlsHeight)}px`)
     return Math.ceil(headerHeight || 100) + Math.ceil(yearHeight || 33) + Math.ceil(controlsHeight)
   }, [])
 
@@ -1040,43 +1041,50 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     let timeoutId
     let animateFrameId
-    let settleTimeoutId
+    const settleTimeoutIds = []
     let isActive = true
     const setWindowScroll = (top) => {
-      window.scrollTo({ top, left: window.scrollX })
+      window.scrollTo(window.scrollX, top)
     }
     const getAlignedDestination = () => {
       const stickyBottom = stickyControlsRef.current?.getBoundingClientRect().bottom || updateStickyMeasurements()
       const targetTop = target.getBoundingClientRect().top
-      return Math.max(0, window.scrollY + targetTop - stickyBottom - 8)
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+      return Math.min(maxScroll, Math.max(0, window.scrollY + targetTop - stickyBottom - 8))
     }
     const settleAlignment = () => {
       if (!isActive) return
       const destination = getAlignedDestination()
-      if (Math.abs(destination - window.scrollY) > 2) setWindowScroll(destination)
+      if (Math.abs(destination - window.scrollY) > 1) setWindowScroll(destination)
+    }
+    const queueSettleChecks = () => {
+      ;[80, 220, 420].forEach(delay => {
+        settleTimeoutIds.push(window.setTimeout(settleAlignment, delay))
+      })
     }
     const frameId = window.requestAnimationFrame(() => {
-      setWindowScroll(0)
       timeoutId = window.setTimeout(() => {
         if (!isActive) return
         updateStickyMeasurements()
         const destination = getAlignedDestination()
         if (prefersReducedMotion) {
           setWindowScroll(destination)
-          settleTimeoutId = window.setTimeout(settleAlignment, 120)
+          queueSettleChecks()
           return
         }
         const start = window.scrollY
         const distance = destination - start
-        const duration = 1800
+        const duration = Math.min(1100, Math.max(520, Math.abs(distance) * 1.15))
         const startedAt = performance.now()
         const animate = (now) => {
           if (!isActive) return
           const progress = Math.min(1, (now - startedAt) / duration)
-          const eased = 1 - Math.pow(1 - progress, 3)
+          const eased = progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2
           setWindowScroll(start + distance * eased)
           if (progress < 1) animateFrameId = window.requestAnimationFrame(animate)
-          else settleTimeoutId = window.setTimeout(settleAlignment, 120)
+          else queueSettleChecks()
         }
         animateFrameId = window.requestAnimationFrame(animate)
       }, 500)
@@ -1086,7 +1094,7 @@ function ScheduleTab({ schedule, months, pastMonths, activeMonth, defaultMonth, 
       window.cancelAnimationFrame(frameId)
       if (animateFrameId) window.cancelAnimationFrame(animateFrameId)
       if (timeoutId) window.clearTimeout(timeoutId)
-      if (settleTimeoutId) window.clearTimeout(settleTimeoutId)
+      settleTimeoutIds.forEach(id => window.clearTimeout(id))
     }
   }, [autoScrollTargetDate, updateStickyMeasurements, viewMode])
 
