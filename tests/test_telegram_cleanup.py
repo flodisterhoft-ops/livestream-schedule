@@ -417,6 +417,110 @@ def run_weekly_multi_shift_decline_choice_is_final(app):
         assert refreshed == [friday_event.id]
 
 
+def run_weekly_confirm_on_covered_shift_stays_confirmed(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 21),
+            role="Computer",
+            person="Rene",
+            status="confirmed",
+            day_type="Sunday",
+        )
+        assignment.cover = "Andy"
+        db.session.commit()
+
+        edits = []
+        answers = []
+        refreshed = []
+        old_edit_message = tg.edit_message
+        old_answer_callback = tg.answer_callback
+        old_refresh_event = tg.refresh_event_telegram
+        try:
+            tg.edit_message = lambda chat_id, message_id, text, reply_markup=None: (
+                edits.append((chat_id, message_id, text, reply_markup)) or True
+            )
+            tg.answer_callback = lambda callback_id, text="", show_alert=False: (
+                answers.append((callback_id, text, show_alert)) or True
+            )
+            tg.refresh_event_telegram = lambda refreshed_event: (
+                refreshed.append(refreshed_event.id) or True
+            )
+
+            assert tg._weekly_confirm_assignment(
+                "cb", "chat", 321, assignment, "Andy",
+                telegram_user_id="tg-andy", first_name="Andy",
+            ) is True
+        finally:
+            tg.edit_message = old_edit_message
+            tg.answer_callback = old_answer_callback
+            tg.refresh_event_telegram = old_refresh_event
+
+        db.session.expire_all()
+        assignment = db.session.get(Assignment, assignment.id)
+        log = InteractionLog.query.order_by(InteractionLog.id.desc()).first()
+        assert assignment.status == "confirmed"
+        assert assignment.cover == "Andy"
+        assert not any(entry.get("action") == "undo" for entry in assignment.history)
+        assert log.action == "confirm"
+        assert log.details == "weekly_button_already_confirmed_cover"
+        assert answers == [("cb", "Already confirmed.", False)]
+        assert edits and edits[-1][0:2] == ("chat", 321)
+        assert refreshed == [event.id]
+
+
+def run_event_confirm_on_covered_shift_stays_confirmed(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 21),
+            role="Computer",
+            person="Rene",
+            status="confirmed",
+            day_type="Sunday",
+        )
+        assignment.cover = "Andy"
+        db.session.commit()
+
+        edits = []
+        answers = []
+        weekly_updates = []
+        old_edit_message = tg.edit_message
+        old_answer_callback = tg.answer_callback
+        old_update_weekly = tg.update_weekly_schedule_for_event
+        try:
+            tg.edit_message = lambda chat_id, message_id, text, reply_markup=None: (
+                edits.append((chat_id, message_id, text, reply_markup)) or True
+            )
+            tg.answer_callback = lambda callback_id, text="", show_alert=False: (
+                answers.append((callback_id, text, show_alert)) or True
+            )
+            tg.update_weekly_schedule_for_event = lambda updated_event: (
+                weekly_updates.append(updated_event.id) or True
+            )
+
+            assert tg._event_confirm_assignment(
+                "cb", "chat", 347, assignment, "Andy",
+                telegram_user_id="tg-andy", first_name="Andy",
+            ) is True
+        finally:
+            tg.edit_message = old_edit_message
+            tg.answer_callback = old_answer_callback
+            tg.update_weekly_schedule_for_event = old_update_weekly
+
+        db.session.expire_all()
+        assignment = db.session.get(Assignment, assignment.id)
+        log = InteractionLog.query.order_by(InteractionLog.id.desc()).first()
+        assert assignment.status == "confirmed"
+        assert assignment.cover == "Andy"
+        assert not any(entry.get("action") == "undo" for entry in assignment.history)
+        assert log.action == "confirm"
+        assert log.details == "event_reminder_already_confirmed_cover"
+        assert answers == [("cb", "Already confirmed.", False)]
+        assert edits and edits[-1][0:2] == ("chat", 347)
+        assert weekly_updates == [event.id]
+
+
 def run_swap_needed_replaces_missing_broadcast(app):
     with app.app_context():
         _clear_db()
@@ -717,6 +821,8 @@ def main():
         run_swap_needed_message_uses_open_shift_layout(app)
         run_weekly_single_shift_decline_skips_confirmation(app)
         run_weekly_multi_shift_decline_choice_is_final(app)
+        run_weekly_confirm_on_covered_shift_stays_confirmed(app)
+        run_event_confirm_on_covered_shift_stays_confirmed(app)
         run_swap_needed_replaces_missing_broadcast(app)
         run_swap_needed_does_not_duplicate_on_refresh_error(app)
         run_expired_uncovered_swap_renders_struck_through(app)

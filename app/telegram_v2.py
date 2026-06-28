@@ -1365,6 +1365,16 @@ def _weekly_confirm_assignment(callback_id, chat_id, message_id, assignment, per
                                telegram_user_id=None, first_name=None):
     event = assignment.event
     if assignment.status == "confirmed":
+        if assignment.cover and assignment.cover == person_name:
+            _log_interaction(
+                telegram_user_id, first_name, "confirm", person_name, assignment, event,
+                details="weekly_button_already_confirmed_cover",
+            )
+            db.session.commit()
+            answer_callback(callback_id, "Already confirmed.")
+            _restore_weekly_message(chat_id, message_id, today=event.date)
+            refresh_event_telegram(event)
+            return True
         assignment.status = "pending"
         h = assignment.history
         h.append({"action": "undo", "by": person_name, "via": "weekly_telegram", "ts": str(vancouver_now())})
@@ -1438,6 +1448,16 @@ def _event_confirm_assignment(callback_id, chat_id, message_id, assignment, pers
                               telegram_user_id=None, first_name=None):
     event = assignment.event
     if assignment.status == "confirmed":
+        if assignment.cover and assignment.cover == person_name:
+            _log_interaction(
+                telegram_user_id, first_name, "confirm", person_name, assignment, event,
+                details="event_reminder_already_confirmed_cover",
+            )
+            db.session.commit()
+            answer_callback(callback_id, "Already confirmed.")
+            _restore_event_reminder_message(chat_id, message_id, event)
+            update_weekly_schedule_for_event(event)
+            return True
         assignment.status = "pending"
         action = "undo"
     else:
