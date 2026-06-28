@@ -185,6 +185,66 @@ def _active_swap_for_assignment(assignment, message_id=None, chat_id="chat"):
     return swap
 
 
+def run_accepted_swap_closes_undeletable_source_message(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 28),
+            role="Computer",
+            person="Rene",
+            status="confirmed",
+            day_type="Sunday",
+        )
+        assignment.cover = "Andy"
+        swap = SwapRequest(
+            assignment_id=assignment.id,
+            requestor="Rene",
+            event_date=event.date,
+            role=assignment.role,
+            expires_at=(
+                datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                + datetime.timedelta(hours=1)
+            ),
+            status="accepted",
+            accepted_by="Andy",
+            telegram_message_id=348,
+            telegram_chat_id="chat",
+        )
+        db.session.add(swap)
+        db.session.commit()
+
+        deleted = []
+        edited = []
+        old_delete = tg.delete_message_with_error
+        old_edit = tg.edit_message_with_error
+        try:
+            tg.delete_message_with_error = lambda chat_id, message_id: (
+                deleted.append((chat_id, message_id)) or (False, "Bad Request: message can't be deleted")
+            )
+            tg.edit_message_with_error = lambda chat_id, message_id, text, reply_markup=None: (
+                edited.append((chat_id, message_id, text, reply_markup)) or (True, None)
+            )
+
+            assert tg._delete_swap_needed_message(
+                swap, assignment=assignment, chat_id="chat", message_id=348,
+            ) is True
+            db.session.commit()
+        finally:
+            tg.delete_message_with_error = old_delete
+            tg.edit_message_with_error = old_edit
+
+        db.session.expire_all()
+        swap = db.session.get(SwapRequest, swap.id)
+        assert deleted == [("chat", 348)]
+        assert len(edited) == 1
+        assert edited[0][0:2] == ("chat", 348)
+        assert "Rene's coverage request is closed" in edited[0][2]
+        assert "Andy is covering this shift." in edited[0][2]
+        assert edited[0][3] == {"inline_keyboard": []}
+        assert swap.telegram_message_id is None
+        assert swap.telegram_chat_id is None
+
+
 def run_swap_needed_reuses_existing_broadcast(app):
     with app.app_context():
         _clear_db()
@@ -817,6 +877,7 @@ def main():
     try:
         run_expired_swap_sweep_deletes_broadcast(app)
         run_expired_swap_sweep_closes_undeletable_broadcast(app)
+        run_accepted_swap_closes_undeletable_source_message(app)
         run_swap_needed_reuses_existing_broadcast(app)
         run_swap_needed_message_uses_open_shift_layout(app)
         run_weekly_single_shift_decline_skips_confirmation(app)

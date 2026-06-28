@@ -1546,7 +1546,10 @@ def _event_undo_decline_assignment(callback_id, chat_id, message_id, assignment,
     db.session.commit()
 
     answer_callback(callback_id)
-    if cover_message_id:
+    if active_swap:
+        if _delete_swap_needed_message(active_swap, assignment=assignment, chat_id=chat_id):
+            db.session.commit()
+    elif cover_message_id:
         delete_message(cover_chat_id or chat_id, cover_message_id)
     _restore_event_reminder_message(chat_id, message_id, event)
     update_weekly_schedule_for_event(event)
@@ -1781,18 +1784,26 @@ def _closed_swap_needed_text(swap, assignment=None):
     date_text = _short_date(date_obj) if date_obj else "the scheduled date"
     title = _event_title_without_emoji(event) if event else "Livestream"
 
+    if swap and swap.status == "accepted":
+        helper = (assignment.cover if assignment else None) or swap.accepted_by or "Someone"
+        note = f"{html.escape(helper)} is covering this shift."
+    elif swap and swap.status == "cancelled":
+        note = "This coverage request was cancelled."
+    else:
+        note = "This service has passed."
+
     return (
         f"⚠️ {html.escape(person)}'s coverage request is closed:\n"
         f"{html.escape(title)} - {html.escape(date_text)}\n"
         f" {role_icon} {html.escape(role)}\n\n"
-        "This service has passed."
+        f"{note}"
     )
 
 
-def _delete_swap_needed_message(swap, assignment=None, chat_id=None):
+def _delete_swap_needed_message(swap, assignment=None, chat_id=None, message_id=None):
     """Delete the public coverage request tied to an expired/cancelled swap."""
     target_chat_id = swap.telegram_chat_id or chat_id or TELEGRAM_CHAT_ID
-    message_id = swap.telegram_message_id
+    message_id = message_id or swap.telegram_message_id
     if not message_id and assignment:
         message_id = assignment.telegram_message_id
 
@@ -2541,7 +2552,11 @@ def handle_callback_query(data):
         assignment.telegram_message_id = None
         db.session.commit()
         answer_callback(callback_id)
-        delete_message(chat_id, message_id)
+        if active_swap:
+            if _delete_swap_needed_message(active_swap, assignment=assignment, chat_id=chat_id, message_id=message_id):
+                db.session.commit()
+        else:
+            delete_message(chat_id, message_id)
         if weekly_message_id:
             _restore_weekly_message(chat_id, weekly_message_id, today=event.date)
         refresh_event_telegram(event)
