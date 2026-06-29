@@ -55,6 +55,16 @@ def _event_with_assignment(
     return event, assignment
 
 
+def _assert_schedule_button_only(reply_markup):
+    rows = reply_markup.get("inline_keyboard") if reply_markup else None
+    assert rows and len(rows) == 1
+    assert len(rows[0]) == 1
+    button = rows[0][0]
+    assert "Schedule" in button.get("text", "")
+    assert "url" in button or "login_url" in button
+    assert "callback_data" not in button
+
+
 def _team_member(name, sunday_roles=None, friday_roles=None):
     member = TeamMember(name=name, active=True)
     member.sunday_roles = sunday_roles or []
@@ -167,7 +177,7 @@ def run_expired_swap_sweep_closes_undeletable_broadcast(app):
         assert "Stefan's coverage request is closed" in edited[0][2]
         assert "Sunday Service - June 21" in edited[0][2]
         assert "This service has passed." in edited[0][2]
-        assert edited[0][3] == {"inline_keyboard": []}
+        _assert_schedule_button_only(edited[0][3])
         assert swap.status == "expired"
         assert swap.telegram_message_id is None
         assert swap.telegram_chat_id is None
@@ -248,7 +258,7 @@ def run_accepted_swap_closes_undeletable_source_message(app):
         assert edited[0][0:2] == ("chat", 348)
         assert "Rene's coverage request is closed" in edited[0][2]
         assert "Andy is covering this shift." in edited[0][2]
-        assert edited[0][3] == {"inline_keyboard": []}
+        _assert_schedule_button_only(edited[0][3])
         assert swap.telegram_message_id is None
         assert swap.telegram_chat_id is None
 
@@ -454,7 +464,7 @@ def run_weekly_decline_auto_swaps_with_future_shift(app):
         assert "Sunday Service - June 28" in notice_text
         assert "You will take this shift." in notice_text
         assert "Rene will take your July 19 Computer shift." in notice_text
-        assert sent[-1][2] == {"inline_keyboard": []}
+        _assert_schedule_button_only(sent[-1][2])
         assert "I can" not in str(sent[-1][2])
         assert edits and edits[-1][0:2] == ("chat", 321)
         assert answers == [("cb", "", False)]
@@ -581,7 +591,7 @@ def run_cover_decline_reassigns_auto_swap_notice(app):
         assert notice_edits and notice_edits[0][0:2] == ("chat", 700)
         assert "Marvin, you swapped with Rene." in notice_edits[0][2]
         assert "Rene will take your August 2 Computer shift." in notice_edits[0][2]
-        assert notice_edits[0][3] == {"inline_keyboard": []}
+        _assert_schedule_button_only(notice_edits[0][3])
         assert not sent
         assert reminder_edits and reminder_edits[-1][0:2] == ("chat", 347)
         assert answers == [("cb", "", False)]
@@ -1073,7 +1083,7 @@ def run_midnight_cleanup_closes_past_reminder_with_static_icons(app):
         event = db.session.get(Event, event.id)
         assert len(edits) == 1
         assert edits[0][0:2] == ("chat", 444)
-        assert edits[0][3] == {"inline_keyboard": []}
+        _assert_schedule_button_only(edits[0][3])
         assert "✅Rene" in edits[0][2]
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in edits[0][2]
         assert event.telegram_message_id is None
@@ -1111,7 +1121,7 @@ def run_past_weekly_update_closes_buttons_with_static_icons(app):
 
         assert len(edits) == 1
         assert edits[0][0:2] == ("chat", 445)
-        assert edits[0][3] == {"inline_keyboard": []}
+        _assert_schedule_button_only(edits[0][3])
         assert "✅Rene" in edits[0][2]
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in edits[0][2]
 

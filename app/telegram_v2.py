@@ -323,6 +323,10 @@ def _weekly_schedule_buttons():
     ])
 
 
+def _schedule_only_buttons(label="\U0001F4C5 View Schedule"):
+    return _make_inline_keyboard([[_schedule_button(label)]])
+
+
 def _weekly_schedule_reply_markup_for_date(date_obj, today=None):
     if not date_obj:
         return _weekly_schedule_buttons()
@@ -330,7 +334,7 @@ def _weekly_schedule_reply_markup_for_date(date_obj, today=None):
     monday = date_obj - datetime.timedelta(days=date_obj.weekday())
     sunday = monday + datetime.timedelta(days=6)
     if sunday < today:
-        return _make_inline_keyboard([])
+        return _schedule_only_buttons()
     return _weekly_schedule_buttons()
 
 
@@ -1705,8 +1709,8 @@ def delete_past_event_reminders(today=None):
     """Close stored event reminders for events before today.
 
     The old public function name is kept for scheduler compatibility. Instead
-    of deleting the chat post, re-render it with static status icons and remove
-    its buttons so the past message still shows the final responses.
+    of deleting the chat post, re-render it with static status icons and keep
+    a schedule link so the past message still shows final responses.
     """
     today = today or vancouver_today()
     yesterday = today - datetime.timedelta(days=1)
@@ -1722,7 +1726,7 @@ def delete_past_event_reminders(today=None):
             event.telegram_chat_id,
             event.telegram_message_id,
             format_today_group_post(event),
-            reply_markup=_make_inline_keyboard([]),
+            reply_markup=_schedule_only_buttons(),
         )
         if ok:
             closed += 1
@@ -1852,7 +1856,7 @@ def _delete_swap_needed_message(swap, assignment=None, chat_id=None, message_id=
                 target_chat_id,
                 message_id,
                 _closed_swap_needed_text(swap, assignment=assignment),
-                reply_markup=_make_inline_keyboard([]),
+                reply_markup=_schedule_only_buttons("\U0001F4C5 Show Schedule"),
             )
             if cleaned:
                 print(f"[sweep] Closed old swap message {message_id} after delete failed")
@@ -2279,7 +2283,7 @@ def _auto_swap_notice_text(assignment, swap, future_assignment):
 def _send_or_edit_auto_swap_notice(assignment, swap, future_assignment, chat_id=None):
     text = _auto_swap_notice_text(assignment, swap, future_assignment)
     target_chat_id = str(chat_id or swap.telegram_chat_id or TELEGRAM_CHAT_ID)
-    buttons = _make_inline_keyboard([])
+    buttons = _schedule_only_buttons("\U0001F4C5 Show Schedule")
     if swap.telegram_message_id:
         edited, error = edit_message_with_error(
             target_chat_id, swap.telegram_message_id, text, reply_markup=buttons,
