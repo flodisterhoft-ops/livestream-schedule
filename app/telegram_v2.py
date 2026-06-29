@@ -815,7 +815,7 @@ def _build_event_buttons(
 
     if include_schedule_button:
         rows.append([
-            _schedule_button("\U0001F4C5 Show Schedule")
+            _schedule_button("\U0001F4C5 View Schedule")
         ])
 
     return _make_inline_keyboard(rows) if rows else None
@@ -1885,7 +1885,7 @@ def _delete_swap_needed_message(swap, assignment=None, chat_id=None, message_id=
                 target_chat_id,
                 message_id,
                 _closed_swap_needed_text(swap, assignment=assignment),
-                reply_markup=_schedule_only_buttons("\U0001F4C5 Show Schedule"),
+                reply_markup=_schedule_only_buttons("\U0001F4C5 View Schedule"),
             )
             if cleaned:
                 print(f"[sweep] Closed old swap message {message_id} after delete failed")
@@ -2312,7 +2312,7 @@ def _auto_swap_notice_text(assignment, swap, future_assignment):
 def _send_or_edit_auto_swap_notice(assignment, swap, future_assignment, chat_id=None):
     text = _auto_swap_notice_text(assignment, swap, future_assignment)
     target_chat_id = str(chat_id or swap.telegram_chat_id or TELEGRAM_CHAT_ID)
-    buttons = _schedule_only_buttons("\U0001F4C5 Show Schedule")
+    buttons = _schedule_only_buttons("\U0001F4C5 View Schedule")
     if swap.telegram_message_id:
         edited, error = edit_message_with_error(
             target_chat_id, swap.telegram_message_id, text, reply_markup=buttons,
@@ -2393,7 +2393,7 @@ def _swap_buttons(swap_request, recipient, future_assignment):
         }])
     buttons.extend([
         [{"text": "❌ No, I'm good", "callback_data": f"swap_decline:{swap_request.id}"}],
-        [_schedule_button("\U0001F4C5 Open Schedule", person=recipient)],
+        [_schedule_button("\U0001F4C5 View Schedule", person=recipient)],
     ])
     return buttons
 

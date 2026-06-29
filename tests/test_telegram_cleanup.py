@@ -15,6 +15,9 @@ from app.models import Assignment, Event, InteractionLog, SwapRequest, TeamMembe
 import app.telegram_v2 as tg
 
 
+VIEW_SCHEDULE_TEXT = "\U0001F4C5 View Schedule"
+
+
 def _make_app():
     temp_dir = Path(tempfile.mkdtemp(prefix="livestream-telegram-cleanup-"))
     db_path = temp_dir / "test.db"
@@ -55,12 +58,14 @@ def _event_with_assignment(
     return event, assignment
 
 
-def _assert_schedule_button_only(reply_markup):
+def _assert_schedule_button_only(reply_markup, expected_text=None):
     rows = reply_markup.get("inline_keyboard") if reply_markup else None
     assert rows and len(rows) == 1
     assert len(rows[0]) == 1
     button = rows[0][0]
     assert "Schedule" in button.get("text", "")
+    if expected_text is not None:
+        assert button.get("text") == expected_text
     assert "url" in button or "login_url" in button
     assert "callback_data" not in button
 
@@ -177,7 +182,7 @@ def run_expired_swap_sweep_closes_undeletable_broadcast(app):
         assert "Stefan's coverage request is closed" in edited[0][2]
         assert "Sunday Service - June 21" in edited[0][2]
         assert "This service has passed." in edited[0][2]
-        _assert_schedule_button_only(edited[0][3])
+        _assert_schedule_button_only(edited[0][3], VIEW_SCHEDULE_TEXT)
         assert swap.status == "expired"
         assert swap.telegram_message_id is None
         assert swap.telegram_chat_id is None
@@ -258,7 +263,7 @@ def run_accepted_swap_closes_undeletable_source_message(app):
         assert edited[0][0:2] == ("chat", 348)
         assert "Rene's coverage request is closed" in edited[0][2]
         assert "Andy is covering this shift." in edited[0][2]
-        _assert_schedule_button_only(edited[0][3])
+        _assert_schedule_button_only(edited[0][3], VIEW_SCHEDULE_TEXT)
         assert swap.telegram_message_id is None
         assert swap.telegram_chat_id is None
 
@@ -464,7 +469,7 @@ def run_weekly_decline_auto_swaps_with_future_shift(app):
         assert "Sunday Service - June 28" in notice_text
         assert "You will take this shift." in notice_text
         assert "Rene will take your July 19 Computer shift." in notice_text
-        _assert_schedule_button_only(sent[-1][2])
+        _assert_schedule_button_only(sent[-1][2], VIEW_SCHEDULE_TEXT)
         assert "I can" not in str(sent[-1][2])
         assert edits and edits[-1][0:2] == ("chat", 321)
         assert answers == [("cb", "", False)]
@@ -591,7 +596,7 @@ def run_cover_decline_reassigns_auto_swap_notice(app):
         assert notice_edits and notice_edits[0][0:2] == ("chat", 700)
         assert "Marvin, you swapped with Rene." in notice_edits[0][2]
         assert "Rene will take your August 2 Computer shift." in notice_edits[0][2]
-        _assert_schedule_button_only(notice_edits[0][3])
+        _assert_schedule_button_only(notice_edits[0][3], VIEW_SCHEDULE_TEXT)
         assert not sent
         assert reminder_edits and reminder_edits[-1][0:2] == ("chat", 347)
         assert answers == [("cb", "", False)]
@@ -1083,7 +1088,7 @@ def run_midnight_cleanup_closes_past_reminder_with_static_icons(app):
         event = db.session.get(Event, event.id)
         assert len(edits) == 1
         assert edits[0][0:2] == ("chat", 444)
-        _assert_schedule_button_only(edits[0][3])
+        _assert_schedule_button_only(edits[0][3], VIEW_SCHEDULE_TEXT)
         assert "✅Rene" in edits[0][2]
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in edits[0][2]
         assert event.telegram_message_id is None
@@ -1121,7 +1126,7 @@ def run_past_weekly_update_closes_buttons_with_static_icons(app):
 
         assert len(edits) == 1
         assert edits[0][0:2] == ("chat", 445)
-        _assert_schedule_button_only(edits[0][3])
+        _assert_schedule_button_only(edits[0][3], VIEW_SCHEDULE_TEXT)
         assert "✅Rene" in edits[0][2]
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in edits[0][2]
 
@@ -1246,10 +1251,42 @@ def run_admin_notification_includes_source_tag(app):
         assert "📹 Camera 2" in payload["text"]
 
 
+def run_swap_request_buttons_use_view_schedule(app):
+    with app.app_context():
+        _clear_db()
+        _event, assignment = _event_with_assignment(
+            datetime.date(2026, 7, 12),
+            role="Computer",
+            person="Marvin",
+            day_type="Sunday",
+        )
+        swap = SwapRequest(
+            assignment_id=assignment.id,
+            requestor="Marvin",
+            event_date=assignment.event.date,
+            role=assignment.role,
+            expires_at=(
+                datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                + datetime.timedelta(hours=2)
+            ),
+            status="active",
+        )
+        db.session.add(swap)
+        db.session.flush()
+
+        buttons = tg._swap_buttons(swap, "Patric", future_assignment=None)
+
+        schedule_button = buttons[-1][0]
+        assert schedule_button["text"] == VIEW_SCHEDULE_TEXT
+        assert "url" in schedule_button
+        assert "callback_data" not in schedule_button
+
+
 def main():
     app, temp_dir = _make_app()
     try:
         run_admin_notification_includes_source_tag(app)
+        run_swap_request_buttons_use_view_schedule(app)
         run_expired_swap_sweep_deletes_broadcast(app)
         run_expired_swap_sweep_closes_undeletable_broadcast(app)
         run_accepted_swap_closes_undeletable_source_message(app)
