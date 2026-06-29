@@ -907,7 +907,7 @@ def run_expired_uncovered_swap_renders_struck_through(app):
         assert "I can cover" not in str(expanded_buttons)
 
 
-def run_past_confirmed_event_uses_static_green_telegram_icon(app):
+def run_past_confirmed_event_uses_regular_checkmark_emoji(app):
     with app.app_context():
         _clear_db()
         event_date = datetime.date(2026, 6, 16)
@@ -934,22 +934,19 @@ def run_past_confirmed_event_uses_static_green_telegram_icon(app):
         assert tg.CONFIRM_CUSTOM_EMOJI_ID in same_day_weekly
         assert tg.CONFIRM_CUSTOM_EMOJI_ID in same_day_group_post
         assert tg.CONFIRM_CUSTOM_EMOJI_ID in same_day_monthly
-        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID not in same_day_weekly
-        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID not in same_day_group_post
-        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID not in same_day_monthly
 
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in past_weekly
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in past_group_post
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in past_monthly
-        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in past_weekly
-        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in past_group_post
-        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in past_monthly
+        assert "✅Rene" in past_weekly
+        assert "✅Rene" in past_group_post
+        assert "✅ Rene" in past_monthly
         assert "Rene" in past_weekly
         assert "Rene" in past_group_post
         assert "Rene" in past_monthly
 
 
-def run_past_swap_needed_event_uses_static_decline_telegram_icon(app):
+def run_past_swap_needed_event_uses_regular_x_emoji(app):
     with app.app_context():
         _clear_db()
         event_date = datetime.date(2026, 6, 12)
@@ -973,13 +970,11 @@ def run_past_swap_needed_event_uses_static_decline_telegram_icon(app):
 
         assert tg.DECLINE_CUSTOM_EMOJI_ID in same_day_weekly
         assert tg.DECLINE_CUSTOM_EMOJI_ID in same_day_group_post
-        assert tg.STATIC_DECLINE_CUSTOM_EMOJI_ID not in same_day_weekly
-        assert tg.STATIC_DECLINE_CUSTOM_EMOJI_ID not in same_day_group_post
 
         assert tg.DECLINE_CUSTOM_EMOJI_ID not in past_weekly
         assert tg.DECLINE_CUSTOM_EMOJI_ID not in past_group_post
-        assert tg.STATIC_DECLINE_CUSTOM_EMOJI_ID in past_weekly
-        assert tg.STATIC_DECLINE_CUSTOM_EMOJI_ID in past_group_post
+        assert "❌David Fink" in past_weekly
+        assert "❌David Fink" in past_group_post
         assert "David Fink" in past_weekly
         assert "David Fink" in past_group_post
 
@@ -1079,7 +1074,7 @@ def run_midnight_cleanup_closes_past_reminder_with_static_icons(app):
         assert len(edits) == 1
         assert edits[0][0:2] == ("chat", 444)
         assert edits[0][3] == {"inline_keyboard": []}
-        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in edits[0][2]
+        assert "✅Rene" in edits[0][2]
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in edits[0][2]
         assert event.telegram_message_id is None
         assert event.telegram_chat_id is None
@@ -1117,7 +1112,7 @@ def run_past_weekly_update_closes_buttons_with_static_icons(app):
         assert len(edits) == 1
         assert edits[0][0:2] == ("chat", 445)
         assert edits[0][3] == {"inline_keyboard": []}
-        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in edits[0][2]
+        assert "✅Rene" in edits[0][2]
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in edits[0][2]
 
 
@@ -1225,8 +1220,8 @@ def main():
         run_swap_needed_replaces_missing_broadcast(app)
         run_swap_needed_does_not_duplicate_on_refresh_error(app)
         run_expired_uncovered_swap_renders_struck_through(app)
-        run_past_confirmed_event_uses_static_green_telegram_icon(app)
-        run_past_swap_needed_event_uses_static_decline_telegram_icon(app)
+        run_past_confirmed_event_uses_regular_checkmark_emoji(app)
+        run_past_swap_needed_event_uses_regular_x_emoji(app)
         run_rich_weekly_schedule_uses_role_comparison_table(app)
         run_weekly_moved_bible_study_uses_actual_weekday_without_missing_slot(app)
         run_weekly_non_default_bible_study_location_shows_when_active(app)

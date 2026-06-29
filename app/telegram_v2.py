@@ -39,8 +39,6 @@ REMINDER_WIDTH_PAD_CHAR = "\u2800"
 REMINDER_WIDTH_TARGET = 28
 CONFIRM_CUSTOM_EMOJI_ID = os.environ.get("CONFIRM_CUSTOM_EMOJI_ID", "5447642621671386392")
 DECLINE_CUSTOM_EMOJI_ID = os.environ.get("DECLINE_CUSTOM_EMOJI_ID", "5474188341354180347")
-STATIC_CONFIRM_CUSTOM_EMOJI_ID = os.environ.get("STATIC_CONFIRM_CUSTOM_EMOJI_ID", "5411350242509484029")
-STATIC_DECLINE_CUSTOM_EMOJI_ID = os.environ.get("STATIC_DECLINE_CUSTOM_EMOJI_ID", "5411491886235940400")
 
 TELEGRAM_PERSON_OVERRIDE = {}
 
@@ -1054,11 +1052,11 @@ def _weekly_decline_status_icon():
 
 
 def _static_confirm_status_icon():
-    return _custom_emoji_html(STATIC_CONFIRM_CUSTOM_EMOJI_ID, "✅")
+    return "✅"
 
 
 def _static_decline_status_icon():
-    return _custom_emoji_html(STATIC_DECLINE_CUSTOM_EMOJI_ID, "🚫")
+    return "❌"
 
 
 def _telegram_status_icons_for_date(schedule_date):
