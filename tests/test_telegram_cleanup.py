@@ -1086,6 +1086,41 @@ def run_midnight_cleanup_closes_past_reminder_with_static_icons(app):
         assert refreshed == [event_date]
 
 
+def run_past_weekly_update_closes_buttons_with_static_icons(app):
+    with app.app_context():
+        _clear_db()
+        event_date = datetime.date(2026, 6, 16)
+        monday = datetime.date(2026, 6, 15)
+        event, assignment = _event_with_assignment(event_date, person="Rene", status="confirmed")
+        db.session.add(InteractionLog(
+            action="weekly_schedule_sent",
+            person_name="group",
+            event_date=monday,
+            details="weekly_schedule:2026-06-15|chat_id=chat|message_id=445",
+        ))
+        db.session.commit()
+
+        edits = []
+        old_today = tg.vancouver_today
+        old_edit = tg.edit_message_with_error
+        try:
+            tg.vancouver_today = lambda: datetime.date(2026, 6, 22)
+            tg.edit_message_with_error = lambda chat_id, message_id, text, reply_markup=None: (
+                edits.append((chat_id, message_id, text, reply_markup)) or (True, None)
+            )
+
+            assert tg.update_weekly_schedule_for_date(event_date) is True
+        finally:
+            tg.vancouver_today = old_today
+            tg.edit_message_with_error = old_edit
+
+        assert len(edits) == 1
+        assert edits[0][0:2] == ("chat", 445)
+        assert edits[0][3] == {"inline_keyboard": []}
+        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in edits[0][2]
+        assert tg.CONFIRM_CUSTOM_EMOJI_ID not in edits[0][2]
+
+
 def run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app):
     with app.app_context():
         _clear_db()
@@ -1196,6 +1231,7 @@ def main():
         run_weekly_moved_bible_study_uses_actual_weekday_without_missing_slot(app)
         run_weekly_non_default_bible_study_location_shows_when_active(app)
         run_midnight_cleanup_closes_past_reminder_with_static_icons(app)
+        run_past_weekly_update_closes_buttons_with_static_icons(app)
         run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app)
         run_weekly_force_bypasses_existing_log(app)
         run_weekly_update_resends_missing_message(app)

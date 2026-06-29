@@ -325,6 +325,17 @@ def _weekly_schedule_buttons():
     ])
 
 
+def _weekly_schedule_reply_markup_for_date(date_obj, today=None):
+    if not date_obj:
+        return _weekly_schedule_buttons()
+    today = today or vancouver_today()
+    monday = date_obj - datetime.timedelta(days=date_obj.weekday())
+    sunday = monday + datetime.timedelta(days=6)
+    if sunday < today:
+        return _make_inline_keyboard([])
+    return _weekly_schedule_buttons()
+
+
 # Map of preset custom_title -> emoji, mirroring the frontend EVENT_TYPES list.
 EVENT_TYPE_EMOJI = {
     "sunday service":        "\u26EA",
@@ -1337,8 +1348,14 @@ def _event_title_without_emoji(event):
 
 
 def _restore_weekly_message(chat_id, message_id, today=None):
-    text = format_weekly_schedule(today=today or vancouver_today())
-    return edit_message(chat_id, message_id, text, reply_markup=_weekly_schedule_buttons())
+    schedule_date = today or vancouver_today()
+    text = format_weekly_schedule(today=schedule_date)
+    return edit_message(
+        chat_id,
+        message_id,
+        text,
+        reply_markup=_weekly_schedule_reply_markup_for_date(schedule_date),
+    )
 
 
 def _weekly_select_shift(callback_id, chat_id, message_id, person_name, mode,
@@ -1636,7 +1653,7 @@ def send_weekly_schedule(chat_id=None, force=False, today=None):
         return 0
 
     text = format_weekly_schedule(today)
-    buttons = _weekly_schedule_buttons()
+    buttons = _weekly_schedule_reply_markup_for_date(today)
     target_chat_id = chat_id or TELEGRAM_CHAT_ID
     msg_id = send_message(text, chat_id=target_chat_id, reply_markup=buttons)
     if not msg_id:
@@ -1760,7 +1777,7 @@ def update_weekly_schedule_for_date(date_obj):
     if not chat_id or not msg_id:
         return False
     text = format_weekly_schedule(today=monday)
-    buttons = _weekly_schedule_buttons()
+    buttons = _weekly_schedule_reply_markup_for_date(date_obj)
     ok, error = edit_message_with_error(chat_id, msg_id, text, reply_markup=buttons)
     if ok:
         return True
