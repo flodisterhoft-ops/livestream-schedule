@@ -907,7 +907,7 @@ def run_expired_uncovered_swap_renders_struck_through(app):
         assert "I can cover" not in str(expanded_buttons)
 
 
-def run_past_confirmed_event_hides_green_telegram_icon(app):
+def run_past_confirmed_event_uses_static_green_telegram_icon(app):
     with app.app_context():
         _clear_db()
         event_date = datetime.date(2026, 6, 16)
@@ -933,14 +933,55 @@ def run_past_confirmed_event_hides_green_telegram_icon(app):
 
         assert tg.CONFIRM_CUSTOM_EMOJI_ID in same_day_weekly
         assert tg.CONFIRM_CUSTOM_EMOJI_ID in same_day_group_post
-        assert "✅ Rene" in same_day_monthly
+        assert tg.CONFIRM_CUSTOM_EMOJI_ID in same_day_monthly
+        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID not in same_day_weekly
+        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID not in same_day_group_post
+        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID not in same_day_monthly
 
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in past_weekly
         assert tg.CONFIRM_CUSTOM_EMOJI_ID not in past_group_post
-        assert "✅ Rene" not in past_monthly
+        assert tg.CONFIRM_CUSTOM_EMOJI_ID not in past_monthly
+        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in past_weekly
+        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in past_group_post
+        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in past_monthly
         assert "Rene" in past_weekly
         assert "Rene" in past_group_post
         assert "Rene" in past_monthly
+
+
+def run_past_swap_needed_event_uses_static_decline_telegram_icon(app):
+    with app.app_context():
+        _clear_db()
+        event_date = datetime.date(2026, 6, 12)
+        event, assignment = _event_with_assignment(
+            event_date,
+            person="David Fink",
+            status="swap_needed",
+        )
+
+        old_today = tg.vancouver_today
+        try:
+            tg.vancouver_today = lambda: event_date
+            same_day_weekly = tg.format_weekly_schedule(today=event_date)
+            same_day_group_post = tg.format_today_group_post(event)
+
+            tg.vancouver_today = lambda: event_date + datetime.timedelta(days=1)
+            past_weekly = tg.format_weekly_schedule(today=event_date)
+            past_group_post = tg.format_today_group_post(event)
+        finally:
+            tg.vancouver_today = old_today
+
+        assert tg.DECLINE_CUSTOM_EMOJI_ID in same_day_weekly
+        assert tg.DECLINE_CUSTOM_EMOJI_ID in same_day_group_post
+        assert tg.STATIC_DECLINE_CUSTOM_EMOJI_ID not in same_day_weekly
+        assert tg.STATIC_DECLINE_CUSTOM_EMOJI_ID not in same_day_group_post
+
+        assert tg.DECLINE_CUSTOM_EMOJI_ID not in past_weekly
+        assert tg.DECLINE_CUSTOM_EMOJI_ID not in past_group_post
+        assert tg.STATIC_DECLINE_CUSTOM_EMOJI_ID in past_weekly
+        assert tg.STATIC_DECLINE_CUSTOM_EMOJI_ID in past_group_post
+        assert "David Fink" in past_weekly
+        assert "David Fink" in past_group_post
 
 
 def run_rich_weekly_schedule_uses_role_comparison_table(app):
@@ -1004,6 +1045,45 @@ def run_weekly_non_default_bible_study_location_shows_when_active(app):
         assert "🖥️ Stefan" in weekly
         assert "📹 Patric" in weekly
         assert first.person == "Stefan"
+
+
+def run_midnight_cleanup_closes_past_reminder_with_static_icons(app):
+    with app.app_context():
+        _clear_db()
+        event_date = datetime.date(2026, 6, 16)
+        event, assignment = _event_with_assignment(event_date, person="Rene", status="confirmed")
+        event.telegram_message_id = 444
+        event.telegram_chat_id = "chat"
+        db.session.commit()
+
+        edits = []
+        refreshed = []
+        old_today = tg.vancouver_today
+        old_edit = tg.edit_message_with_error
+        old_update = tg.update_weekly_schedule_for_date
+        try:
+            tg.vancouver_today = lambda: event_date + datetime.timedelta(days=1)
+            tg.edit_message_with_error = lambda chat_id, message_id, text, reply_markup=None: (
+                edits.append((chat_id, message_id, text, reply_markup)) or (True, None)
+            )
+            tg.update_weekly_schedule_for_date = lambda date_obj: refreshed.append(date_obj) or True
+
+            assert tg.delete_past_event_reminders(today=event_date + datetime.timedelta(days=1)) == 1
+        finally:
+            tg.vancouver_today = old_today
+            tg.edit_message_with_error = old_edit
+            tg.update_weekly_schedule_for_date = old_update
+
+        db.session.expire_all()
+        event = db.session.get(Event, event.id)
+        assert len(edits) == 1
+        assert edits[0][0:2] == ("chat", 444)
+        assert edits[0][3] == {"inline_keyboard": []}
+        assert tg.STATIC_CONFIRM_CUSTOM_EMOJI_ID in edits[0][2]
+        assert tg.CONFIRM_CUSTOM_EMOJI_ID not in edits[0][2]
+        assert event.telegram_message_id is None
+        assert event.telegram_chat_id is None
+        assert refreshed == [event_date]
 
 
 def run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app):
@@ -1110,10 +1190,12 @@ def main():
         run_swap_needed_replaces_missing_broadcast(app)
         run_swap_needed_does_not_duplicate_on_refresh_error(app)
         run_expired_uncovered_swap_renders_struck_through(app)
-        run_past_confirmed_event_hides_green_telegram_icon(app)
+        run_past_confirmed_event_uses_static_green_telegram_icon(app)
+        run_past_swap_needed_event_uses_static_decline_telegram_icon(app)
         run_rich_weekly_schedule_uses_role_comparison_table(app)
         run_weekly_moved_bible_study_uses_actual_weekday_without_missing_slot(app)
         run_weekly_non_default_bible_study_location_shows_when_active(app)
+        run_midnight_cleanup_closes_past_reminder_with_static_icons(app)
         run_midnight_cleanup_refreshes_yesterdays_weekly_schedule(app)
         run_weekly_force_bypasses_existing_log(app)
         run_weekly_update_resends_missing_message(app)

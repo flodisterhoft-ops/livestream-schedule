@@ -37,8 +37,10 @@ BASE_API = "https://api.telegram.org/bot"
 REMINDER_CUSTOM_EMOJI_ID = "5314354612357055779"
 REMINDER_WIDTH_PAD_CHAR = "\u2800"
 REMINDER_WIDTH_TARGET = 28
-CONFIRM_CUSTOM_EMOJI_ID = "5447642621671386392"
-DECLINE_CUSTOM_EMOJI_ID = "5474188341354180347"
+CONFIRM_CUSTOM_EMOJI_ID = os.environ.get("CONFIRM_CUSTOM_EMOJI_ID", "5447642621671386392")
+DECLINE_CUSTOM_EMOJI_ID = os.environ.get("DECLINE_CUSTOM_EMOJI_ID", "5474188341354180347")
+STATIC_CONFIRM_CUSTOM_EMOJI_ID = os.environ.get("STATIC_CONFIRM_CUSTOM_EMOJI_ID", "5411350242509484029")
+STATIC_DECLINE_CUSTOM_EMOJI_ID = os.environ.get("STATIC_DECLINE_CUSTOM_EMOJI_ID", "5411491886235940400")
 
 TELEGRAM_PERSON_OVERRIDE = {}
 
@@ -974,7 +976,10 @@ def format_monthly_schedule(year, month):
                 elif worker in ("TBD", "Select Helper"):
                     lines.append(f"  {icon} <i>TBD</i>")
                 else:
-                    confirmed = "✅ " if _show_telegram_confirm_icon(a) else ""
+                    confirmed = (
+                        f"{_telegram_confirm_status_icon_for_assignment(a)} "
+                        if _show_telegram_confirm_icon(a) else ""
+                    )
                     lines.append(f"  {icon} {confirmed}{worker}")
             else:
                 role_icon = ROLE_EMOJI.get(a.role, "👤")
@@ -986,7 +991,10 @@ def format_monthly_schedule(year, month):
                 elif worker in ("TBD", "Select Helper"):
                     lines.append(f"  {role_icon} <i>TBD</i>")
                 else:
-                    confirmed = "✅ " if _show_telegram_confirm_icon(a) else ""
+                    confirmed = (
+                        f"{_telegram_confirm_status_icon_for_assignment(a)} "
+                        if _show_telegram_confirm_icon(a) else ""
+                    )
                     lines.append(f"  {role_icon} {confirmed}{worker}")
         lines.append("")
 
@@ -1034,17 +1042,42 @@ def _weekly_decline_status_icon():
     return _custom_emoji_html(DECLINE_CUSTOM_EMOJI_ID, "🔴")
 
 
+def _static_confirm_status_icon():
+    return _custom_emoji_html(STATIC_CONFIRM_CUSTOM_EMOJI_ID, "✅")
+
+
+def _static_decline_status_icon():
+    return _custom_emoji_html(STATIC_DECLINE_CUSTOM_EMOJI_ID, "🚫")
+
+
+def _telegram_status_icons_for_date(schedule_date):
+    """Use animated status icons for active schedules and static marks once past."""
+    if schedule_date and schedule_date < vancouver_today():
+        return _static_confirm_status_icon(), _static_decline_status_icon()
+    return _weekly_confirm_status_icon(), _weekly_decline_status_icon()
+
+
+def _telegram_status_icons_for_assignment(assignment):
+    event = assignment.event if assignment else None
+    return _telegram_status_icons_for_date(event.date if event else None)
+
+
+def _telegram_confirm_status_icon_for_assignment(assignment):
+    confirm_icon, _decline_icon = _telegram_status_icons_for_assignment(assignment)
+    return confirm_icon
+
+
+def _telegram_decline_status_icon_for_assignment(assignment):
+    _confirm_icon, decline_icon = _telegram_status_icons_for_assignment(assignment)
+    return decline_icon
+
+
 def _reminder_icon():
     return _custom_emoji_html(REMINDER_CUSTOM_EMOJI_ID, "🔔")
 
 
 def _show_telegram_confirm_icon(assignment):
-    if not assignment or assignment.status != "confirmed":
-        return False
-    event = assignment.event
-    if not event or not event.date:
-        return True
-    return event.date >= vancouver_today()
+    return bool(assignment and assignment.status == "confirmed")
 
 
 def _is_expired_uncovered_swap(assignment):
@@ -1073,14 +1106,14 @@ def _assignment_line(assignment, index=0):
     if assignment.status == "swap_needed":
         if _is_expired_uncovered_swap(assignment):
             return f"{icon} <s>{worker}</s>"
-        return f"{icon}{_weekly_decline_status_icon()}{worker}"
+        return f"{icon}{_telegram_decline_status_icon_for_assignment(assignment)}{worker}"
     if assignment.cover:
         cover = assignment.cover
         if _show_telegram_confirm_icon(assignment):
-            cover = f"{_weekly_confirm_status_icon()}{cover}"
+            cover = f"{_telegram_confirm_status_icon_for_assignment(assignment)}{cover}"
         return f"{icon} <s>{assignment.person}</s> → {cover}"
     if _show_telegram_confirm_icon(assignment):
-        return f"{icon}{_weekly_confirm_status_icon()}{worker}"
+        return f"{icon}{_telegram_confirm_status_icon_for_assignment(assignment)}{worker}"
     return f"{icon} {worker}"
 
 
@@ -1174,7 +1207,7 @@ def _weekly_rich_assignment_display(assignment):
         return f"<b>{cover}</b> <s>{original}</s>"
 
     if _show_telegram_confirm_icon(assignment):
-        return f"✅ <b>{worker}</b>"
+        return f"{_telegram_confirm_status_icon_for_assignment(assignment)} <b>{worker}</b>"
 
     return worker
 
@@ -1654,7 +1687,12 @@ def update_event_reminder(event):
 
 
 def delete_past_event_reminders(today=None):
-    """Delete stored event reminder messages for events before today."""
+    """Close stored event reminders for events before today.
+
+    The old public function name is kept for scheduler compatibility. Instead
+    of deleting the chat post, re-render it with static status icons and remove
+    its buttons so the past message still shows the final responses.
+    """
     today = today or vancouver_today()
     yesterday = today - datetime.timedelta(days=1)
     events = Event.query.filter(
@@ -1663,21 +1701,32 @@ def delete_past_event_reminders(today=None):
         Event.telegram_chat_id.isnot(None),
     ).all()
 
-    deleted = 0
+    closed = 0
     for event in events:
-        if delete_message(event.telegram_chat_id, event.telegram_message_id):
-            deleted += 1
+        ok, error = edit_message_with_error(
+            event.telegram_chat_id,
+            event.telegram_message_id,
+            format_today_group_post(event),
+            reply_markup=_make_inline_keyboard([]),
+        )
+        if ok:
+            closed += 1
+        elif _is_missing_message_error(error):
+            print(f"[cleanup] Past event reminder {event.telegram_message_id} is gone")
+        else:
+            print(f"[cleanup] Failed to close past event reminder {event.telegram_message_id}: {error}")
+            continue
         event.telegram_message_id = None
         event.telegram_chat_id = None
     if events:
         db.session.commit()
-        print(f"[cleanup] Cleared {len(events)} past event reminder(s); deleted {deleted} Telegram message(s)")
+        print(f"[cleanup] Closed {closed} of {len(events)} past event reminder message(s)")
     if Event.query.filter_by(date=yesterday).first():
         try:
             update_weekly_schedule_for_date(yesterday)
         except Exception as e:
             print(f"[cleanup] Weekly schedule refresh for {yesterday.isoformat()} failed: {e}")
-    return deleted
+    return closed
 
 
 def _parse_weekly_schedule_log(log):

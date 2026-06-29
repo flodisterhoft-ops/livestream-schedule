@@ -349,12 +349,12 @@ def _start_daily_scheduler(app):
                 print(f"[Scheduler] Deadline sweep failed: {e}")
 
     def _fire_event_reminder_cleanup():
-        """Delete yesterday's group reminder messages shortly after midnight."""
+        """Close yesterday's group reminder messages shortly after midnight."""
         with app.app_context():
             try:
                 from .telegram_v2 import delete_past_event_reminders
-                deleted = delete_past_event_reminders()
-                print(f"[Scheduler] Event reminder cleanup fired — deleted {deleted} message(s)")
+                closed = delete_past_event_reminders()
+                print(f"[Scheduler] Event reminder cleanup fired — closed {closed} message(s)")
             except Exception as e:
                 print(f"[Scheduler] Event reminder cleanup failed: {e}")
 
