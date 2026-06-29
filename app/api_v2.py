@@ -179,6 +179,7 @@ def login():
 def token_login():
     data = request.json or {}
     token = data.get("token", "")
+    source = data.get("source")
     if not token:
         return jsonify({"error": "Missing token"}), 400
     try:
@@ -193,6 +194,17 @@ def token_login():
     team = _get_team_names()
     if name not in team and name not in ALL_NAMES:
         return jsonify({"error": "Unknown team member"}), 400
+
+    if source == "url_auth_link":
+        if name != "Florian":
+            tg._notify_admin_text(f"👀 <b>Schedule opened</b>\n{html.escape(name)}")
+        db.session.add(InteractionLog(
+            first_name=name,
+            action="schedule_opened",
+            person_name=name,
+            details="auth_url",
+        ))
+        db.session.commit()
 
     return _auth_response(name, manager=payload.get("manager"))
 
@@ -351,6 +363,7 @@ def do_action():
 
     event = assignment.event
     changed_events = [event]
+    actor = curr or assignment.person
 
     def push_history():
         h = assignment.history
@@ -361,26 +374,39 @@ def do_action():
         })
         assignment.history = h
 
+    def log_web_action(log_action=None):
+        tg._log_interaction(
+            None, actor, log_action or action, actor,
+            assignment, event, details="web",
+        )
+
+    def notify_web_action(notify_action=None):
+        tg._notify_admin(notify_action or action, actor, assignment, event)
+
     if action == "confirm":
         if not (is_mgr or assignment.person == curr or assignment.cover == curr):
             return jsonify({"error": "Unauthorized"}), 403
         assignment.status = "confirmed"
         push_history()
+        log_web_action("confirm")
         db.session.commit()
+        notify_web_action("confirm")
 
     elif action == "decline":
         if not (is_mgr or assignment.person == curr or assignment.cover == curr):
             return jsonify({"error": "Unauthorized"}), 403
         if event.date >= vancouver_today():
             result = tg._decline_assignment_with_auto_swap(
-                assignment, curr or assignment.person, "web",
+                assignment, actor, "web", first_name=actor,
             )
             if result:
                 changed_events.append(result["future_assignment"].event)
         else:
             assignment.status = "swap_needed"
             push_history()
+            log_web_action("decline")
             db.session.commit()
+            notify_web_action("decline")
 
     elif action == "volunteer":
         if not curr:
@@ -390,7 +416,9 @@ def do_action():
         assignment.person = curr
         assignment.status = "confirmed"
         push_history()
+        log_web_action("volunteer")
         db.session.commit()
+        notify_web_action("confirm")
 
     elif action == "pickup":
         if not curr or assignment.person == curr or assignment.cover == curr:
@@ -402,7 +430,9 @@ def do_action():
         assignment.cover = curr
         assignment.status = "confirmed"
         push_history()
+        log_web_action("pickup_as")
         db.session.commit()
+        notify_web_action("pickup_as")
         try:
             tg.send_shift_covered(event, assignment, curr,
                                   original_msg_id=assignment.telegram_message_id)
@@ -440,7 +470,9 @@ def do_action():
         elif assignment.status == "confirmed":
             assignment.status = "pending"
         push_history()
+        log_web_action("undo")
         db.session.commit()
+        notify_web_action("undo")
 
     elif action == "swap":
         offer_date = data.get("offer_date")
@@ -471,7 +503,9 @@ def do_action():
         changed_events.append(other_event)
 
         push_history()
+        log_web_action("swap_accept")
         db.session.commit()
+        notify_web_action("swap_accept")
 
     else:
         return jsonify({"error": f"Unknown action: {action}"}), 400

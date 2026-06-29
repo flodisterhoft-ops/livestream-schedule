@@ -524,7 +524,7 @@ export default function App() {
       : token
       ? api('/auth/token-login', {
           method: 'POST',
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ token, source: urlToken ? 'url_auth_link' : 'stored_auth' }),
         }).then(d => {
           if (urlToken) clearAuthParams()
           return d

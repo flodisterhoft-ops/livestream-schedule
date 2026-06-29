@@ -2333,7 +2333,7 @@ def _decline_assignment_with_auto_swap(assignment, person_name, via,
     swap = _active_or_new_swap_request(assignment, requestor)
     _log_interaction(
         telegram_user_id, first_name, "decline", person_name, assignment, event,
-        details=via if via in ("weekly_button", "event_reminder") else None,
+        details=via,
     )
     result = _auto_swap_or_send_needed(
         event, assignment, swap, chat_id=chat_id, source_message_id=source_message_id,
