@@ -89,6 +89,29 @@ ACTION_LABELS = {
 }
 
 
+SOURCE_LABELS = {
+    "web": "Web",
+    "auth_url": "Schedule link",
+    "telegram_login_url": "Telegram login",
+    "weekly_button": "Telegram weekly",
+    "event_reminder": "Telegram reminder",
+    "temp_group": "Telegram temp chat",
+    "telegram_swap": "Telegram swap",
+    "telegram_event_post": "Telegram event post",
+    "telegram": "Telegram",
+}
+
+
+def _admin_source_tag(source):
+    if not source:
+        return ""
+    source = str(source).strip()
+    if not source:
+        return ""
+    label = SOURCE_LABELS.get(source, source.replace("_", " ").title())
+    return f" [{html.escape(label)}]"
+
+
 def _log_interaction(telegram_user_id, first_name, action, person_name,
                      assignment=None, event=None, details=None):
     """Log a Telegram interaction to the database."""
@@ -106,20 +129,25 @@ def _log_interaction(telegram_user_id, first_name, action, person_name,
     # Don't commit here — let the caller's commit include this
 
 
-def _notify_admin(action, person_name, assignment=None, event=None):
+def _notify_admin(action, person_name, assignment=None, event=None, source=None):
     """Send a short DM to the admin when someone interacts."""
     if not PERSONAL_CHAT_ID:
         return
     if (person_name or "").strip().lower() == "florian":
         return
     label = ACTION_LABELS.get(action, action)
-    parts = [f"🔔 <b>{label}</b> - {person_name}"]
+    source_tag = _admin_source_tag(source)
+    safe_label = html.escape(label, quote=False)
+    safe_person = html.escape(person_name or "Unknown", quote=False)
+    parts = [f"🔔 <b>{safe_label}</b>{source_tag} - {safe_person}"]
     if event:
         title = event.custom_title or event.day_type
-        parts.append(f"📆 {title} · {event.date.strftime('%b %d')}")
+        parts.append(
+            f"📆 {html.escape(title or 'Livestream', quote=False)} · {event.date.strftime('%b %d')}"
+        )
     if assignment:
         icon = ROLE_EMOJI.get(assignment.role, "")
-        parts.append(f"{icon} {assignment.role}")
+        parts.append(f"{icon} {html.escape(assignment.role or '', quote=False)}")
     text = "\n".join(parts)
     # Fire-and-forget to personal chat
     try:
@@ -459,8 +487,9 @@ def _notify_name_tap(person_name, assignment, event):
     if not PERSONAL_CHAT_ID:
         return
     icon = ROLE_EMOJI.get(assignment.role, "👤")
+    source_tag = _admin_source_tag("telegram_event_post")
     text = (
-        f"👆 <b>Tapped name</b> - {html.escape(person_name or 'Unknown')}\n"
+        f"👆 <b>Tapped name</b>{source_tag} - {html.escape(person_name or 'Unknown')}\n"
         f"📆 {html.escape(_event_title(event))} · {event.date.strftime('%b %d')}\n"
         f"{icon} {html.escape(assignment.person or '')} · {html.escape(assignment.role or '')}"
     )
@@ -1433,7 +1462,7 @@ def _weekly_confirm_assignment(callback_id, chat_id, message_id, assignment, per
         assignment.history = h
         _log_interaction(telegram_user_id, first_name, "undo", person_name, assignment, event, details="weekly_button")
         db.session.commit()
-        _notify_admin("undo", person_name, assignment, event)
+        _notify_admin("undo", person_name, assignment, event, source="weekly_button")
         answer_callback(callback_id)
         _restore_weekly_message(chat_id, message_id, today=event.date)
         refresh_event_telegram(event)
@@ -1444,7 +1473,7 @@ def _weekly_confirm_assignment(callback_id, chat_id, message_id, assignment, per
     assignment.history = h
     _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event, details="weekly_button")
     db.session.commit()
-    _notify_admin("confirm", person_name, assignment, event)
+    _notify_admin("confirm", person_name, assignment, event, source="weekly_button")
     answer_callback(callback_id)
     _restore_weekly_message(chat_id, message_id, today=event.date)
     refresh_event_telegram(event)
@@ -1507,7 +1536,7 @@ def _event_confirm_assignment(callback_id, chat_id, message_id, assignment, pers
     _log_interaction(telegram_user_id, first_name, action, person_name, assignment, event, details="event_reminder")
     db.session.commit()
     if action == "confirm":
-        _notify_admin("confirm", person_name, assignment, event)
+        _notify_admin("confirm", person_name, assignment, event, source="event_reminder")
     answer_callback(callback_id)
     _restore_event_reminder_message(chat_id, message_id, event)
     update_weekly_schedule_for_event(event)
@@ -2338,7 +2367,7 @@ def _decline_assignment_with_auto_swap(assignment, person_name, via,
     result = _auto_swap_or_send_needed(
         event, assignment, swap, chat_id=chat_id, source_message_id=source_message_id,
     )
-    _notify_admin("decline", person_name, assignment, event)
+    _notify_admin("decline", person_name, assignment, event, source=via)
     return result
 
 def _format_swap_request(assignment, recipient, future_assignment):
@@ -2554,9 +2583,15 @@ def handle_callback_query(data):
             h = assignment.history
             h.append({"action": "confirm", "by": person_name, "via": "temp_group", "ts": str(vancouver_now())})
             assignment.history = h
-            _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
+            _log_interaction(
+                telegram_user_id, first_name, "confirm", person_name, assignment, event,
+                details="temp_group",
+            )
             db.session.commit()
-            _notify_admin_text(f"✅ {assignment.person} confirmed\n{_event_title(event)} · {assignment.role}")
+            _notify_admin_text(
+                f"✅ {assignment.person} confirmed{_admin_source_tag('temp_group')}\n"
+                f"{_event_title(event)} · {assignment.role}"
+            )
             answer_callback(callback_id, "Confirmed")
             edit_message(chat_id, message_id, (
                 f"✅ <b>Confirmed</b>\n\n"
@@ -2572,9 +2607,15 @@ def handle_callback_query(data):
             h = assignment.history
             h.append({"action": "ack", "by": person_name, "via": "temp_group", "ts": str(vancouver_now())})
             assignment.history = h
-            _log_interaction(telegram_user_id, first_name, "ack", person_name, assignment, event)
+            _log_interaction(
+                telegram_user_id, first_name, "ack", person_name, assignment, event,
+                details="temp_group",
+            )
             db.session.commit()
-            _notify_admin_text(f"👍 {assignment.person} acknowledged\n{_event_title(event)} · {assignment.role}")
+            _notify_admin_text(
+                f"👍 {assignment.person} acknowledged{_admin_source_tag('temp_group')}\n"
+                f"{_event_title(event)} · {assignment.role}"
+            )
             answer_callback(callback_id, "Confirmed")
             edit_message(chat_id, message_id, "👍 <b>Sounds good</b>\n\nSee you tonight!\n\n<i>This chat will auto-destruct in 5 seconds.</i>")
             refresh_event_telegram(event)
@@ -2624,9 +2665,15 @@ def handle_callback_query(data):
         temp_chat = TempChat.query.filter_by(chat_id=str(chat_id), swap_request_id=swap.id, status="active").first()
         person_name = temp_chat.recipient if temp_chat and temp_chat.recipient else _resolve_person(telegram_user_id, first_name)
         if action == "swap_decline":
-            _log_interaction(telegram_user_id, first_name, "swap_decline", person_name, assignment, event)
+            _log_interaction(
+                telegram_user_id, first_name, "swap_decline", person_name, assignment, event,
+                details="telegram_swap",
+            )
             db.session.commit()
-            _notify_admin_text(f"👍 {person_name} declined swap\n{_event_title(event)} · {assignment.role}")
+            _notify_admin_text(
+                f"👍 {person_name} declined swap{_admin_source_tag('telegram_swap')}\n"
+                f"{_event_title(event)} · {assignment.role}"
+            )
             answer_callback(callback_id, "No problem - thanks for responding.", show_alert=True)
             edit_message(chat_id, message_id, "👍 <b>No problem</b>\n\nThanks for letting us know.\n\n<i>This chat will auto-destruct in 5 seconds.</i>")
             _delete_temp_chat(temp_chat, delay=5)
@@ -2643,9 +2690,15 @@ def handle_callback_query(data):
             swap.accepted_at = datetime.datetime.utcnow()
             swap.reschedule_event_date = None
             swap.reschedule_notes = f"{person_name} voluntarily covered {event.date}; no future shift changed"
-            _log_interaction(telegram_user_id, first_name, "swap_cover", person_name, assignment, event)
+            _log_interaction(
+                telegram_user_id, first_name, "swap_cover", person_name, assignment, event,
+                details="telegram_swap",
+            )
             db.session.commit()
-            _notify_admin_text(f"✅ {person_name} volunteered to cover {original_person}\n{_event_title(event)} · {assignment.role}")
+            _notify_admin_text(
+                f"✅ {person_name} volunteered to cover {original_person}{_admin_source_tag('telegram_swap')}\n"
+                f"{_event_title(event)} · {assignment.role}"
+            )
             answer_callback(callback_id, f"Thanks {person_name} - you're covering it. ✅", show_alert=True)
             edit_message(chat_id, message_id, (
                 f"✅ <b>Covered voluntarily</b>\n\n"
@@ -2689,9 +2742,15 @@ def handle_callback_query(data):
         swap.reschedule_event_date = future_event.date
         swap.future_assignment_id = future_assignment.id
         swap.reschedule_notes = f"{person_name} covered {event.date}; {original_person} moved to {future_event.date}"
-        _log_interaction(telegram_user_id, first_name, "swap_accept", person_name, assignment, event)
+        _log_interaction(
+            telegram_user_id, first_name, "swap_accept", person_name, assignment, event,
+            details="telegram_swap",
+        )
         db.session.commit()
-        _notify_admin_text(f"🔄 {person_name} swapped with {original_person}\n{_event_title(event)} · {assignment.role}")
+        _notify_admin_text(
+            f"🔄 {person_name} swapped with {original_person}{_admin_source_tag('telegram_swap')}\n"
+            f"{_event_title(event)} · {assignment.role}"
+        )
         answer_callback(callback_id, f"Thanks {person_name} - swap completed. ✅", show_alert=True)
         edit_message(chat_id, message_id, (
             f"✅ <b>Swap confirmed</b>\n\n"
@@ -2766,9 +2825,12 @@ def handle_callback_query(data):
         h = assignment.history
         h.append({"action": "confirm", "by": person_name, "via": "telegram", "ts": str(vancouver_now())})
         assignment.history = h
-        _log_interaction(telegram_user_id, first_name, "confirm", person_name, assignment, event)
+        _log_interaction(
+            telegram_user_id, first_name, "confirm", person_name, assignment, event,
+            details="telegram",
+        )
         db.session.commit()
-        _notify_admin("confirm", person_name, assignment, event)
+        _notify_admin("confirm", person_name, assignment, event, source="telegram")
         answer_callback(callback_id, "Confirmed")
 
     elif action == "decline":
@@ -2808,9 +2870,12 @@ def handle_callback_query(data):
         h = assignment.history
         h.append({"action": "undo", "by": person_name, "via": "telegram", "ts": str(vancouver_now())})
         assignment.history = h
-        _log_interaction(telegram_user_id, first_name, "undo", person_name, assignment, event)
+        _log_interaction(
+            telegram_user_id, first_name, "undo", person_name, assignment, event,
+            details="telegram",
+        )
         db.session.commit()
-        _notify_admin("undo", person_name, assignment, event)
+        _notify_admin("undo", person_name, assignment, event, source="telegram")
         answer_callback(callback_id, f"↩️ Undone by {person_name}")
 
     elif action == "pickup":
@@ -2840,7 +2905,7 @@ def handle_callback_query(data):
             active_swap.accepted_at = datetime.datetime.utcnow()
 
         _log_interaction(telegram_user_id, first_name, "pickup", cover_name, assignment, event,
-                         details=f"Covered by {cover_name}")
+                         details=f"telegram|Covered by {cover_name}")
         assignment.telegram_message_id = None
         db.session.commit()
         answer_callback(callback_id)
@@ -2875,21 +2940,27 @@ def handle_callback_query(data):
             active_swap.accepted_at = datetime.datetime.utcnow()
 
         _log_interaction(telegram_user_id, first_name, "pickup_as", cover_name, assignment, event,
-                         details=f"Covered by {cover_name}")
+                         details=f"telegram|Covered by {cover_name}")
         db.session.commit()
-        _notify_admin("pickup_as", cover_name, assignment, event)
+        _notify_admin("pickup_as", cover_name, assignment, event, source="telegram")
         answer_callback(callback_id, f"✅ {cover_name} is covering! Thank you! 🎉")
 
         # Send confirmation
         send_shift_covered(event, assignment, cover_name, chat_id=chat_id)
 
     elif action == "cancel_pickup":
-        _log_interaction(telegram_user_id, first_name, "cancel_pickup", person_name, assignment, event)
+        _log_interaction(
+            telegram_user_id, first_name, "cancel_pickup", person_name, assignment, event,
+            details="telegram",
+        )
         db.session.commit()
         answer_callback(callback_id, "Cancelled.")
 
     elif action == "expand":
-        _log_interaction(telegram_user_id, first_name, "expand", person_name, assignment, event)
+        _log_interaction(
+            telegram_user_id, first_name, "expand", person_name, assignment, event,
+            details="telegram_event_post",
+        )
         db.session.commit()
         _notify_name_tap(person_name, assignment, event)
         buttons = _build_event_buttons(
@@ -2904,7 +2975,10 @@ def handle_callback_query(data):
         return
 
     elif action == "collapse":
-        _log_interaction(telegram_user_id, first_name, "collapse", person_name, assignment, event)
+        _log_interaction(
+            telegram_user_id, first_name, "collapse", person_name, assignment, event,
+            details="telegram_event_post",
+        )
         db.session.commit()
         buttons = _build_event_buttons(
             event,

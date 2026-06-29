@@ -197,7 +197,10 @@ def token_login():
 
     if source == "url_auth_link":
         if name != "Florian":
-            tg._notify_admin_text(f"👀 <b>Schedule opened</b>\n{html.escape(name)}")
+            tg._notify_admin_text(
+                f"👀 <b>Schedule opened</b>{tg._admin_source_tag('auth_url')}\n"
+                f"{html.escape(name)}"
+            )
         db.session.add(InteractionLog(
             first_name=name,
             action="schedule_opened",
@@ -222,7 +225,10 @@ def telegram_login():
     username = (data.get("username") or "").strip()
     suffix = f" (@{html.escape(username)})" if username else ""
     if member.name != "Florian":
-        tg._notify_admin_text(f"👀 <b>Schedule opened</b>\n{html.escape(member.name)}{suffix}")
+        tg._notify_admin_text(
+            f"👀 <b>Schedule opened</b>{tg._admin_source_tag('telegram_login_url')}\n"
+            f"{html.escape(member.name)}{suffix}"
+        )
     db.session.add(InteractionLog(
         telegram_user_id=telegram_user_id,
         first_name=first_name,
@@ -381,7 +387,7 @@ def do_action():
         )
 
     def notify_web_action(notify_action=None):
-        tg._notify_admin(notify_action or action, actor, assignment, event)
+        tg._notify_admin(notify_action or action, actor, assignment, event, source="web")
 
     if action == "confirm":
         if not (is_mgr or assignment.person == curr or assignment.cover == curr):

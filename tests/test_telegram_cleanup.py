@@ -1213,9 +1213,43 @@ def run_weekly_update_resends_missing_message(app):
         assert "message_id=501" in latest.details
 
 
+def run_admin_notification_includes_source_tag(app):
+    with app.app_context():
+        _clear_db()
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 7, 12),
+            role="Camera 2",
+            person="Marvin",
+            day_type="Sunday",
+        )
+
+        calls = []
+        old_personal_chat_id = tg.PERSONAL_CHAT_ID
+        old_api_call = tg._api_call
+        try:
+            tg.PERSONAL_CHAT_ID = "admin-chat"
+            tg._api_call = lambda method, payload: (
+                calls.append((method, payload)) or {"ok": True}
+            )
+
+            tg._notify_admin("decline", "Marvin", assignment, event, source="web")
+        finally:
+            tg.PERSONAL_CHAT_ID = old_personal_chat_id
+            tg._api_call = old_api_call
+
+        assert len(calls) == 1
+        method, payload = calls[0]
+        assert method == "sendMessage"
+        assert payload["chat_id"] == "admin-chat"
+        assert "<b>🔴 Can't make it</b> [Web] - Marvin" in payload["text"]
+        assert "📆 Sunday · Jul 12" in payload["text"]
+        assert "📹 Camera 2" in payload["text"]
+
+
 def main():
     app, temp_dir = _make_app()
     try:
+        run_admin_notification_includes_source_tag(app)
         run_expired_swap_sweep_deletes_broadcast(app)
         run_expired_swap_sweep_closes_undeletable_broadcast(app)
         run_accepted_swap_closes_undeletable_source_message(app)
