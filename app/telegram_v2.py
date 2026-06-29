@@ -1402,30 +1402,16 @@ def _weekly_confirm_assignment(callback_id, chat_id, message_id, assignment, per
 def _weekly_decline_assignment(callback_id, chat_id, message_id, assignment, person_name,
                                telegram_user_id=None, first_name=None):
     event = assignment.event
-    assignment.status = "swap_needed"
-    h = assignment.history
-    h.append({"action": "decline", "by": person_name, "via": "weekly_telegram", "ts": str(vancouver_now())})
-    assignment.history = h
-    deadline_local = compute_pickup_deadline(event.date, event.day_type)
-    deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-    swap = SwapRequest.query.filter_by(assignment_id=assignment.id, status="active").first()
-    if not swap:
-        swap = SwapRequest(
-            assignment_id=assignment.id,
-            requestor=person_name,
-            event_date=event.date,
-            role=assignment.role,
-            expires_at=deadline_utc,
-            status="active",
-        )
-        db.session.add(swap)
-    _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event, details="weekly_button")
-    db.session.commit()
-    _notify_admin("decline", person_name, assignment, event)
+    result = _decline_assignment_with_auto_swap(
+        assignment, person_name, "weekly_button",
+        telegram_user_id=telegram_user_id, first_name=first_name,
+        chat_id=chat_id, source_message_id=message_id,
+    )
     answer_callback(callback_id)
     _restore_weekly_message(chat_id, message_id, today=event.date)
     refresh_event_telegram(event)
-    send_swap_needed(event, assignment, chat_id=chat_id, source_message_id=message_id)
+    if result:
+        refresh_event_telegram(result["future_assignment"].event)
     return True
 
 
@@ -1495,30 +1481,16 @@ def _event_show_decline_confirmation(callback_id, chat_id, message_id, assignmen
 def _event_decline_assignment(callback_id, chat_id, message_id, assignment, person_name,
                               telegram_user_id=None, first_name=None, source_message_id=None):
     event = assignment.event
-    assignment.status = "swap_needed"
-    h = assignment.history
-    h.append({"action": "decline", "by": person_name, "via": "event_reminder", "ts": str(vancouver_now())})
-    assignment.history = h
-    deadline_local = compute_pickup_deadline(event.date, event.day_type)
-    deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-    swap = SwapRequest.query.filter_by(assignment_id=assignment.id, status="active").first()
-    if not swap:
-        swap = SwapRequest(
-            assignment_id=assignment.id,
-            requestor=person_name,
-            event_date=event.date,
-            role=assignment.role,
-            expires_at=deadline_utc,
-            status="active",
-        )
-        db.session.add(swap)
-    _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event, details="event_reminder")
-    db.session.commit()
-    _notify_admin("decline", person_name, assignment, event)
+    result = _decline_assignment_with_auto_swap(
+        assignment, person_name, "event_reminder",
+        telegram_user_id=telegram_user_id, first_name=first_name,
+        chat_id=chat_id, source_message_id=source_message_id or message_id,
+    )
     answer_callback(callback_id)
     _restore_event_reminder_message(chat_id, source_message_id or message_id, event)
     update_weekly_schedule_for_event(event)
-    send_swap_needed(event, assignment, chat_id=chat_id, source_message_id=source_message_id or message_id)
+    if result:
+        refresh_event_telegram(result["future_assignment"].event)
     return True
 
 
@@ -1972,6 +1944,7 @@ def _compact_date(date_obj):
 
 
 def _find_future_swap_assignment(person, role, day_type, after_date, original_person=None):
+    roster = get_auto_swap_roster()
     assignments = (
         Assignment.query.join(Event)
         .filter(
@@ -1980,6 +1953,8 @@ def _find_future_swap_assignment(person, role, day_type, after_date, original_pe
             Assignment.person == person,
             Assignment.status.in_(["pending", "confirmed"]),
             Assignment.cover.is_(None),
+            Assignment.locked.is_(False),
+            Event.cancelled.is_(False),
         )
         .order_by(Event.date)
         .all()
@@ -1988,9 +1963,43 @@ def _find_future_swap_assignment(person, role, day_type, after_date, original_pe
     for assignment in assignments:
         if original_person and any((a.cover or a.person) == original_person for a in assignment.event.assignments):
             continue
+        if original_person and not _person_can_take_assignment(original_person, assignment, roster=roster):
+            continue
         safe.append(assignment)
     safe.sort(key=lambda a: (0 if a.role == role else 1, a.event.date))
     return safe[0] if safe else None
+
+
+def get_auto_swap_roster():
+    from .scheduler_v2 import get_roster
+    return get_roster()
+
+
+def _person_can_take_assignment(person, assignment, roster=None):
+    if not person or not assignment or not assignment.event:
+        return False
+    roster = roster or get_auto_swap_roster()
+    if person not in roster:
+        return False
+    from .scheduler_v2 import (
+        _assignment_pool_role,
+        _assignment_schedule_type,
+        _get_role_pool,
+        _person_is_active,
+    )
+    event = assignment.event
+    day_type = _assignment_schedule_type(event, assignment.role)
+    pool_role = _assignment_pool_role(day_type, assignment.role)
+    if person not in _get_role_pool(roster, pool_role, day_type=day_type):
+        return False
+    if not _person_is_active(person, event.date, roster):
+        return False
+    if not is_available(person, event.date):
+        return False
+    return not any(
+        other.id != assignment.id and (other.cover or other.person) == person
+        for other in event.assignments
+    )
 
 
 def _eligible_swap_members(assignment):
@@ -2009,6 +2018,260 @@ def _eligible_swap_members(assignment):
         eligible.append((member.name, future))
     return eligible
 
+
+def _auto_swap_candidate(assignment):
+    event = assignment.event
+    if not event or not assignment.person:
+        return None
+    from .scheduler_v2 import (
+        _assignment_declined_names,
+        _assignment_pool_role,
+        _assignment_schedule_type,
+        _build_history,
+        _get_role_pool,
+        _schedule_priority,
+        _select_best,
+        _select_relaxed,
+    )
+
+    roster = get_auto_swap_roster()
+    day_type = _assignment_schedule_type(event, assignment.role)
+    pool_role = _assignment_pool_role(day_type, assignment.role)
+    role_tracking, overall = _build_history(roster, end_before=event.date)
+    assigned_today = {
+        worker for worker in ((a.cover or a.person) for a in event.assignments if a.id != assignment.id)
+        if worker and worker not in ("TBD", "Select Helper")
+    }
+    excluded = assigned_today | {assignment.person} | set(_assignment_declined_names(assignment))
+    futures = {}
+    for name in _get_role_pool(roster, pool_role, day_type=day_type):
+        if name in excluded:
+            continue
+        future = _find_future_swap_assignment(
+            name, assignment.role, day_type, event.date,
+            original_person=assignment.person,
+        )
+        if future:
+            futures[name] = future
+
+    if not futures:
+        return None
+
+    names = list(futures)
+    selected = _select_best(
+        names, pool_role, event.date, day_type,
+        role_tracking, overall, roster, exclude=[],
+    )
+    if selected == "TBD" or selected not in futures:
+        selected = _select_relaxed(
+            names, pool_role, event.date, day_type,
+            role_tracking, overall, roster, exclude=[],
+        )
+    if selected == "TBD" or selected not in futures:
+        names.sort(key=lambda name: _schedule_priority(
+            name, pool_role, day_type, role_tracking, overall, roster, event.date,
+        ))
+        selected = names[0]
+    return selected, futures[selected]
+
+
+def _active_or_new_swap_request(assignment, requestor):
+    event = assignment.event
+    deadline_local = compute_pickup_deadline(event.date, event.day_type)
+    deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    swap = SwapRequest.query.filter_by(assignment_id=assignment.id, status="active").first()
+    if not swap:
+        swap = SwapRequest(
+            assignment_id=assignment.id,
+            requestor=requestor,
+            event_date=event.date,
+            role=assignment.role,
+            expires_at=deadline_utc,
+            status="active",
+        )
+        db.session.add(swap)
+    else:
+        swap.requestor = requestor
+    return swap
+
+
+def _undo_prior_auto_swap(assignment, person_name):
+    if not assignment or not assignment.cover or assignment.cover != person_name:
+        return None
+    swap = (
+        SwapRequest.query
+        .filter_by(assignment_id=assignment.id, status="accepted", accepted_by=person_name)
+        .order_by(SwapRequest.id.desc())
+        .first()
+    )
+    if not swap:
+        return None
+    future = db.session.get(Assignment, swap.future_assignment_id) if swap.future_assignment_id else None
+    if future and future.person == person_name and future.cover == assignment.person:
+        future.cover = None
+        future.status = "pending"
+        h = future.history
+        h.append({
+            "action": "auto_swap_undone",
+            "by": person_name,
+            "via": "auto_swap",
+            "ts": str(vancouver_now()),
+            "source_assignment_id": assignment.id,
+        })
+        future.history = h
+    assignment.cover = None
+    assignment.status = "swap_needed"
+    swap.status = "cancelled"
+    swap.reschedule_notes = f"{person_name} declined auto swap for {assignment.event.date}"
+    return swap
+
+
+def _apply_auto_swap(assignment, swap):
+    candidate = _auto_swap_candidate(assignment)
+    if not candidate:
+        return None
+    cover_name, future_assignment = candidate
+    original_person = assignment.person
+    old_notice = (
+        SwapRequest.query
+        .filter(
+            SwapRequest.assignment_id == assignment.id,
+            SwapRequest.id != swap.id,
+            SwapRequest.telegram_message_id.isnot(None),
+        )
+        .order_by(SwapRequest.id.desc())
+        .first()
+    )
+
+    assignment.cover = cover_name
+    assignment.status = "pending"
+    assignment.telegram_message_id = None
+    h = assignment.history
+    h.append({
+        "action": "auto_swap_assigned",
+        "by": "system",
+        "to": cover_name,
+        "future_assignment_id": future_assignment.id,
+        "ts": str(vancouver_now()),
+    })
+    assignment.history = h
+
+    future_assignment.cover = original_person
+    future_assignment.status = "pending"
+    future_assignment.telegram_message_id = None
+    future_history = future_assignment.history
+    future_history.append({
+        "action": "auto_swap_received",
+        "by": "system",
+        "from": cover_name,
+        "to": original_person,
+        "source_assignment_id": assignment.id,
+        "ts": str(vancouver_now()),
+    })
+    future_assignment.history = future_history
+
+    swap.status = "accepted"
+    swap.accepted_by = cover_name
+    swap.accepted_at = datetime.datetime.utcnow()
+    swap.reschedule_event_date = future_assignment.event.date
+    swap.future_assignment_id = future_assignment.id
+    swap.reschedule_notes = (
+        f"{cover_name} auto-swapped into {assignment.event.date}; "
+        f"{original_person} moved to {future_assignment.event.date}"
+    )
+    if old_notice and not swap.telegram_message_id:
+        swap.telegram_message_id = old_notice.telegram_message_id
+        swap.telegram_chat_id = old_notice.telegram_chat_id
+        old_notice.telegram_message_id = None
+        old_notice.telegram_chat_id = None
+    return {
+        "cover_name": cover_name,
+        "future_assignment": future_assignment,
+        "old_notice": old_notice,
+    }
+
+
+def _auto_swap_notice_text(assignment, swap, future_assignment):
+    event = assignment.event
+    future_event = future_assignment.event
+    cover = html.escape(swap.accepted_by or assignment.cover or "Someone")
+    original = html.escape(swap.requestor or assignment.person or "Someone")
+    title = html.escape(_event_title_without_emoji(event))
+    role_icon = ROLE_EMOJI.get(assignment.role, "👤")
+    role = html.escape(assignment.role or "shift")
+    date_text = html.escape(_short_date(event.date))
+    future_date = html.escape(_short_date(future_event.date))
+    future_role = html.escape(future_assignment.role or "shift")
+    return (
+        f"{cover}, you swapped with {original}.\n\n"
+        f"{original} can't make it:\n"
+        f"{title} - {date_text}\n"
+        f"{role_icon} {role}\n\n"
+        "You will take this shift.\n"
+        f"{original} will take your {future_date} {future_role} shift."
+    )
+
+
+def _send_or_edit_auto_swap_notice(assignment, swap, future_assignment, chat_id=None):
+    text = _auto_swap_notice_text(assignment, swap, future_assignment)
+    target_chat_id = str(chat_id or swap.telegram_chat_id or TELEGRAM_CHAT_ID)
+    buttons = _make_inline_keyboard([])
+    if swap.telegram_message_id:
+        edited, error = edit_message_with_error(
+            target_chat_id, swap.telegram_message_id, text, reply_markup=buttons,
+        )
+        if edited:
+            swap.telegram_chat_id = target_chat_id
+            db.session.commit()
+            return swap.telegram_message_id
+        if not _is_missing_message_error(error):
+            print(f"[auto-swap] Existing notice {swap.telegram_message_id} could not be edited: {error}")
+            db.session.commit()
+            return swap.telegram_message_id
+        swap.telegram_message_id = None
+        swap.telegram_chat_id = None
+
+    msg_id = send_message(text, chat_id=target_chat_id, reply_markup=buttons)
+    if msg_id:
+        swap.telegram_message_id = msg_id
+        swap.telegram_chat_id = target_chat_id
+    db.session.commit()
+    return msg_id
+
+
+def _auto_swap_or_send_needed(event, assignment, swap, chat_id=None, source_message_id=None):
+    result = _apply_auto_swap(assignment, swap)
+    if not result:
+        db.session.commit()
+        send_swap_needed(event, assignment, chat_id=chat_id, source_message_id=source_message_id)
+        return None
+    db.session.commit()
+    _send_or_edit_auto_swap_notice(
+        assignment, swap, result["future_assignment"], chat_id=chat_id,
+    )
+    return result
+
+
+def _decline_assignment_with_auto_swap(assignment, person_name, via,
+                                       telegram_user_id=None, first_name=None,
+                                       chat_id=None, source_message_id=None):
+    event = assignment.event
+    prior_swap = _undo_prior_auto_swap(assignment, person_name)
+    requestor = assignment.person if prior_swap else person_name
+    assignment.status = "swap_needed"
+    h = assignment.history
+    h.append({"action": "decline", "by": person_name, "via": via, "ts": str(vancouver_now())})
+    assignment.history = h
+    swap = _active_or_new_swap_request(assignment, requestor)
+    _log_interaction(
+        telegram_user_id, first_name, "decline", person_name, assignment, event,
+        details=via if via in ("weekly_button", "event_reminder") else None,
+    )
+    result = _auto_swap_or_send_needed(
+        event, assignment, swap, chat_id=chat_id, source_message_id=source_message_id,
+    )
+    _notify_admin("decline", person_name, assignment, event)
+    return result
 
 def _format_swap_request(assignment, recipient, future_assignment):
     event = assignment.event
@@ -2249,35 +2512,30 @@ def handle_callback_query(data):
             refresh_event_telegram(event)
             _delete_temp_chat(temp_chat, delay=5)
             return
-        assignment.status = "swap_needed"
-        h = assignment.history
-        h.append({"action": "decline", "by": person_name, "via": "temp_group", "ts": str(vancouver_now())})
-        assignment.history = h
-        deadline_local = _swap_deadline(event)
-        deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-        swap = SwapRequest.query.filter_by(assignment_id=assignment.id, status="active").first()
-        if not swap:
-            swap = SwapRequest(
-                assignment_id=assignment.id,
-                requestor=assignment.person,
-                event_date=event.date,
-                role=assignment.role,
-                expires_at=deadline_utc,
-                status="active",
-            )
-            db.session.add(swap)
-        _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event)
-        db.session.commit()
-        _notify_admin_text(f"❌ {assignment.person} can't make it\n{_event_title(event)} · {assignment.role}")
+        result = _decline_assignment_with_auto_swap(
+            assignment, person_name, "temp_group",
+            telegram_user_id=telegram_user_id, first_name=first_name,
+        )
         answer_callback(callback_id)
+        if result:
+            response_text = (
+                "Thanks for letting us know.\n\n"
+                f"{result['cover_name']} was automatically swapped in.\n\n"
+                "<i>This chat will auto-destruct in 5 seconds.</i>"
+            )
+        else:
+            response_text = (
+                "Thanks for letting us know.\n\n"
+                "We'll ask the team if someone can cover your shift.\n\n"
+                "<i>This chat will auto-destruct in 5 seconds.</i>"
+            )
         edit_message(chat_id, message_id, (
-            "Thanks for letting us know.\n\n"
-            "We'll ask the team if someone can cover your shift.\n\n"
-            "<i>This chat will auto-destruct in 5 seconds.</i>"
+            response_text
         ))
         _delete_temp_chat(temp_chat, delay=5)
         refresh_event_telegram(event)
-        send_swap_needed(event, assignment)
+        if result:
+            refresh_event_telegram(result["future_assignment"].event)
         return
 
     if action in ("swap_cover", "swap_accept", "swap_decline"):
@@ -2355,13 +2613,13 @@ def handle_callback_query(data):
         future_event = future_assignment.event
         assignment.cover = person_name
         assignment.status = "confirmed"
-        future_assignment.person = original_person
-        future_assignment.cover = None
+        future_assignment.cover = original_person
         future_assignment.status = "pending"
         swap.status = "accepted"
         swap.accepted_by = person_name
         swap.accepted_at = datetime.datetime.utcnow()
         swap.reschedule_event_date = future_event.date
+        swap.future_assignment_id = future_assignment.id
         swap.reschedule_notes = f"{person_name} covered {event.date}; {original_person} moved to {future_event.date}"
         _log_interaction(telegram_user_id, first_name, "swap_accept", person_name, assignment, event)
         db.session.commit()
@@ -2446,50 +2704,16 @@ def handle_callback_query(data):
         answer_callback(callback_id, "Confirmed")
 
     elif action == "decline":
-        assignment.status = "swap_needed"
-        h = assignment.history
-        h.append({"action": "decline", "by": person_name, "via": "telegram", "ts": str(vancouver_now())})
-        assignment.history = h
-
-        # Create a SwapRequest with the appropriate deadline
-        deadline_local = compute_pickup_deadline(event.date, event.day_type)
-        deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-        # Don't duplicate if one is already active
-        existing = SwapRequest.query.filter_by(
-            assignment_id=assignment.id, status="active"
-        ).first()
-        if existing:
-            swap = existing
-        else:
-            swap = SwapRequest(
-                assignment_id=assignment.id,
-                requestor=person_name,
-                event_date=event.date,
-                role=assignment.role,
-                expires_at=deadline_utc,
-                status="active",
-            )
-            db.session.add(swap)
-
-        _log_interaction(telegram_user_id, first_name, "decline", person_name, assignment, event)
-        db.session.commit()
-        _notify_admin("decline", person_name, assignment, event)
-
-        if hasattr(deadline_local, "strftime"):
-            deadline_str = deadline_local.strftime("%a %b %d at %I:%M %p")
-            # Strip leading zero from hour (cross-platform; %-I is Linux-only)
-            deadline_str = deadline_str.replace(" at 0", " at ")
-        else:
-            deadline_str = str(deadline_local)
-        answer_callback(
-            callback_id,
-            f"Got it - {person_name} can't make it. The shift is now open for someone "
-            f"else to pick up by {deadline_str}. You can undo anytime before the deadline.",
-            show_alert=True,
+        result = _decline_assignment_with_auto_swap(
+            assignment, person_name, "telegram",
+            telegram_user_id=telegram_user_id, first_name=first_name,
+            chat_id=chat_id,
         )
-
-        # Broadcast a separate swap-needed alert so everyone can pick it up
-        send_swap_needed(event, assignment, chat_id=chat_id)
+        if result:
+            answer_callback(callback_id, f"Auto-swapped with {result['cover_name']}.", show_alert=True)
+            refresh_event_telegram(result["future_assignment"].event)
+        else:
+            answer_callback(callback_id, "Got it - we'll ask the team to cover this shift.", show_alert=True)
 
     elif action == "undo":
         if assignment.cover:

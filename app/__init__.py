@@ -199,6 +199,11 @@ def create_app(config_class='config.Config'):
             db.session.execute(text("ALTER TABLE team_member ADD COLUMN _role_preferences_json TEXT DEFAULT '{}'"))
             db.session.commit()
 
+        swap_request_cols = [c['name'] for c in insp.get_columns('swap_request')]
+        if 'future_assignment_id' not in swap_request_cols:
+            db.session.execute(text('ALTER TABLE swap_request ADD COLUMN future_assignment_id INTEGER REFERENCES assignment(id) ON DELETE SET NULL'))
+            db.session.commit()
+
         event_cols = [c['name'] for c in insp.get_columns('event')]
         if 'telegram_message_id' not in event_cols:
             db.session.execute(text('ALTER TABLE event ADD COLUMN telegram_message_id INTEGER'))

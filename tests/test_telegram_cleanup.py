@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.extensions import db
-from app.models import Assignment, Event, InteractionLog, SwapRequest, TempChat
+from app.models import Assignment, Event, InteractionLog, SwapRequest, TeamMember, TempChat
 import app.telegram_v2 as tg
 
 
@@ -32,7 +32,7 @@ def _make_app():
 
 
 def _clear_db():
-    for model in (TempChat, SwapRequest, InteractionLog, Assignment, Event):
+    for model in (TempChat, SwapRequest, InteractionLog, Assignment, Event, TeamMember):
         db.session.query(model).delete()
     db.session.commit()
 
@@ -53,6 +53,14 @@ def _event_with_assignment(
     db.session.add(assignment)
     db.session.flush()
     return event, assignment
+
+
+def _team_member(name, sunday_roles=None, friday_roles=None):
+    member = TeamMember(name=name, active=True)
+    member.sunday_roles = sunday_roles or []
+    member.friday_roles = friday_roles or []
+    db.session.add(member)
+    return member
 
 
 def run_expired_swap_sweep_deletes_broadcast(app):
@@ -366,6 +374,219 @@ def run_weekly_single_shift_decline_skips_confirmation(app):
         assert sent and "Andy can't make it to his shift" in sent[-1][1]
         assert answers == [("cb", "", False)]
         assert refreshed == [event.id]
+
+
+def run_weekly_decline_auto_swaps_with_future_shift(app):
+    with app.app_context():
+        _clear_db()
+        _team_member("Rene", sunday_roles=["Computer"], friday_roles=["Computer"])
+        _team_member("Andy", sunday_roles=["Computer"], friday_roles=["Computer"])
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 28),
+            role="Computer",
+            person="Rene",
+            status="pending",
+            day_type="Sunday",
+        )
+        future_event, future_assignment = _event_with_assignment(
+            datetime.date(2026, 7, 19),
+            role="Computer",
+            person="Andy",
+            status="pending",
+            day_type="Sunday",
+        )
+        db.session.commit()
+
+        edits = []
+        sent = []
+        answers = []
+        refreshed = []
+        old_edit_message = tg.edit_message
+        old_send_message = tg.send_message
+        old_answer_callback = tg.answer_callback
+        old_notify_admin = tg._notify_admin
+        old_refresh_event = tg.refresh_event_telegram
+        try:
+            tg.edit_message = lambda chat_id, message_id, text, reply_markup=None: (
+                edits.append((chat_id, message_id, text, reply_markup)) or True
+            )
+            tg.send_message = lambda text, chat_id=None, reply_markup=None, parse_mode="HTML": (
+                sent.append((chat_id, text, reply_markup)) or 950
+            )
+            tg.answer_callback = lambda callback_id, text="", show_alert=False: (
+                answers.append((callback_id, text, show_alert)) or True
+            )
+            tg._notify_admin = lambda *args, **kwargs: None
+            tg.refresh_event_telegram = lambda refreshed_event: (
+                refreshed.append(refreshed_event.id) or True
+            )
+
+            assert tg._weekly_decline_assignment(
+                "cb", "chat", 321, assignment, "Rene",
+                telegram_user_id="tg-rene", first_name="Rene",
+            ) is True
+        finally:
+            tg.edit_message = old_edit_message
+            tg.send_message = old_send_message
+            tg.answer_callback = old_answer_callback
+            tg._notify_admin = old_notify_admin
+            tg.refresh_event_telegram = old_refresh_event
+
+        db.session.expire_all()
+        assignment = db.session.get(Assignment, assignment.id)
+        future_assignment = db.session.get(Assignment, future_assignment.id)
+        swap = SwapRequest.query.filter_by(assignment_id=assignment.id).one()
+        assert assignment.person == "Rene"
+        assert assignment.cover == "Andy"
+        assert assignment.status == "pending"
+        assert future_assignment.person == "Andy"
+        assert future_assignment.cover == "Rene"
+        assert future_assignment.status == "pending"
+        assert swap.status == "accepted"
+        assert swap.requestor == "Rene"
+        assert swap.accepted_by == "Andy"
+        assert swap.future_assignment_id == future_assignment.id
+        assert swap.telegram_message_id == 950
+        assert sent
+        notice_text = sent[-1][1]
+        assert "Andy, you swapped with Rene." in notice_text
+        assert "Rene can't make it:" in notice_text
+        assert "Sunday Service - June 28" in notice_text
+        assert "You will take this shift." in notice_text
+        assert "Rene will take your July 19 Computer shift." in notice_text
+        assert sent[-1][2] == {"inline_keyboard": []}
+        assert "I can" not in str(sent[-1][2])
+        assert edits and edits[-1][0:2] == ("chat", 321)
+        assert answers == [("cb", "", False)]
+        assert refreshed == [event.id, future_event.id]
+        assert "<s>Rene</s> \u2192 Andy" in tg.format_weekly_schedule(today=event.date)
+        assert "<s>Andy</s> \u2192 Rene" in tg.format_weekly_schedule(today=future_event.date)
+
+
+def run_cover_decline_reassigns_auto_swap_notice(app):
+    with app.app_context():
+        _clear_db()
+        _team_member("Rene", sunday_roles=["Computer"], friday_roles=["Computer"])
+        _team_member("Andy", sunday_roles=["Computer"], friday_roles=["Computer"])
+        _team_member("Marvin", sunday_roles=["Computer"], friday_roles=["Computer"])
+        event, assignment = _event_with_assignment(
+            datetime.date(2026, 6, 28),
+            role="Computer",
+            person="Rene",
+            status="pending",
+            day_type="Sunday",
+        )
+        assignment.cover = "Andy"
+        old_future_event, old_future = _event_with_assignment(
+            datetime.date(2026, 7, 19),
+            role="Computer",
+            person="Andy",
+            status="pending",
+            day_type="Sunday",
+        )
+        old_future.cover = "Rene"
+        new_future_event, new_future = _event_with_assignment(
+            datetime.date(2026, 8, 2),
+            role="Computer",
+            person="Marvin",
+            status="pending",
+            day_type="Sunday",
+        )
+        old_swap = SwapRequest(
+            assignment_id=assignment.id,
+            requestor="Rene",
+            event_date=event.date,
+            role=assignment.role,
+            expires_at=(
+                datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                + datetime.timedelta(days=1)
+            ),
+            status="accepted",
+            accepted_by="Andy",
+            accepted_at=datetime.datetime.utcnow(),
+            telegram_message_id=700,
+            telegram_chat_id="chat",
+            future_assignment_id=old_future.id,
+        )
+        db.session.add(old_swap)
+        db.session.commit()
+
+        notice_edits = []
+        reminder_edits = []
+        sent = []
+        answers = []
+        weekly_updates = []
+        refreshed = []
+        old_edit_with_error = tg.edit_message_with_error
+        old_edit_message = tg.edit_message
+        old_send_message = tg.send_message
+        old_answer_callback = tg.answer_callback
+        old_notify_admin = tg._notify_admin
+        old_update_weekly = tg.update_weekly_schedule_for_event
+        old_refresh_event = tg.refresh_event_telegram
+        try:
+            tg.edit_message_with_error = lambda chat_id, message_id, text, reply_markup=None: (
+                notice_edits.append((chat_id, message_id, text, reply_markup)) or (True, None)
+            )
+            tg.edit_message = lambda chat_id, message_id, text, reply_markup=None: (
+                reminder_edits.append((chat_id, message_id, text, reply_markup)) or True
+            )
+            tg.send_message = lambda text, chat_id=None, reply_markup=None, parse_mode="HTML": (
+                sent.append((chat_id, text, reply_markup)) or 951
+            )
+            tg.answer_callback = lambda callback_id, text="", show_alert=False: (
+                answers.append((callback_id, text, show_alert)) or True
+            )
+            tg._notify_admin = lambda *args, **kwargs: None
+            tg.update_weekly_schedule_for_event = lambda updated_event: (
+                weekly_updates.append(updated_event.id) or True
+            )
+            tg.refresh_event_telegram = lambda refreshed_event: (
+                refreshed.append(refreshed_event.id) or True
+            )
+
+            assert tg._event_decline_assignment(
+                "cb", "chat", 347, assignment, "Andy",
+                telegram_user_id="tg-andy", first_name="Andy",
+            ) is True
+        finally:
+            tg.edit_message_with_error = old_edit_with_error
+            tg.edit_message = old_edit_message
+            tg.send_message = old_send_message
+            tg.answer_callback = old_answer_callback
+            tg._notify_admin = old_notify_admin
+            tg.update_weekly_schedule_for_event = old_update_weekly
+            tg.refresh_event_telegram = old_refresh_event
+
+        db.session.expire_all()
+        assignment = db.session.get(Assignment, assignment.id)
+        old_future = db.session.get(Assignment, old_future.id)
+        new_future = db.session.get(Assignment, new_future.id)
+        old_swap = db.session.get(SwapRequest, old_swap.id)
+        new_swap = SwapRequest.query.filter_by(
+            assignment_id=assignment.id, status="accepted", accepted_by="Marvin",
+        ).one()
+        assert assignment.person == "Rene"
+        assert assignment.cover == "Marvin"
+        assert assignment.status == "pending"
+        assert old_future.person == "Andy"
+        assert old_future.cover is None
+        assert new_future.person == "Marvin"
+        assert new_future.cover == "Rene"
+        assert old_swap.status == "cancelled"
+        assert old_swap.telegram_message_id is None
+        assert new_swap.requestor == "Rene"
+        assert new_swap.future_assignment_id == new_future.id
+        assert new_swap.telegram_message_id == 700
+        assert notice_edits and notice_edits[0][0:2] == ("chat", 700)
+        assert "Marvin, you swapped with Rene." in notice_edits[0][2]
+        assert "Rene will take your August 2 Computer shift." in notice_edits[0][2]
+        assert notice_edits[0][3] == {"inline_keyboard": []}
+        assert not sent
+        assert reminder_edits and reminder_edits[-1][0:2] == ("chat", 347)
+        assert answers == [("cb", "", False)]
+        assert weekly_updates == [event.id]
+        assert refreshed == [new_future_event.id]
 
 
 def run_weekly_multi_shift_decline_choice_is_final(app):
@@ -881,6 +1102,8 @@ def main():
         run_swap_needed_reuses_existing_broadcast(app)
         run_swap_needed_message_uses_open_shift_layout(app)
         run_weekly_single_shift_decline_skips_confirmation(app)
+        run_weekly_decline_auto_swaps_with_future_shift(app)
+        run_cover_decline_reassigns_auto_swap_notice(app)
         run_weekly_multi_shift_decline_choice_is_final(app)
         run_weekly_confirm_on_covered_shift_stays_confirmed(app)
         run_event_confirm_on_covered_shift_stays_confirmed(app)

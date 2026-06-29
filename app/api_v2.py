@@ -371,35 +371,16 @@ def do_action():
     elif action == "decline":
         if not (is_mgr or assignment.person == curr or assignment.cover == curr):
             return jsonify({"error": "Unauthorized"}), 403
-        assignment.status = "swap_needed"
-        push_history()
-
-        swap = None
         if event.date >= vancouver_today():
-            deadline_local = tg._swap_deadline(event)
-            deadline_utc = deadline_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-            swap = SwapRequest.query.filter_by(
-                assignment_id=assignment.id, status="active"
-            ).first()
-            if not swap:
-                swap = SwapRequest(
-                    assignment_id=assignment.id,
-                    requestor=assignment.person,
-                    event_date=event.date,
-                    role=assignment.role,
-                    expires_at=deadline_utc,
-                    status="active",
-                )
-                db.session.add(swap)
-
-        db.session.commit()
-
-        if event.date >= vancouver_today():
-            try:
-                if swap:
-                    tg.send_swap_needed(event, assignment)
-            except Exception as e:
-                print(f"Telegram error: {e}")
+            result = tg._decline_assignment_with_auto_swap(
+                assignment, curr or assignment.person, "web",
+            )
+            if result:
+                changed_events.append(result["future_assignment"].event)
+        else:
+            assignment.status = "swap_needed"
+            push_history()
+            db.session.commit()
 
     elif action == "volunteer":
         if not curr:

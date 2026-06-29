@@ -199,9 +199,15 @@ class SwapRequest(db.Model):
     telegram_message_id = db.Column(db.Integer)            # Broadcast msg for edits
     telegram_chat_id = db.Column(db.String(30))
     reschedule_event_date = db.Column(db.Date)             # Where requestor got rebooked
+    future_assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.id', ondelete="SET NULL"))
     reschedule_notes = db.Column(db.Text)                  # "Displaced Rene from 2026-05-17"
 
-    assignment = db.relationship('Assignment', backref=db.backref('swap_requests', cascade='all, delete-orphan'))
+    assignment = db.relationship(
+        'Assignment',
+        foreign_keys=[assignment_id],
+        backref=db.backref('swap_requests', cascade='all, delete-orphan'),
+    )
+    future_assignment = db.relationship('Assignment', foreign_keys=[future_assignment_id])
 
     def to_dict(self):
         return {
@@ -214,6 +220,7 @@ class SwapRequest(db.Model):
             "status": self.status,
             "accepted_by": self.accepted_by,
             "reschedule_event_date": self.reschedule_event_date.isoformat() if self.reschedule_event_date else None,
+            "future_assignment_id": self.future_assignment_id,
         }
 
 
