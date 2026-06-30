@@ -92,7 +92,7 @@ ACTION_LABELS = {
 SOURCE_LABELS = {
     "web": "Web",
     "auth_url": "Schedule link",
-    "telegram_login_url": "Telegram login",
+    "telegram_login_url": "View Schedule via Telegram",
     "weekly_button": "Telegram weekly",
     "event_reminder": "Telegram reminder",
     "temp_group": "Telegram temp chat",

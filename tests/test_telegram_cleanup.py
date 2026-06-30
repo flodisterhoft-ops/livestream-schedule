@@ -1249,6 +1249,7 @@ def run_admin_notification_includes_source_tag(app):
         assert "<b>🔴 Can't make it</b> [Web] - Marvin" in payload["text"]
         assert "📆 Sunday · Jul 12" in payload["text"]
         assert "📹 Camera 2" in payload["text"]
+        assert tg._admin_source_tag("telegram_login_url") == " [View Schedule via Telegram]"
 
 
 def run_swap_request_buttons_use_view_schedule(app):
